@@ -97,6 +97,17 @@ PAPER_GRAIN_ALPHA = 0.05                # fine per-pixel grain (0 = off)
 PAPER_MOTTLE_ALPHA = 0.06               # soft large-scale mottle (0 = off)
 PAPER_FILL = (244, 242, 236)            # corner fill for the scan skew (should match the paper)
 
+# --- Markdown block layout --------------------------------------------------
+# Handwriting has no bold and no type sizes, so structure is expressed the way
+# a person writes it: headings centred and underlined, lists indented.
+INDENT_STEP = 90                        # px of indent per list nesting level
+HEADING_SCALE = {1: 1.30, 2: 1.15, 3: 1.05}     # glyph scale by heading level
+HEADING_GAP_BEFORE = 0.55               # blank space, in line heights
+HEADING_GAP_AFTER = 0.25
+PARA_GAP = 0.45
+UNDERLINE_DROP = 12                     # px below the baseline
+UNDERLINE_WIDTH = 4
+
 # --------------------------------------------------------------------------- #
 # Glyph loading  (prepare once, cache, discover variants)
 # --------------------------------------------------------------------------- #
@@ -141,6 +152,31 @@ def glyph_variants(ch: str) -> list[Image.Image] | None:
     return _cache[ch]
 
 
+def measure(word: str, scale: float = 1.0) -> int:
+    """Width of a word before jitter, used to decide where lines break."""
+    return int(sum(char_advance(c) for c in word) * scale)
+
+
+def wrap(words: list[str], width: int, scale: float = 1.0) -> list[list[str]]:
+    """Group words into lines that fit inside `width`."""
+    lines: list[list[str]] = []
+    current: list[str] = []
+    used = 0
+    space = int(SPACE_WIDTH * scale)
+    for word in words:
+        ww = measure(word, scale)
+        add = ww if not current else space + ww
+        if current and used + add > width:
+            lines.append(current)
+            current, used = [word], ww
+        else:
+            current.append(word)
+            used += add
+    if current:
+        lines.append(current)
+    return lines
+
+
 def char_advance(ch: str) -> int:
     """Nominal horizontal advance for a character (used for wrapping)."""
     if ch == " ":
@@ -152,11 +188,15 @@ def char_advance(ch: str) -> int:
 # --------------------------------------------------------------------------- #
 # Per-glyph jitter
 # --------------------------------------------------------------------------- #
-def jittered(im: Image.Image) -> Image.Image:
-    """Return a fresh, randomly perturbed copy of a glyph image."""
+def jittered(im: Image.Image, scale: float = 1.0) -> Image.Image:
+    """Return a fresh, randomly perturbed copy of a glyph image.
+
+    `scale` is the block-level size (headings draw larger). It is folded into
+    the random size jitter so the glyph is only resampled once.
+    """
     g = im
-    if SCALE_JITTER:
-        s = 1 + random.uniform(-SCALE_JITTER, SCALE_JITTER)
+    s = scale * (1 + random.uniform(-SCALE_JITTER, SCALE_JITTER)) if SCALE_JITTER else scale
+    if s != 1.0:
         g = g.resize((max(1, round(g.width * s)), max(1, round(g.height * s))),
                      Image.LANCZOS)
     if ROT_JITTER:
@@ -233,6 +273,7 @@ class Sheet:
         self.width, self.height = self.template.size
         self.pages: list[Image.Image] = []
         self.missing: list[str] = []          # characters with no glyph
+        self.scale = 1.0                      # block-level glyph size
         self._new_page()
 
     def _new_page(self) -> None:
@@ -264,12 +305,84 @@ class Sheet:
     def right(self) -> int:
         return self.width - MARGIN_R
 
-    def newline(self) -> None:
-        self.x = MARGIN_L + random.randint(0, MARGIN_JITTER)
-        self.baseline += LINE_HEIGHT
+    def newline(self, left: int | None = None, advance: float = 1.0) -> None:
+        self.x = (MARGIN_L if left is None else left) + random.randint(0, MARGIN_JITTER)
+        self.baseline += int(LINE_HEIGHT * advance)
         self._drift_phase = 0.0
         if self.baseline + LINE_HEIGHT > self.height - MARGIN_B:
             self._new_page()
+
+    def gap(self, fraction: float) -> None:
+        """Leave vertical space between blocks."""
+        self.baseline += int(LINE_HEIGHT * fraction)
+        if self.baseline + LINE_HEIGHT > self.height - MARGIN_B:
+            self._new_page()
+
+    def _pen(self) -> tuple[int, int, int]:
+        return tuple(INK_COLOR) if INK_COLOR else (25, 30, 60)
+
+    def _pen_stroke(self, x0: float, y: float, x1: float, width: int) -> None:
+        """A wobbly horizontal pen stroke, used for underlines and rules."""
+        if x1 <= x0:
+            return
+        steps = max(2, int((x1 - x0) / 70))
+        pts = [(x0 + (x1 - x0) * i / steps, y + random.uniform(-2.0, 2.0))
+               for i in range(steps + 1)]
+        ImageDraw.Draw(self.page).line(pts, fill=self._pen(), width=width, joint="curve")
+
+    def underline(self, x0: float, x1: float) -> None:
+        self._pen_stroke(x0, self.baseline + UNDERLINE_DROP, x1, UNDERLINE_WIDTH)
+
+    def hand_rule(self) -> None:
+        """A horizontal rule, drawn as a pen stroke across the text column."""
+        self._pen_stroke(MARGIN_L + 20, self.baseline - X_HEIGHT // 2,
+                         self.right - 20, UNDERLINE_WIDTH)
+        self.newline()
+
+    def figure_box(self, label: str) -> None:
+        """A hand-drawn box standing in for an image, with its caption inside."""
+        height = int(LINE_HEIGHT * 2.6)
+        if self.baseline + height > self.height - MARGIN_B:
+            self._new_page()
+        top = self.baseline - X_HEIGHT
+        bottom = top + height
+        x0, x1 = MARGIN_L + 20, self.right - 20
+        w = max(2, UNDERLINE_WIDTH - 1)
+        self._pen_stroke(x0, top, x1, w)
+        self._pen_stroke(x0, bottom, x1, w)
+        for x in (x0, x1):                       # verticals, drawn the same wobbly way
+            steps = max(2, int(height / 70))
+            pts = [(x + random.uniform(-2.0, 2.0), top + height * i / steps)
+                   for i in range(steps + 1)]
+            ImageDraw.Draw(self.page).line(pts, fill=self._pen(), width=w, joint="curve")
+
+        self.baseline = top + height // 2 + X_HEIGHT // 2
+        self.put_line(label.split(), MARGIN_L, self.right - MARGIN_L, align="center")
+        # A full line of clearance: glyphs sit above the baseline, so a smaller
+        # gap lets the next paragraph overlap the box's bottom edge.
+        self.baseline = bottom
+        self.gap(1.0)
+
+    def put_line(self, words: list[str], left: int, width: int,
+                 align: str = "left", underline: bool = False,
+                 scale: float = 1.0) -> None:
+        """Draw one already-wrapped line, then move to the next."""
+        self.scale = scale
+        space = int(SPACE_WIDTH * scale)
+        line_w = sum(measure(w, scale) for w in words) + space * max(0, len(words) - 1)
+        x0 = left + max(0, (width - line_w) // 2) if align == "center" else left
+
+        self.x = x0 + random.randint(0, MARGIN_JITTER)
+        start = self.x
+        for i, word in enumerate(words):
+            for ch in word:
+                self.put(ch)
+            if i < len(words) - 1:
+                self.x += space
+        if underline:
+            self.underline(start, self.x)
+        self.scale = 1.0
+        self.newline(left, advance=max(1.0, scale))
 
     def _drift(self) -> int:
         # a gentle sine drift so the writing line is never laser-straight
@@ -282,8 +395,8 @@ class Sheet:
         vs = glyph_variants(ch)
         if not vs:
             return
-        advance = vs[0].width                     # rhythm set by the un-jittered width
-        g = jittered(random.choice(vs))
+        advance = int(vs[0].width * self.scale)   # rhythm set by the un-jittered width
+        g = jittered(random.choice(vs), self.scale)
 
         wobble = random.randint(-BASELINE_WOBBLE, BASELINE_WOBBLE) + self._drift()
         x = self.x + (advance - g.width) // 2     # keep rotation-expansion centred
@@ -326,7 +439,104 @@ def render(text: str) -> Sheet:
     return sheet
 
 
-def render_pages(text: str) -> tuple[list[Image.Image], list[str]]:
+def render_markdown(md_text: str) -> Sheet:
+    """Render Markdown, expressing its structure in handwriting conventions.
+
+    Headings are centred and underlined rather than bold, lists are indented
+    with a drawn marker, and figures become a labelled box. Tables degrade to
+    indented rows for now; ruling real tables is a later job.
+    """
+    from markdown_blocks import to_blocks
+
+    sheet = Sheet()
+    missing: set[str] = set()
+    column = sheet.right - MARGIN_L
+
+    def track(text: str) -> None:
+        for ch in text:
+            if ch != " " and glyph_variants(ch) is None:
+                missing.add(ch)
+
+    def flow(words: list[str], left: int, width: int, scale: float = 1.0) -> None:
+        for line in wrap(words, width, scale):
+            sheet.put_line(line, left, width, scale=scale)
+
+    previous = ""
+    for block in to_blocks(md_text):
+        # Runs of list items, table rows and code lines sit tight against each
+        # other, but the run as a whole needs separating from what follows.
+        if previous in ("item", "table", "code") and block.kind != previous:
+            sheet.gap(PARA_GAP)
+        previous = block.kind
+
+        if block.kind == "rule":
+            sheet.hand_rule()
+            sheet.gap(0.3)
+            continue
+
+        if block.kind == "image":
+            track(block.text)
+            sheet.figure_box(block.text or "figure")
+            continue
+
+        if block.kind == "heading":
+            level = min(max(block.level, 1), 3)
+            scale = HEADING_SCALE.get(level, 1.0)
+            track(block.text)
+            sheet.gap(HEADING_GAP_BEFORE)
+            align = "center" if level == 1 else "left"
+            for line in wrap(block.text.split(), column, scale):
+                sheet.put_line(line, MARGIN_L, column, align=align,
+                               underline=True, scale=scale)
+            sheet.gap(HEADING_GAP_AFTER)
+            continue
+
+        if block.kind == "item":
+            track(block.text + block.marker)
+            indent = MARGIN_L + INDENT_STEP * block.level
+            hang = indent + measure(block.marker) + SPACE_WIDTH
+            lines = wrap(block.text.split(), sheet.right - hang)
+            # marker sits on the first line, wrapped lines align under the text
+            sheet.put_line([block.marker] + lines[0], indent, sheet.right - indent)
+            for line in lines[1:]:
+                sheet.put_line(line, hang, sheet.right - hang)
+            continue
+
+        if block.kind == "quote":
+            track(block.text)
+            left = MARGIN_L + INDENT_STEP
+            flow(block.text.split(), left, sheet.right - left)
+            sheet.gap(PARA_GAP)
+            continue
+
+        if block.kind == "code":
+            track(block.text)
+            left = MARGIN_L + INDENT_STEP
+            if block.text.strip():
+                sheet.put_line(block.text.split(), left, sheet.right - left)
+            else:
+                sheet.newline()
+            continue
+
+        if block.kind == "table":
+            row = "   ".join(block.cells)
+            track(row)
+            left = MARGIN_L + INDENT_STEP // 2
+            flow(row.split(), left, sheet.right - left)
+            continue
+
+        track(block.text)                              # paragraph
+        flow(block.text.split(), MARGIN_L, column)
+        sheet.gap(PARA_GAP)
+
+    sheet.missing = sorted(missing)
+    if missing:
+        shown = " ".join(repr(c) for c in sheet.missing)
+        print("Skipped {} unsupported character(s): {}".format(len(missing), shown))
+    return sheet
+
+
+def render_pages(text: str, as_markdown: bool = False) -> tuple[list[Image.Image], list[str]]:
     """Render text and return the finished page images plus any skipped chars.
 
     This is the entry point for anything embedding the renderer (the web app
@@ -336,7 +546,7 @@ def render_pages(text: str) -> tuple[list[Image.Image], list[str]]:
     the exposed corners fill with the paper colour: the scanner-bed look.
     """
     derive_metrics()
-    sheet = render(text)
+    sheet = render_markdown(text) if as_markdown else render(text)
 
     finals = []
     for page in sheet.pages:
@@ -365,7 +575,8 @@ def main() -> None:
         with open(DEFAULT_INPUT, "r", encoding="utf-8") as fh:
             text = fh.read()
 
-    finals, _ = render_pages(text)
+    # A .md file is rendered as structured Markdown; anything else as plain text.
+    finals, _ = render_pages(text, as_markdown=path.lower().endswith(".md"))
 
     os.makedirs(OUT_DIR, exist_ok=True)
     for i, page in enumerate(finals, 1):

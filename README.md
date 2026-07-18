@@ -40,13 +40,31 @@ python app.py
 
 Then open http://127.0.0.1:5000. Enter your text, hit **Generate**, then page through the result and download it as images or PDF. Rendering runs locally on the machine hosting the app, and the page loads no webfont, so it works offline.
 
+## Markdown
+
+Tick **Markdown** in the web app, or pass a `.md` file on the command line, and the structure is rendered the way a person writing by hand would express it, since handwriting has no bold and no type sizes:
+
+| Markdown | Written as |
+|---|---|
+| `# Heading` | centred, underlined, larger |
+| `## Heading`, `### Heading` | underlined, progressively smaller |
+| `- item` | indented, with a drawn marker, nesting one indent per level |
+| `1. item` | same, numbered |
+| `> quote` | indented |
+| `---` | a drawn pen rule |
+| `![alt](img)` | a hand-drawn box captioned with the alt text |
+| table | indented rows, for now |
+
+Inline bold and italic are dropped on purpose. Converted PDFs barely use them (33 bold spans in 16,000 lines of a real converted report), and handwriting has no bold to map them onto.
+
 ## Command line
 
-Put your text in `dummy.txt`, or pass a file path:
+Put your text in `dummy.txt`, or pass a file path. A `.md` file is rendered as Markdown, anything else as plain text:
 
 ```
 python text_to_handwriting.py
 python text_to_handwriting.py my_essay.txt
+python text_to_handwriting.py notes.md
 ```
 
 Output is written to the `out` folder:
@@ -93,6 +111,7 @@ All of the realism controls are plain constants near the top of `text_to_handwri
 
 ```
 text_to_handwriting.py    the renderer, usable as a library or a CLI
+markdown_blocks.py        Markdown to drawable blocks
 app.py                    Flask web app wrapping the renderer
 templates/, static/       the web app front end
 myfont/                   glyph images (one per ASCII code) and bg.png

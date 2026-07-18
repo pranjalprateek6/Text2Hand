@@ -56,14 +56,14 @@ def _prune() -> None:
         shutil.rmtree(old, ignore_errors=True)
 
 
-def _render(text: str, ruled: bool, texture: bool, skew: bool):
+def _render(text: str, ruled: bool, texture: bool, skew: bool, as_markdown: bool):
     """Render text to a fresh folder and return (render_id, page_count, missing)."""
     with _render_lock:
         t2h.RULED = ruled
         t2h.MARGIN_RULE = ruled
         t2h.PAPER_TEXTURE = texture
         t2h.SCAN_SKEW = 0.7 if skew else 0
-        pages, missing = t2h.render_pages(text)
+        pages, missing = t2h.render_pages(text, as_markdown=as_markdown)
 
     rid = uuid.uuid4().hex[:12]
     folder = RENDER_ROOT / rid
@@ -117,6 +117,7 @@ def api_render():
             ruled=bool(data.get("ruled", True)),
             texture=bool(data.get("texture", True)),
             skew=bool(data.get("skew", True)),
+            as_markdown=bool(data.get("markdown", False)),
         )
     except Exception as exc:                       # surface the reason, do not 500 blindly
         app.logger.exception("render failed")

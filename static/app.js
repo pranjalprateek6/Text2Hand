@@ -10,6 +10,20 @@ const SAMPLES = {
   symbols:
     "Technical symbols work too: a/b, x = y + 1, 50% off, c & d, and user@host.\n\n" +
     "Brackets and braces: (a) [b] {c}, a pipe x|y, and under_score.",
+  markdown:
+    "# Deep Learning Notes\n\n" +
+    "An introduction to the topic, written as ordinary prose so the wrapping\n" +
+    "can be checked.\n\n" +
+    "## Key Ideas\n\n" +
+    "- Neural networks learn from data\n" +
+    "- Layers stack to form depth\n" +
+    "    - Each layer extracts features\n" +
+    "- Training adjusts the weights\n\n" +
+    "1. Collect the data\n" +
+    "2. Train the model\n\n" +
+    "> Deep learning is a subset of machine learning.\n\n" +
+    "---\n\n" +
+    "![Figure 1 accuracy over time](chart.png)\n",
 };
 
 const $ = (id) => document.getElementById(id);
@@ -103,6 +117,9 @@ $("clear").addEventListener("click", () => {
 document.querySelectorAll(".examples__chip").forEach((chip) => {
   chip.addEventListener("click", () => {
     text.value = SAMPLES[chip.dataset.sample] || "";
+    // picking the Markdown sample should switch the mode on, and off again
+    // for the plain-text samples
+    $("markdown").checked = chip.dataset.sample === "markdown";
     updateCounter();
     text.focus();
   });
@@ -114,6 +131,7 @@ generate.addEventListener("click", async () => {
     ruled: $("ruled").checked,
     texture: $("texture").checked,
     skew: $("skew").checked,
+    markdown: $("markdown").checked,
   };
 
   if (!body.text.trim()) {
