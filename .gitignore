@@ -17,5 +17,6 @@ Thumbs.db
 .vscode/
 .idea/
 .claude/
-sample/capture_*.png
-sample/capture.pdf
+sample/words_*.png
+sample/letters_*.png
+sample/*.pdf
