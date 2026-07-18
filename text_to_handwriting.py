@@ -70,6 +70,8 @@ INK_MIN, INK_MAX = 0.78, 1.0            # per-glyph opacity (pen-pressure) range
 
 DESCENDERS = set("gjpqy")               # tails that drop below the writing line
 DESCENDER_DROP = 0.25                   # fraction of glyph height pushed down
+RAISED = set("\"'")                     # marks that hang high on the line (quotes, apostrophe)
+RAISE_FRAC = 0.20                       # how far up, as a fraction of the line height
 
 INK_THRESHOLD = 240                     # luminance >= this is paper (transparent)
 SEED: int | None = None                 # set an int for repeatable output
@@ -273,9 +275,10 @@ class Sheet:
         g = jittered(random.choice(vs))
 
         drop = int(DESCENDER_DROP * g.height) if ch in DESCENDERS else 0
+        lift = int(RAISE_FRAC * LINE_HEIGHT) if ch in RAISED else 0
         wobble = random.randint(-BASELINE_WOBBLE, BASELINE_WOBBLE) + self._drift()
         x = self.x + (advance - g.width) // 2     # keep rotation-expansion centred
-        y = self.baseline - g.height + drop + wobble
+        y = self.baseline - g.height + drop - lift + wobble
 
         self.page.paste(g, (x, y), g)
         self.x += advance + random.randint(*KERN_JITTER)
