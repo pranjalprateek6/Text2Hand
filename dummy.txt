@@ -1,0 +1,9 @@
+The quick brown fox jumps over the lazy dog.
+Pack my box with five dozen liquor jugs.
+
+This is a demo of the text to handwriting engine.
+Every letter is drawn with a little random rotation, size and spacing, so no two are ever exactly the same.
+
+It handles digits too, like 0 1 2 3 4 5 6 7 8 9.
+
+Put your own words in this file, or pass a file path on the command line, then run the script to see them written out by hand.

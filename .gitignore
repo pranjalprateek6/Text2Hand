@@ -1,0 +1,18 @@
+# Rendered output
+out/
+
+# Local personal input, kept out of the repo
+dummy_original_bio.txt
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
