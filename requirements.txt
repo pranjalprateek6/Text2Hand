@@ -8,6 +8,12 @@ beautifulsoup4>=4.12
 # simply reports that the converter is not installed.
 pymupdf4llm>=0.0.17
 
+# Local OCR for scanned PDFs (optional). Also needs the Tesseract binary:
+#   winget install UB-Mannheim.TesseractOCR      (Windows)
+#   apt install tesseract-ocr                    (Debian/Ubuntu)
+#   brew install tesseract                       (macOS)
+pytesseract>=0.3.10
+
 # Optional cloud converters, each also needs its API key in the environment.
 # llama-parse       # LLAMA_CLOUD_API_KEY
 # mistralai         # MISTRAL_API_KEY

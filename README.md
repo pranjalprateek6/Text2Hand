@@ -80,9 +80,10 @@ Rendering runs locally on the machine hosting the app, and the page loads no web
 Upload a PDF, pick a converter, optionally give a page range like `1-10`, and hit **Convert**. The PDF becomes Markdown *in the text box* rather than going straight to handwriting, so you can fix what the extractor got wrong. Review it, then Generate.
 
 - **Local (PyMuPDF)** is the default and the file never leaves your machine.
+- **Local OCR (Tesseract)** reads scanned PDFs, also without uploading anything. Needs `pip install pytesseract` plus the Tesseract binary (`winget install UB-Mannheim.TesseractOCR`, `apt install tesseract-ocr`, or `brew install tesseract`).
 - **Cloud (LlamaParse, Mistral OCR)** are opt-in, need their own API key in the environment, and upload the file to that provider. They are disabled in the UI until installed and keyed.
 
-A PDF with no text layer is detected and reported, since a text extractor cannot read images of text; that case needs OCR. Typographic characters the handwriting has no glyph for (curly quotes, en and em dashes, ellipses, ligatures) are folded to ASCII so they render instead of vanishing.
+A PDF with no text layer is detected and reported, and the app tells you to switch to OCR. OCR rasterises each page and reads it with Tesseract, then reflows the hard-wrapped result back into paragraphs and stitches words that were split across a line break. It runs at roughly a second or two per page, so it is capped at 15 pages rather than 50. Typographic characters the handwriting has no glyph for (curly quotes, dashes, ellipses, ligatures, currency and maths symbols) are folded to ASCII, and accented letters are reduced to their base letter, so `café` renders as `cafe` instead of losing characters. OCR of real documents throws these off constantly.
 
 ## Markdown
 
@@ -192,7 +193,8 @@ Text To Handwriting.py    the original minimal version, kept for reference
 
 ## Known limitations
 
-- **Scanned PDFs need a cloud converter.** They are detected and reported, but local extraction cannot read images of text. Tesseract OCR is not wired up.
+- **OCR quality is OCR quality.** Tesseract reads scanned pages well but picks up page furniture (navigation, headers) and mangles footnote markers. That is what the review step is for.
+- **Conversion is synchronous.** Rendering runs in the background, but conversion does not, which is why OCR is capped at 15 pages.
 - **Cloud converters are untested.** The adapters are written and the UI disables them with a reason, but they have not been run against a live key.
 - **Running headers and footers leak in.** A repeated "Company Confidential" becomes body text. This is what the review step is for.
 - **Drawn symbols are not your handwriting.** The 21 technical symbols are approximations, unlike the composed punctuation.
