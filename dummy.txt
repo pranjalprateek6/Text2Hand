@@ -10,4 +10,6 @@ Punctuation works now: colons, semicolons; and "quotation marks" all render.
 
 It's got apostrophes too, so contractions like don't and can't look right.
 
+Technical symbols work too: a/b, x = y + 1, 50% off, c & d, and user@host.
+
 Put your own words in this file, or pass a file path on the command line, then run the script to see them written out by hand.

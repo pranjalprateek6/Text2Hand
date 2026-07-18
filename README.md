@@ -52,7 +52,7 @@ The `myfont` folder holds one PNG per character, named by its ASCII code. For ex
 
 To use your own handwriting, replace these images with cropped photos of your own letters, named by the matching ASCII code. You can add variants for extra realism by adding files such as `65_1.png` and `65_2.png`, and the engine will pick among them at random.
 
-Characters that have no matching image are skipped and listed at the end, so a missing glyph never stops the run.
+The bundled font covers the full printable ASCII set: letters, digits, and symbols (`. , ! ? ' " ( ) - : ; / \ | # $ % & * + = < > @ [ ] { } ^ _ ~` and backtick). Characters that have no matching image are skipped and listed at the end, so a missing glyph never stops the run.
 
 ## Configuration
 
@@ -62,6 +62,7 @@ All of the realism controls are plain constants near the top of `text_to_handwri
 - `RULED`, `MARGIN_RULE`, `RULE_COLOR` toggle and color the notebook lines
 - `INK_COLOR` sets the pen color, or `None` to keep the original scan color
 - `PAPER_TEXTURE`, `PAPER_TINT`, `PAPER_NOISE` control the paper look
+- `DESCENDERS`, `RAISED`, `CENTERED` set which characters drop below the line, hang high, or sit on the math axis
 - `SCAN_SKEW` sets the page tilt in degrees. Set it to `0` for a flat scan
 - `SEED` can be set to an integer for repeatable output
 

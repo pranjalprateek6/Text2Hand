@@ -70,8 +70,10 @@ INK_MIN, INK_MAX = 0.78, 1.0            # per-glyph opacity (pen-pressure) range
 
 DESCENDERS = set("gjpqy")               # tails that drop below the writing line
 DESCENDER_DROP = 0.25                   # fraction of glyph height pushed down
-RAISED = set("\"'")                     # marks that hang high on the line (quotes, apostrophe)
+RAISED = set("\"'*^`")                  # marks that hang high (quotes, apostrophe, * ^ `)
 RAISE_FRAC = 0.20                       # how far up, as a fraction of the line height
+CENTERED = set("+=<>~")                 # math symbols centred on the x-height axis
+X_HEIGHT = 0                            # derived from the glyphs at runtime
 
 INK_THRESHOLD = 240                     # luminance >= this is paper (transparent)
 SEED: int | None = None                 # set an int for repeatable output
@@ -190,7 +192,7 @@ def add_paper_texture(page: Image.Image) -> Image.Image:
 # --------------------------------------------------------------------------- #
 def derive_metrics() -> None:
     """Fill in LINE_HEIGHT / SPACE_WIDTH from the glyph images if not set."""
-    global LINE_HEIGHT, SPACE_WIDTH
+    global LINE_HEIGHT, SPACE_WIDTH, X_HEIGHT
     heights, widths = [], []
     for code in range(33, 127):
         vs = glyph_variants(chr(code))
@@ -210,6 +212,14 @@ def derive_metrics() -> None:
         LINE_HEIGHT = int(tall * (1 + DESCENDER_DROP) * 1.15)
     if SPACE_WIDTH is None:
         SPACE_WIDTH = max(1, int(med_w * 0.72))
+
+    # x-height, from letters that have neither ascender nor descender
+    xs = []
+    for code in (97, 99, 101, 109, 110, 111, 114, 115, 117, 118, 119, 120, 122):
+        vs = glyph_variants(chr(code))
+        if vs:
+            xs += [v.height for v in vs]
+    X_HEIGHT = sorted(xs)[len(xs) // 2] if xs else int(tall * 0.5)
 
 
 # --------------------------------------------------------------------------- #
@@ -274,11 +284,14 @@ class Sheet:
         advance = vs[0].width                     # rhythm set by the un-jittered width
         g = jittered(random.choice(vs))
 
-        drop = int(DESCENDER_DROP * g.height) if ch in DESCENDERS else 0
-        lift = int(RAISE_FRAC * LINE_HEIGHT) if ch in RAISED else 0
         wobble = random.randint(-BASELINE_WOBBLE, BASELINE_WOBBLE) + self._drift()
         x = self.x + (advance - g.width) // 2     # keep rotation-expansion centred
-        y = self.baseline - g.height + drop - lift + wobble
+        if ch in CENTERED:                        # math symbols float on the x-height axis
+            y = self.baseline - X_HEIGHT // 2 - g.height // 2 + wobble
+        else:
+            drop = int(DESCENDER_DROP * g.height) if ch in DESCENDERS else 0
+            lift = int(RAISE_FRAC * LINE_HEIGHT) if ch in RAISED else 0
+            y = self.baseline - g.height + drop - lift + wobble
 
         self.page.paste(g, (x, y), g)
         self.x += advance + random.randint(*KERN_JITTER)
