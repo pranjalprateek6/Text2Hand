@@ -54,6 +54,21 @@ To use your own handwriting, replace these images with cropped photos of your ow
 
 The bundled font covers the full printable ASCII set: letters, digits, and symbols (`. , ! ? ' " ( ) - : ; / \ | # $ % & * + = < > @ [ ] { } ^ _ ~` and backtick). Characters that have no matching image are skipped and listed at the end, so a missing glyph never stops the run.
 
+## Glyph tools
+
+Not every character came from the original handwriting sample. Two generators in `tools/` fill the gaps. Both are deterministic, so re-running them reproduces the committed glyphs exactly:
+
+```
+python tools/make_punctuation.py
+python tools/make_symbols.py
+```
+
+`make_punctuation.py` **composes** `"` `'` `:` `;` out of marks that already exist in the sample. A colon is two periods, a semicolon is a period above a comma, a double quote is two commas, and an apostrophe is a single comma. Because they reuse real strokes, they match the rest of the handwriting exactly.
+
+`make_symbols.py` **draws** the 21 technical symbols that have no natural building block, such as `# $ % & @ / \ { }`. These are approximations in a hand style, so they read as neat rather than personal.
+
+To replace any generated glyph with a real one, photograph the character and save it as `myfont/<ascii-code>.png`. The renderer picks it up with no code change. See `tools/README.md` for what each script owns.
+
 ## Configuration
 
 All of the realism controls are plain constants near the top of `text_to_handwriting.py`. Some you might change:
@@ -71,6 +86,7 @@ All of the realism controls are plain constants near the top of `text_to_handwri
 ```
 text_to_handwriting.py    the renderer
 myfont/                   glyph images (one per ASCII code) and bg.png
+tools/                    generators for the composed and drawn glyphs
 dummy.txt                 default sample input text
 samples/                  the example output shown above
 Text To Handwriting.py    the original minimal version, kept for reference
