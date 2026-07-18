@@ -87,6 +87,44 @@ def words(list_name: str = "words_short.txt") -> list[Image.Image]:
                  guide_size=40, baseline_at=0.72)
 
 
+def paragraph() -> list[Image.Image]:
+    """One page: write the paragraph, one line per rule.
+
+    Prose cannot give up its letters in a joined hand, but it gives up its
+    words, and this paragraph holds 49 of the 50 commonest words.
+    """
+    text = (OUT / "paragraph.txt").read_text(encoding="utf-8")
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+
+    page = Image.new("RGB", PAGE, (255, 255, 255))
+    d = ImageDraw.Draw(page)
+    d.text((MARGIN_X, 120), "Text2Hand paragraph sample", font=_font(52), fill=INK)
+    d.text((MARGIN_X, 196),
+           "Write each line on the rule below it, in your normal joined hand. "
+           "Leave clear gaps between words.", font=_font(30), fill=MUTED)
+
+    y = MARGIN_TOP + 40
+    block = 340
+    for n, line in enumerate(lines, 1):
+        d.text((MARGIN_X - 80, y + 8), f"{n}", font=_font(30), fill=(200, 200, 200))
+        d.text((MARGIN_X, y), line, font=_font(42), fill=GUIDE)
+        rule = y + block - 90
+        d.line([(MARGIN_X, rule), (PAGE[0] - MARGIN_X, rule)], fill=BASELINE, width=3)
+        y += block
+    return [page]
+
+
+def letters_min() -> list[Image.Image]:
+    """One page: a single sample of each character, the smallest useful set."""
+    items = list("abcdefghijklmnopqrstuvwxyz"
+                 "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                 "0123456789" ".,!?'\"()-:;")
+    return build(items, cols=8, rows=10, cell_h=290,
+                 title="Text2Hand letter sample",
+                 hint="One character per box, sitting on the line. Do not join them.",
+                 guide_size=34, baseline_at=0.68)
+
+
 def letters() -> list[Image.Image]:
     items: list[str] = []
     for ch in "abcdefghijklmnopqrstuvwxyz":
@@ -106,8 +144,10 @@ def letters() -> list[Image.Image]:
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     print("writing capture sheets to", OUT)
-    # Start with the short list. The full one is the same thing at scale, worth
-    # writing only once a rendered page shows the approach reads as one hand.
+    print(" the two-page minimum:")
+    save(paragraph(), "paragraph")
+    save(letters_min(), "letters_min")
+    print(" larger optional sets:")
     save(words("words_short.txt"), "words_short")
     save(words("words_full.txt"), "words_full")
     save(letters(), "letters")
