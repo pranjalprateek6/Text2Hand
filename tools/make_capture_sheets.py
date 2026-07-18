@@ -106,7 +106,10 @@ def letters() -> list[Image.Image]:
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     print("writing capture sheets to", OUT)
-    save(words(), "words")
+    # Start with the short list. The full one is the same thing at scale, worth
+    # writing only once a rendered page shows the approach reads as one hand.
+    save(words("words_short.txt"), "words_short")
+    save(words("words_full.txt"), "words_full")
     save(letters(), "letters")
 
 
