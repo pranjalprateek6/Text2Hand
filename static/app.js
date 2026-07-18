@@ -103,14 +103,21 @@ function clearAlert() {
   alertBox.hidden = true;
 }
 
+function clearOutput() {
+  output.hidden = true;
+  empty.hidden = false;
+  view.id = null;
+  view.pages = 0;
+  view.current = 1;
+}
+
 text.addEventListener("input", updateCounter);
 
 $("clear").addEventListener("click", () => {
   text.value = "";
   updateCounter();
   clearAlert();
-  output.hidden = true;
-  empty.hidden = false;
+  clearOutput();
   text.focus();
 });
 
@@ -139,7 +146,10 @@ generate.addEventListener("click", async () => {
     return;
   }
 
+  // Drop the previous result up front. Leaving it on screen makes a failed
+  // render look like it succeeded, and makes a running one show stale pages.
   clearAlert();
+  clearOutput();
   generate.disabled = true;
   generate.textContent = "Rendering...";
 
