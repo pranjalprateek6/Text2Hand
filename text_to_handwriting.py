@@ -549,7 +549,10 @@ def render(text: str) -> Sheet:
 
     sheet.missing = sorted(missing)
     if missing:
-        shown = " ".join(repr(c) for c in sheet.missing)
+        # ascii(), not repr(): a Windows console is cp1252, and printing a
+        # skipped character it cannot encode would raise and kill the render
+        # after all the drawing was already done.
+        shown = " ".join(ascii(c) for c in sheet.missing)
         print("Skipped {} unsupported character(s): {}".format(len(missing), shown))
     return sheet
 
@@ -690,7 +693,10 @@ def render_markdown(md_text: str) -> Sheet:
 
     sheet.missing = sorted(missing)
     if missing:
-        shown = " ".join(repr(c) for c in sheet.missing)
+        # ascii(), not repr(): a Windows console is cp1252, and printing a
+        # skipped character it cannot encode would raise and kill the render
+        # after all the drawing was already done.
+        shown = " ".join(ascii(c) for c in sheet.missing)
         print("Skipped {} unsupported character(s): {}".format(len(missing), shown))
     return sheet
 

@@ -336,14 +336,28 @@ def to_markdown(path: str, converter: str = "pymupdf", page_spec: str = "",
     # say so here rather than letting it vanish silently at render time.
     foreign = {ch for ch in md if ord(ch) > 126}
     if foreign:
-        scripts = sorted({unicodedata.name(ch, "").split(" ")[0]
-                          for ch in foreign} - {""})
-        named = [s if s in ("CJK",) else s.title() for s in scripts[:5]]
-        notes.append(
-            "This document contains text the handwriting cannot draw ("
-            + ", ".join(named)
-            + "). Those characters are skipped when rendering."
-        )
+        # Only a letter's Unicode name starts with its script. A symbol's name
+        # starts with whatever it is called ("ASTERISK OPERATOR", "FOR ALL"),
+        # so grouping those by first word produces nonsense.
+        scripts, symbols = set(), False
+        for ch in foreign:
+            name = unicodedata.name(ch, "")
+            if not name:
+                continue
+            if unicodedata.category(ch).startswith("L"):
+                scripts.add(name.split(" ")[0])
+            else:
+                symbols = True
+
+        parts = [s if s == "CJK" else s.title() for s in sorted(scripts)[:4]]
+        if symbols:
+            parts.append("mathematical symbols")
+        if parts:
+            notes.append(
+                "This document contains " + ", ".join(parts)
+                + ", which the handwriting has no glyphs for. Those characters "
+                "are skipped when rendering."
+            )
     if not md:
         notes.append("The converter returned no text at all.")
 
