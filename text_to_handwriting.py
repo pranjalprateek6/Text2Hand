@@ -102,9 +102,11 @@ PAPER_FILL = (244, 242, 236)            # corner fill for the scan skew (should 
 # a person writes it: headings centred and underlined, lists indented.
 INDENT_STEP = 90                        # px of indent per list nesting level
 HEADING_SCALE = {1: 1.30, 2: 1.15, 3: 1.05}     # glyph scale by heading level
-HEADING_GAP_BEFORE = 0.55               # blank space, in line heights
-HEADING_GAP_AFTER = 0.25
-PARA_GAP = 0.45
+# Gaps are in whole ruled lines. Anything fractional would walk the writing off
+# the ruling, since the rules are a fixed grid and never move.
+HEADING_GAP_BEFORE = 1                  # blank lines before a heading
+HEADING_GAP_AFTER = 0                   # the underline already separates it
+PARA_GAP = 1
 UNDERLINE_DROP = 12                     # px below the baseline
 UNDERLINE_WIDTH = 4
 
@@ -122,6 +124,7 @@ CORRECTION_RATE = 0.012                 # chance per eligible word
 TABLES_RULED = True                     # draw a ruled grid; False lists the rows
 TABLE_PAD = 16                          # px of padding inside each cell
 TABLE_MIN_COL = 110                     # a column never squeezes below this
+FIGURE_LINES = 3                        # height of a figure box, in ruled lines
 
 # --------------------------------------------------------------------------- #
 # Glyph loading  (prepare once, cache, discover variants)
@@ -336,15 +339,30 @@ class Sheet:
         return self.width - MARGIN_R
 
     def newline(self, left: int | None = None, advance: float = 1.0) -> None:
+        # Always a whole number of ruled lines: a person writing on ruled paper
+        # moves down to the next rule, never to a fraction of one.
         self.x = (MARGIN_L if left is None else left) + random.randint(0, MARGIN_JITTER)
-        self.baseline += int(LINE_HEIGHT * advance)
+        self.baseline += LINE_HEIGHT * max(1, round(advance))
         self._drift_phase = 0.0
         if self.baseline + LINE_HEIGHT > self.height - MARGIN_B:
             self._new_page()
 
-    def gap(self, fraction: float) -> None:
-        """Leave vertical space between blocks."""
-        self.baseline += int(LINE_HEIGHT * fraction)
+    def gap(self, lines: float) -> None:
+        """Leave whole blank ruled lines between blocks."""
+        self.baseline += LINE_HEIGHT * max(0, round(lines))
+        if self.baseline + LINE_HEIGHT > self.height - MARGIN_B:
+            self._new_page()
+
+    def snap_to_rule(self) -> None:
+        """Put the baseline back on the ruling, moving forward only.
+
+        Figures and tables are sized in pixels rather than lines, so they leave
+        the baseline between rules. Everything after them would inherit that
+        offset and never recover.
+        """
+        first = MARGIN_T + LINE_HEIGHT
+        steps = math.ceil((self.baseline - first) / LINE_HEIGHT - 1e-6)
+        self.baseline = first + max(0, steps) * LINE_HEIGHT
         if self.baseline + LINE_HEIGHT > self.height - MARGIN_B:
             self._new_page()
 
@@ -370,28 +388,32 @@ class Sheet:
         self.newline()
 
     def figure_box(self, label: str) -> None:
-        """A hand-drawn box standing in for an image, with its caption inside."""
-        height = int(LINE_HEIGHT * 2.6)
-        if self.baseline + height > self.height - MARGIN_B:
+        """A hand-drawn box standing in for an image, with its caption inside.
+
+        Sized in whole ruled lines, so the box lines up with the ruling and its
+        caption sits on a rule like every other line on the page.
+        """
+        if self.baseline + LINE_HEIGHT * FIGURE_LINES > self.height - MARGIN_B:
             self._new_page()
-        top = self.baseline - X_HEIGHT
-        bottom = top + height
+
+        start = self.baseline
+        top = start - X_HEIGHT - TABLE_PAD
+        bottom = start + LINE_HEIGHT * FIGURE_LINES
         x0, x1 = MARGIN_L + 20, self.right - 20
         w = max(2, UNDERLINE_WIDTH - 1)
         self._pen_stroke(x0, top, x1, w)
         self._pen_stroke(x0, bottom, x1, w)
         for x in (x0, x1):                       # verticals, drawn the same wobbly way
-            steps = max(2, int(height / 70))
-            pts = [(x + random.uniform(-2.0, 2.0), top + height * i / steps)
+            steps = max(2, int((bottom - top) / 70))
+            pts = [(x + random.uniform(-2.0, 2.0), top + (bottom - top) * i / steps)
                    for i in range(steps + 1)]
             ImageDraw.Draw(self.page).line(pts, fill=self._pen(), width=w, joint="curve")
 
-        self.baseline = top + height // 2 + X_HEIGHT // 2
+        self.baseline = start + LINE_HEIGHT * (FIGURE_LINES // 2)   # middle rule
         self.put_line(label.split(), MARGIN_L, self.right - MARGIN_L, align="center")
-        # A full line of clearance: glyphs sit above the baseline, so a smaller
-        # gap lets the next paragraph overlap the box's bottom edge.
+
         self.baseline = bottom
-        self.gap(1.0)
+        self.gap(1)
 
     def vrule(self, x: float, y0: float, y1: float, width: int) -> None:
         """A wobbly vertical pen stroke, for table column dividers."""
@@ -442,12 +464,14 @@ class Sheet:
             self._pen_stroke(edges[0], top, edges[-1], rule)        # rule above the row
             for x in edges:
                 self.vrule(x, top, bottom, rule)
-            self.baseline = bottom + LINE_HEIGHT
+            # whole lines, so rows keep sitting on the page ruling
+            self.baseline = first + tall * LINE_HEIGHT
             if self.baseline + LINE_HEIGHT > self.height - MARGIN_B:
                 self._new_page()
 
         self._pen_stroke(edges[0], self.baseline - LINE_HEIGHT + pad,
                          edges[-1], rule)                           # close the last row
+        self.snap_to_rule()
 
     def put_line(self, words: list[str], left: int, width: int,
                  align: str = "left", underline: bool = False,
