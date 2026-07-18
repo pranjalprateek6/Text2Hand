@@ -16,6 +16,7 @@ Writes:              wordfont/<word>.png
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import numpy as np
@@ -85,13 +86,17 @@ def words_in(band: np.ndarray) -> list[list[int]]:
     # size alone swallowed "a" into the word before it, and because a stray mark
     # elsewhere on the line added one back, the count still matched and the
     # whole line was silently mislabelled.
+    # Each entry is [start, end of the word, end including any punctuation].
+    # The punctuation counts towards this being one word, but is left out of the
+    # crop: an image of "luck," would otherwise draw its comma a second time
+    # when the renderer adds the one from the text.
     out: list[list[int]] = []
     for c in chunks:
         area = int(band[:, c[0]:c[1] + 1].sum())
         if area >= TINY_INK:
-            out.append(c)
+            out.append([c[0], c[1], c[1]])
         elif out:
-            out[-1][1] = c[1]          # punctuation, belongs to the word before
+            out[-1][2] = c[1]
         # else: a speck with nothing to attach to, so drop it
     return out
 
@@ -112,18 +117,23 @@ def main() -> None:
             skipped.append(f"line {index + 1}: found {len(found)}, expected {len(expected)}")
             continue
 
-        for word, (x0, x1) in zip(expected, found):
-            key = word.strip(".,!?;:\"'").lower()
-            if not key or key in saved:
+        for word, (x0, x1, _full) in zip(expected, found):
+            # Keep the case that was actually written: the image of "She" must
+            # not be served up for "she". File names cannot carry that on a
+            # case-insensitive filesystem, so an index records it instead.
+            label = word.strip(".,!?;:\"'")
+            if not label or label in saved:
                 continue
+            name = f"{len(saved):03d}.png"
             crop = grey[max(0, y0 - MARGIN): y1 + MARGIN,
                         max(0, x0 - MARGIN): x1 + MARGIN]
             clean = np.where(crop > 205, 255, crop).astype(np.uint8)
-            Image.fromarray(clean).convert("RGB").save(OUT / f"{key}.png")
-            saved[key] = clean.shape
+            Image.fromarray(clean).convert("RGB").save(OUT / name)
+            saved[label] = name
 
+    (OUT / "index.json").write_text(json.dumps(saved, indent=1), encoding="utf-8")
     print(f"wrote {len(saved)} word images to {OUT.name}/")
-    print(" ", " ".join(sorted(saved)))
+    print(" ", " ".join(sorted(saved, key=str.lower)))
     for note in skipped:
         print("  SKIPPED", note)
 

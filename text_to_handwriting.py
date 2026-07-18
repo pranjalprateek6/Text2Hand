@@ -46,6 +46,9 @@ from PIL import Image, ImageChops, ImageDraw
 # Config -- tweak these to taste
 # --------------------------------------------------------------------------- #
 FONT_DIR = "myfont"                     # folder of glyph images
+WORD_DIR = "wordfont"                   # whole-word images, used in preference to letters
+USE_WORDS = True                        # False renders everything letter by letter
+WORD_SCALE: float | None = None          # None derives it from the glyphs at runtime
 BG_PATH = os.path.join(FONT_DIR, "bg.png")
 OUT_DIR = "out"
 DEFAULT_INPUT = "dummy.txt"
@@ -183,8 +186,109 @@ def glyph_variants(ch: str) -> list[Image.Image] | None:
     return _cache[ch]
 
 
+# --------------------------------------------------------------------------- #
+# Whole-word images
+# --------------------------------------------------------------------------- #
+# A word written in one stroke keeps its joins, which letters pasted side by
+# side cannot reproduce. Where an image exists it is used in preference to
+# assembling the word, and everything else still falls back to letters.
+_words: dict[str, tuple[Image.Image, int]] | None = None
+
+
+def _load_words() -> dict[str, tuple[Image.Image, int]]:
+    """Word image plus its baseline offset, measured from the top of the crop."""
+    global _words
+    if _words is not None:
+        return _words
+    _words = {}
+    index = os.path.join(WORD_DIR, "index.json")
+    if not USE_WORDS or not os.path.exists(index):
+        return _words
+
+    import json
+    with open(index, encoding="utf-8") as fh:
+        listing = json.load(fh)
+
+    for label, name in listing.items():
+        path = os.path.join(WORD_DIR, name)
+        if not os.path.exists(path):
+            continue
+        im = Image.open(path).convert("RGBA")
+        alpha = im.convert("L").point(lambda p: 0 if p >= INK_THRESHOLD else 255 - p)
+        im.putalpha(alpha)
+        box = alpha.getbbox()
+        if not box:
+            continue
+        im = im.crop(box)
+        if INK_COLOR is not None:
+            tinted = Image.new("RGBA", im.size, tuple(INK_COLOR) + (0,))
+            tinted.putalpha(im.getchannel("A"))
+            im = tinted
+        _words[label] = (im, _baseline_of(im))
+    return _words
+
+
+def _baseline_of(im: Image.Image) -> int:
+    """Where the word sits on the line, as an offset from the top of its image.
+
+    A word cannot simply be bottom-aligned: a descender in "guy" would shove the
+    whole word upward. Most letters do rest on the line, so the commonest column
+    bottom is the baseline and the descenders show up as outliers below it.
+    """
+    alpha = im.getchannel("A")
+    width, height = alpha.size
+    pixels = alpha.load()
+
+    # Ink per row. Above the line every letter contributes; below it only the
+    # descenders do, so the profile falls off a cliff at the baseline. Taking
+    # the commonest column bottom instead fails on a short word like "of",
+    # where the descender owns more columns than the letter resting on the line.
+    rows = [sum(1 for x in range(width) if pixels[x, y] > 40) for y in range(height)]
+    if not any(rows):
+        return height
+
+    # The baseline is the steepest fall in that profile, not a fixed fraction of
+    # it. In a two-letter word like "of" the single descender still holds 35% of
+    # the peak all the way down, so any threshold either misses it or cuts real
+    # letters off. A word with no descender simply drops hardest at its foot,
+    # which lands the baseline there, as it should.
+    window = max(2, height // 20)
+    best_y, best_drop = height, -1.0
+    for y in range(height // 3, height):
+        above = rows[max(0, y - window):y]
+        below = rows[y:y + window]
+        if not above or not below:
+            continue
+        drop = sum(above) / len(above) - sum(below) / len(below)
+        if drop > best_drop:
+            best_drop, best_y = drop, y
+    return best_y
+
+
+def split_token(token: str) -> tuple[str, str, str]:
+    """Separate a word from any punctuation stuck to it, as in `shop.` or `(a)`."""
+    marks = ".,!?;:\"'()[]"
+    head = 0
+    while head < len(token) and token[head] in marks:
+        head += 1
+    tail = len(token)
+    while tail > head and token[tail - 1] in marks:
+        tail -= 1
+    return token[:head], token[head:tail], token[tail:]
+
+
+def word_image(word: str) -> tuple[Image.Image, int] | None:
+    return _load_words().get(word)
+
+
 def measure(word: str, scale: float = 1.0) -> int:
     """Width of a word before jitter, used to decide where lines break."""
+    head, core, tail = split_token(word)
+    hit = word_image(core) if core else None
+    if hit:
+        width = int(hit[0].width * WORD_SCALE)
+        width += sum(char_advance(c) for c in head + tail)
+        return int(width * scale)
     return int(sum(char_advance(c) for c in word) * scale)
 
 
@@ -292,6 +396,16 @@ def derive_metrics() -> None:
         if vs:
             xs += [v.height for v in vs]
     X_HEIGHT = sorted(xs)[len(xs) // 2] if xs else int(tall * 0.5)
+
+    # Word images and letter glyphs come from different sheets, written at
+    # different sizes, so match them on x-height. For a word with no ascender
+    # or descender the baseline offset is the x-height.
+    global WORD_SCALE
+    if WORD_SCALE is None:
+        flat = ("on", "one", "or", "no", "so", "we", "as", "is", "in", "are",
+                "was", "us", "an", "a", "our", "see", "some", "were", "new")
+        heights = sorted(w[1] for w in (word_image(f) for f in flat) if w)
+        WORD_SCALE = (X_HEIGHT / heights[len(heights) // 2]) if heights else 1.0
 
 
 # --------------------------------------------------------------------------- #
@@ -422,6 +536,49 @@ class Sheet:
                for i in range(steps + 1)]
         ImageDraw.Draw(self.page).line(pts, fill=self._pen(), width=width, joint="curve")
 
+    def put_word(self, token: str, scale: float = 1.0) -> bool:
+        """Draw a whole captured word if one exists. False means use letters.
+
+        The image is placed by its baseline, not its bottom edge, so a
+        descender hangs below the line instead of pushing the word up it.
+        """
+        head, core, tail = split_token(token)
+        hit = word_image(core) if core else None
+        if hit is None:
+            return False
+
+        for ch in head:                       # opening quote or bracket
+            self.put(ch)
+
+        image, base = hit
+        tired = self._fatigue()
+        size = WORD_SCALE * scale * (1 + FATIGUE_GROWTH * tired)
+        if abs(size - 1.0) > 0.01:
+            image = image.resize((max(1, round(image.width * size)),
+                                  max(1, round(image.height * size))), Image.LANCZOS)
+            base = int(base * size)
+
+        # The same jitter a single glyph gets, applied to the word as one piece.
+        if ROT_JITTER:
+            angle = random.uniform(-ROT_JITTER, ROT_JITTER) * 0.6 * (1 + FATIGUE_JITTER * tired)
+            grown = image.rotate(angle, resample=Image.BICUBIC, expand=True)
+            base += (grown.height - image.height) // 2
+            image = grown
+        if INK_MIN < 1.0:
+            factor = random.uniform(INK_MIN, INK_MAX)
+            if factor < 1.0:
+                image = image.copy()
+                image.putalpha(image.getchannel("A").point(lambda v: int(v * factor)))
+
+        sway = max(1, int(BASELINE_WOBBLE * (1 + FATIGUE_JITTER * tired)))
+        y = self.baseline - base + random.randint(-sway, sway) + self._drift()
+        self.page.paste(image, (int(self.x), int(y)), image)
+        self.x += image.width + random.randint(*KERN_JITTER)
+
+        for ch in tail:                       # comma, full stop, closing bracket
+            self.put(ch)
+        return True
+
     def put_words(self, words: list[str], x: int, scale: float = 1.0) -> None:
         """Write words starting at x without moving to the next line."""
         self.scale = scale
@@ -499,8 +656,9 @@ class Sheet:
                         self.put(ch)
                     self.strike(mark, self.x)
                     self.x += space // 2
-            for ch in word:
-                self.put(ch)
+            if not self.put_word(word, scale):
+                for ch in word:
+                    self.put(ch)
             if i < len(words) - 1:
                 self.x += space
         if underline:
