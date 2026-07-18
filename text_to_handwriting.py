@@ -113,6 +113,19 @@ UNDERLINE_WIDTH = 4
 # --------------------------------------------------------------------------- #
 _cache: dict[str, list[Image.Image] | None] = {}
 
+# Optional progress sink, set for the duration of a render_pages() call. Page
+# count is not known up front (pagination is discovered as text flows), so the
+# only honest progress signal is "a new page was started".
+_progress = None
+
+
+def _report(stage: str, count: int = 0) -> None:
+    if _progress is not None:
+        try:
+            _progress(stage, count)
+        except Exception:
+            pass                              # progress must never break a render
+
 
 def _prepare(path: str) -> Image.Image:
     """Load a glyph, turn its light background transparent, trim to the ink."""
@@ -284,6 +297,7 @@ class Sheet:
             self._draw_ruling(page)
         self.page = page
         self.pages.append(page)
+        _report("page", len(self.pages))
         self.x = MARGIN_L
         self.baseline = MARGIN_T + LINE_HEIGHT
         self._drift_phase = 0.0
@@ -536,7 +550,8 @@ def render_markdown(md_text: str) -> Sheet:
     return sheet
 
 
-def render_pages(text: str, as_markdown: bool = False) -> tuple[list[Image.Image], list[str]]:
+def render_pages(text: str, as_markdown: bool = False,
+                 on_progress=None) -> tuple[list[Image.Image], list[str]]:
     """Render text and return the finished page images plus any skipped chars.
 
     This is the entry point for anything embedding the renderer (the web app
@@ -545,8 +560,17 @@ def render_pages(text: str, as_markdown: bool = False) -> tuple[list[Image.Image
     The skew is applied last so the paper, rules included, rotates as one and
     the exposed corners fill with the paper colour: the scanner-bed look.
     """
-    derive_metrics()
-    sheet = render_markdown(text) if as_markdown else render(text)
+    global _progress
+    _progress = on_progress
+    try:
+        derive_metrics()
+        sheet = render_markdown(text) if as_markdown else render(text)
+    finally:
+        _progress = None
+
+    _report_finish = on_progress
+    if _report_finish:
+        _report_finish("skew", len(sheet.pages))
 
     finals = []
     for page in sheet.pages:

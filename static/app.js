@@ -149,12 +149,16 @@ generate.addEventListener("click", async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    const data = await res.json();
-
+    const started = await res.json();
     if (!res.ok) {
-      showAlert(data.error || "Something went wrong.");
+      showAlert(started.error || "Something went wrong.");
       return;
     }
+
+    // Long documents outlive a request, so the render runs on the server and
+    // we poll it, showing whatever stage it reports.
+    const data = await pollJob(started.job);
+    if (!data) return;
 
     buildViewer(data.id, data.pages);
     empty.hidden = true;
@@ -173,6 +177,27 @@ generate.addEventListener("click", async () => {
     generate.textContent = "Generate";
   }
 });
+
+async function pollJob(jobId) {
+  while (true) {
+    await new Promise((r) => setTimeout(r, 400));
+    const res = await fetch(`/api/job/${jobId}`);
+    if (!res.ok) {
+      showAlert("Lost track of that render.");
+      return null;
+    }
+    const job = await res.json();
+    if (job.state === "running") {
+      generate.textContent = job.message + "...";
+      continue;
+    }
+    if (job.state === "error") {
+      showAlert(job.error || "Rendering failed.");
+      return null;
+    }
+    return job;
+  }
+}
 
 // --- PDF to Markdown ------------------------------------------------------ #
 $("convert").addEventListener("click", async () => {

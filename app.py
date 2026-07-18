@@ -58,14 +58,16 @@ def _prune() -> None:
         shutil.rmtree(old, ignore_errors=True)
 
 
-def _render(text: str, ruled: bool, texture: bool, skew: bool, as_markdown: bool):
+def _render(text: str, ruled: bool, texture: bool, skew: bool, as_markdown: bool,
+            on_progress=None):
     """Render text to a fresh folder and return (render_id, page_count, missing)."""
     with _render_lock:
         t2h.RULED = ruled
         t2h.MARGIN_RULE = ruled
         t2h.PAPER_TEXTURE = texture
         t2h.SCAN_SKEW = 0.7 if skew else 0
-        pages, missing = t2h.render_pages(text, as_markdown=as_markdown)
+        pages, missing = t2h.render_pages(text, as_markdown=as_markdown,
+                                          on_progress=on_progress)
 
     rid = uuid.uuid4().hex[:12]
     folder = RENDER_ROOT / rid
@@ -85,8 +87,54 @@ def _render(text: str, ruled: bool, texture: bool, skew: bool, as_markdown: bool
         page.save(folder / f"page_{i}.png")
     pages[0].save(folder / "handwriting.pdf", save_all=True, append_images=pages[1:])
 
+    if on_progress:
+        on_progress("previews", len(pages))
     _prune()
     return rid, len(pages), missing
+
+
+# --------------------------------------------------------------------------- #
+# Background jobs
+# --------------------------------------------------------------------------- #
+# Rendering a long document takes far longer than a request should, so it runs
+# on a worker thread and the browser polls for progress.
+JOBS: dict[str, dict] = {}
+JOBS_LOCK = threading.Lock()
+KEEP_JOBS = 40
+
+
+def _job_set(jid: str, **fields) -> None:
+    with JOBS_LOCK:
+        if jid in JOBS:
+            JOBS[jid].update(fields)
+
+
+def _job_start() -> str:
+    jid = uuid.uuid4().hex[:12]
+    with JOBS_LOCK:
+        JOBS[jid] = {"state": "running", "message": "Laying out the text",
+                     "pages": 0, "id": None, "missing": [], "error": None}
+        for old in list(JOBS)[:-KEEP_JOBS]:
+            JOBS.pop(old, None)
+    return jid
+
+
+def _job_worker(jid: str, text: str, opts: dict) -> None:
+    def progress(stage: str, count: int) -> None:
+        if stage == "page":
+            _job_set(jid, message=f"Writing page {count}", pages=count)
+        elif stage == "skew":
+            _job_set(jid, message="Finishing the pages")
+        elif stage == "previews":
+            _job_set(jid, message="Preparing previews")
+
+    try:
+        rid, count, missing = _render(text, on_progress=progress, **opts)
+        _job_set(jid, state="done", message="Done", id=rid,
+                 pages=count, missing=missing)
+    except Exception as exc:
+        app.logger.exception("render job failed")
+        _job_set(jid, state="error", error=f"Could not render: {exc}")
 
 
 def _safe(rid: str) -> Path:
@@ -158,19 +206,25 @@ def api_render():
     if len(text) > MAX_CHARS:
         return jsonify(error=f"That is over the {MAX_CHARS:,} character limit."), 400
 
-    try:
-        rid, count, missing = _render(
-            text,
-            ruled=bool(data.get("ruled", True)),
-            texture=bool(data.get("texture", True)),
-            skew=bool(data.get("skew", True)),
-            as_markdown=bool(data.get("markdown", False)),
-        )
-    except Exception as exc:                       # surface the reason, do not 500 blindly
-        app.logger.exception("render failed")
-        return jsonify(error=f"Could not render: {exc}"), 500
+    opts = {
+        "ruled": bool(data.get("ruled", True)),
+        "texture": bool(data.get("texture", True)),
+        "skew": bool(data.get("skew", True)),
+        "as_markdown": bool(data.get("markdown", False)),
+    }
+    jid = _job_start()
+    threading.Thread(target=_job_worker, args=(jid, text, opts), daemon=True).start()
+    return jsonify(job=jid), 202
 
-    return jsonify(id=rid, pages=count, missing=missing)
+
+@app.get("/api/job/<jid>")
+def api_job(jid: str):
+    with JOBS_LOCK:
+        job = JOBS.get(jid)
+        snapshot = dict(job) if job else None
+    if snapshot is None:
+        return jsonify(error="No such job."), 404
+    return jsonify(snapshot)
 
 
 @app.get("/preview/<rid>/<int:n>.jpg")
