@@ -62,7 +62,7 @@ Tick **Markdown** in the web app, or pass a `.md` file on the command line, and 
 | `> quote` | indented |
 | `---` | a drawn pen rule |
 | `![alt](img)` | a hand-drawn box captioned with the alt text |
-| table | indented rows, for now |
+| table | a hand-ruled grid, cells wrapping inside their column |
 
 Inline bold and italic are dropped on purpose. Converted PDFs barely use them (33 bold spans in 16,000 lines of a real converted report), and handwriting has no bold to map them onto.
 
@@ -114,6 +114,7 @@ All of the realism controls are plain constants near the top of `text_to_handwri
 - `PAPER_TEXTURE`, `PAPER_TINT`, `PAPER_NOISE` control the paper look
 - `DESCENDERS`, `RAISED`, `CENTERED` set which characters drop below the line, hang high, or sit on the math axis
 - `SCAN_SKEW` sets the page tilt in degrees. Set it to `0` for a flat scan
+- `TABLES_RULED` draws tables as a ruled grid; set it to `False` to list the rows instead
 - `FATIGUE` makes the writing grow and loosen down each page, the way a tiring hand does
 - `CORRECTIONS` writes the occasional word wrong, crosses it out and rewrites it. Off by default, because a page with no crossings-out at all is itself a giveaway
 - `SEED` can be set to an integer for repeatable output

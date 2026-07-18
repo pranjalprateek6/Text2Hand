@@ -118,6 +118,11 @@ FATIGUE_GROWTH = 0.05                   # how much letters swell by the page foo
 CORRECTIONS = False                     # off by default: it writes real mistakes
 CORRECTION_RATE = 0.012                 # chance per eligible word
 
+# --- Tables -----------------------------------------------------------------
+TABLES_RULED = True                     # draw a ruled grid; False lists the rows
+TABLE_PAD = 16                          # px of padding inside each cell
+TABLE_MIN_COL = 110                     # a column never squeezes below this
+
 # --------------------------------------------------------------------------- #
 # Glyph loading  (prepare once, cache, discover variants)
 # --------------------------------------------------------------------------- #
@@ -388,6 +393,62 @@ class Sheet:
         self.baseline = bottom
         self.gap(1.0)
 
+    def vrule(self, x: float, y0: float, y1: float, width: int) -> None:
+        """A wobbly vertical pen stroke, for table column dividers."""
+        steps = max(2, int((y1 - y0) / 70))
+        pts = [(x + random.uniform(-2.0, 2.0), y0 + (y1 - y0) * i / steps)
+               for i in range(steps + 1)]
+        ImageDraw.Draw(self.page).line(pts, fill=self._pen(), width=width, joint="curve")
+
+    def put_words(self, words: list[str], x: int, scale: float = 1.0) -> None:
+        """Write words starting at x without moving to the next line."""
+        self.scale = scale
+        space = int(SPACE_WIDTH * scale)
+        self.x = x
+        for i, word in enumerate(words):
+            for ch in word:
+                self.put(ch)
+            if i < len(words) - 1:
+                self.x += space
+        self.scale = 1.0
+
+    def draw_table(self, grid: list[list[str]], widths: list[int]) -> None:
+        """Draw a hand-ruled table: cells wrap inside their column."""
+        pad = TABLE_PAD
+        col_w = [w + 2 * pad for w in widths]
+        rule = max(2, UNDERLINE_WIDTH - 1)
+        edges = [MARGIN_L]
+        for w in col_w:
+            edges.append(edges[-1] + w)
+
+        for row in grid:
+            cells = [wrap(cell.split(), widths[i]) or [[]] for i, cell in enumerate(row)]
+            tall = max(len(c) for c in cells)
+            height = tall * LINE_HEIGHT
+
+            if self.baseline + height > self.height - MARGIN_B:
+                self._new_page()
+
+            top = self.baseline - X_HEIGHT - pad // 2
+            first = self.baseline
+            for line_no in range(tall):
+                self.baseline = first + line_no * LINE_HEIGHT
+                for i, lines in enumerate(cells):
+                    if line_no < len(lines):
+                        self.put_words(lines[line_no], edges[i] + pad)
+            self.baseline = first + (tall - 1) * LINE_HEIGHT
+            bottom = self.baseline + pad
+
+            self._pen_stroke(edges[0], top, edges[-1], rule)        # rule above the row
+            for x in edges:
+                self.vrule(x, top, bottom, rule)
+            self.baseline = bottom + LINE_HEIGHT
+            if self.baseline + LINE_HEIGHT > self.height - MARGIN_B:
+                self._new_page()
+
+        self._pen_stroke(edges[0], self.baseline - LINE_HEIGHT + pad,
+                         edges[-1], rule)                           # close the last row
+
     def put_line(self, words: list[str], left: int, width: int,
                  align: str = "left", underline: bool = False,
                  scale: float = 1.0) -> None:
@@ -493,6 +554,30 @@ def render(text: str) -> Sheet:
     return sheet
 
 
+def table_layout(rows: list[list[str]], available: int) -> tuple[list[list[str]], list[int]]:
+    """Pad rows to a rectangle and size columns to fit the text column."""
+    cols = max(len(r) for r in rows)
+    grid = [list(r) + [""] * (cols - len(r)) for r in rows]
+
+    # measure() is the un-jittered width, but drawing adds kerning jitter and
+    # fatigue growth per glyph, so a column sized to the measurement alone ends
+    # up slightly too narrow and its text crosses the divider.
+    slack = 1.12
+    natural = [int(max((measure(row[i]) for row in grid), default=1) * slack)
+               for i in range(cols)]
+    # a column can never be narrower than its longest unbreakable word
+    floors = [int(max((measure(w) for row in grid for w in row[i].split()), default=1) * slack)
+              for i in range(cols)]
+
+    inner = available - 2 * TABLE_PAD * cols
+    total = sum(natural) or 1
+    if total > inner:                       # squeeze proportionally, but not past the floors
+        shrink = inner / total
+        return grid, [max(TABLE_MIN_COL, floors[i], int(n * shrink))
+                      for i, n in enumerate(natural)]
+    return grid, [max(1, n) for n in natural]
+
+
 def render_markdown(md_text: str) -> Sheet:
     """Render Markdown, expressing its structure in handwriting conventions.
 
@@ -515,8 +600,28 @@ def render_markdown(md_text: str) -> Sheet:
         for line in wrap(words, width, scale):
             sheet.put_line(line, left, width, scale=scale)
 
+    blocks = to_blocks(md_text)
     previous = ""
-    for block in to_blocks(md_text):
+    index = 0
+    while index < len(blocks):
+        block = blocks[index]
+
+        # Consecutive table rows belong to one grid, so gather them up first.
+        if block.kind == "table" and TABLES_RULED:
+            rows = []
+            while index < len(blocks) and blocks[index].kind == "table":
+                rows.append(blocks[index].cells)
+                index += 1
+            for row in rows:
+                track(" ".join(row))
+            sheet.gap(0.3)
+            grid, widths = table_layout(rows, column)
+            sheet.draw_table(grid, widths)
+            sheet.gap(0.4)
+            previous = "table"
+            continue
+        index += 1
+
         # Runs of list items, table rows and code lines sit tight against each
         # other, but the run as a whole needs separating from what follows.
         if previous in ("item", "table", "code") and block.kind != previous:
