@@ -17,6 +17,7 @@ A font pastes an identical letter every time. A person never writes the same let
 - **Baseline.** Glyphs sit on a writing line with a slow drift along each line. The letters g, j, p, q and y drop their tails below the line.
 - **Clean compositing.** An alpha mask is built from ink darkness, so rotation and tight spacing never paint white boxes over neighboring letters.
 - **Ink and paper.** Strokes are recolored to a blue-black pen, and the page carries a faint off-white tint with subtle grain and mottle instead of flat white.
+- **Fatigue.** Letters grow slightly and get less tidy toward the foot of each page, because a hand tires.
 - **Paper and scan.** Faint ruled lines and a margin line are printed on the page, then the whole sheet is tilted a little as if it were scanned crooked.
 
 It also saves its output, keeps real line breaks, word wraps, spills onto new pages, and skips unsupported characters with a warning instead of crashing.
@@ -113,6 +114,8 @@ All of the realism controls are plain constants near the top of `text_to_handwri
 - `PAPER_TEXTURE`, `PAPER_TINT`, `PAPER_NOISE` control the paper look
 - `DESCENDERS`, `RAISED`, `CENTERED` set which characters drop below the line, hang high, or sit on the math axis
 - `SCAN_SKEW` sets the page tilt in degrees. Set it to `0` for a flat scan
+- `FATIGUE` makes the writing grow and loosen down each page, the way a tiring hand does
+- `CORRECTIONS` writes the occasional word wrong, crosses it out and rewrites it. Off by default, because a page with no crossings-out at all is itself a giveaway
 - `SEED` can be set to an integer for repeatable output
 
 ## Project layout

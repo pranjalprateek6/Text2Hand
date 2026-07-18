@@ -108,6 +108,16 @@ PARA_GAP = 0.45
 UNDERLINE_DROP = 12                     # px below the baseline
 UNDERLINE_WIDTH = 4
 
+# --- Fatigue and corrections ------------------------------------------------
+# A hand tires down a page: the writing grows a little and gets less tidy. And
+# a page with no crossings-out at all is itself a tell, since real handwritten
+# work has them.
+FATIGUE = True
+FATIGUE_JITTER = 0.7                    # extra rotation and wobble by the page foot
+FATIGUE_GROWTH = 0.05                   # how much letters swell by the page foot
+CORRECTIONS = False                     # off by default: it writes real mistakes
+CORRECTION_RATE = 0.012                 # chance per eligible word
+
 # --------------------------------------------------------------------------- #
 # Glyph loading  (prepare once, cache, discover variants)
 # --------------------------------------------------------------------------- #
@@ -201,7 +211,7 @@ def char_advance(ch: str) -> int:
 # --------------------------------------------------------------------------- #
 # Per-glyph jitter
 # --------------------------------------------------------------------------- #
-def jittered(im: Image.Image, scale: float = 1.0) -> Image.Image:
+def jittered(im: Image.Image, scale: float = 1.0, boost: float = 1.0) -> Image.Image:
     """Return a fresh, randomly perturbed copy of a glyph image.
 
     `scale` is the block-level size (headings draw larger). It is folded into
@@ -213,7 +223,8 @@ def jittered(im: Image.Image, scale: float = 1.0) -> Image.Image:
         g = g.resize((max(1, round(g.width * s)), max(1, round(g.height * s))),
                      Image.LANCZOS)
     if ROT_JITTER:
-        g = g.rotate(random.uniform(-ROT_JITTER, ROT_JITTER),
+        rot = ROT_JITTER * boost
+        g = g.rotate(random.uniform(-rot, rot),
                      resample=Image.BICUBIC, expand=True)
     if INK_MIN < 1.0:
         factor = random.uniform(INK_MIN, INK_MAX)
@@ -388,7 +399,21 @@ class Sheet:
 
         self.x = x0 + random.randint(0, MARGIN_JITTER)
         start = self.x
+        slack = width - line_w                   # room a correction may borrow
         for i, word in enumerate(words):
+            # Start the word wrong, cross it out, write it again. Only where
+            # there is spare width, so a correction can never push past the margin.
+            if (CORRECTIONS and len(word) > 3 and align == "left"
+                    and random.random() < CORRECTION_RATE):
+                stub = word[:random.randint(2, min(4, len(word) - 1))]
+                cost = measure(stub, scale) + space
+                if cost < slack:
+                    slack -= cost
+                    mark = self.x
+                    for ch in stub:
+                        self.put(ch)
+                    self.strike(mark, self.x)
+                    self.x += space // 2
             for ch in word:
                 self.put(ch)
             if i < len(words) - 1:
@@ -405,14 +430,32 @@ class Sheet:
         self._drift_phase += 0.06
         return int(LINE_DRIFT * math.sin(self._drift_phase))
 
+    def _fatigue(self) -> float:
+        """0 at the top of the page, 1 at the foot."""
+        if not FATIGUE:
+            return 0.0
+        top = MARGIN_T + LINE_HEIGHT
+        bottom = self.height - MARGIN_B
+        return min(1.0, max(0.0, (self.baseline - top) / max(1, bottom - top)))
+
+    def strike(self, x0: float, x1: float) -> None:
+        """Cross out what was just written."""
+        self._pen_stroke(x0, self.baseline - X_HEIGHT // 2, x1,
+                         max(2, UNDERLINE_WIDTH - 1))
+
     def put(self, ch: str) -> None:
         vs = glyph_variants(ch)
         if not vs:
             return
-        advance = int(vs[0].width * self.scale)   # rhythm set by the un-jittered width
-        g = jittered(random.choice(vs), self.scale)
+        tired = self._fatigue()
+        boost = 1 + FATIGUE_JITTER * tired
+        scale = self.scale * (1 + FATIGUE_GROWTH * tired)
 
-        wobble = random.randint(-BASELINE_WOBBLE, BASELINE_WOBBLE) + self._drift()
+        advance = int(vs[0].width * scale)        # rhythm set by the un-jittered width
+        g = jittered(random.choice(vs), scale, boost)
+
+        sway = max(1, int(BASELINE_WOBBLE * boost))
+        wobble = random.randint(-sway, sway) + self._drift()
         x = self.x + (advance - g.width) // 2     # keep rotation-expansion centred
         if ch in CENTERED:                        # math symbols float on the x-height axis
             y = self.baseline - X_HEIGHT // 2 - g.height // 2 + wobble
@@ -429,22 +472,19 @@ def render(text: str) -> Sheet:
     sheet = Sheet()
     missing: set[str] = set()
 
+    column = sheet.right - MARGIN_L
     for line in text.split("\n"):
-        words = line.split(" ")
-        for word in words:
-            # track unsupported characters so we can warn instead of crashing
-            for ch in word:
-                if ch != " " and glyph_variants(ch) is None:
-                    missing.add(ch)
+        # track unsupported characters so we can warn instead of crashing
+        for ch in line:
+            if ch != " " and glyph_variants(ch) is None:
+                missing.add(ch)
 
-            word_w = sum(char_advance(c) for c in word)
-            if sheet.x != MARGIN_L and sheet.x + word_w > sheet.right:
-                sheet.newline()
-
-            for ch in word:
-                sheet.put(ch)
-            sheet.x += SPACE_WIDTH                 # space after the word
-        sheet.newline()                            # real line break from source
+        words = line.split()
+        if not words:
+            sheet.newline()                        # blank line from the source
+            continue
+        for wrapped in wrap(words, column):
+            sheet.put_line(wrapped, MARGIN_L, column)
 
     sheet.missing = sorted(missing)
     if missing:
