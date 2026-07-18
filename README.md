@@ -121,9 +121,11 @@ Output goes to the `out` folder:
 
 Handwriting is far less dense than print, so a modest PDF becomes a lot of pages. Roughly 850 characters fill one handwritten page.
 
-- Conversion stops at **50 PDF pages**, and says so when it truncates. OCR shares that limit.
-- Rendering stops at **60,000 characters**, about 70 pages. Over that, convert a smaller page range.
-- After converting, the app reports the character count and an estimated page count, and warns before you hit either limit rather than after.
+- Rendering stops at **60,000 characters**, about 70 pages.
+- Conversion stops at **50 PDF pages**, or sooner if the text would exceed that render limit. It stops on a page boundary and tells you how many pages it got through, so what comes out of Convert can always be rendered.
+- After converting, the app reports the character count and an estimated page count.
+
+Text in scripts the handwriting has no glyphs for (Cyrillic, Arabic, CJK and so on) cannot be transliterated. Conversion names those scripts up front so it is clear why they will not appear.
 
 ## Make it your own handwriting
 

@@ -182,8 +182,11 @@ def api_convert():
 
     def work(progress):
         try:
+            # Hand the renderer's own limit down, so conversion can never
+            # produce more text than Generate would accept.
             result = converters.to_markdown(str(path), converter=converter,
-                                            page_spec=page_spec, progress=progress)
+                                            page_spec=page_spec, progress=progress,
+                                            max_chars=MAX_CHARS)
         finally:
             shutil.rmtree(folder, ignore_errors=True)
 

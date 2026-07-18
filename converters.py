@@ -176,10 +176,10 @@ def parse_pages(spec: str, total: int) -> list[int]:
 # --------------------------------------------------------------------------- #
 # Converters
 # --------------------------------------------------------------------------- #
-def _pymupdf(path: str, pages: list[int]) -> str:
+def _page_pymupdf(doc, number: int) -> str:
     import pymupdf4llm
 
-    return pymupdf4llm.to_markdown(path, pages=pages, show_progress=False)
+    return pymupdf4llm.to_markdown(doc, pages=[number], show_progress=False)
 
 
 def _unwrap(text: str) -> str:
@@ -205,15 +205,14 @@ def _unwrap(text: str) -> str:
     return "\n\n".join(out)
 
 
-def _ocr(path: str, pages: list[int], progress=None) -> str:
-    """Read images of text by rasterising each page and running Tesseract.
+def _page_ocr(doc, number: int) -> str:
+    """Read one page of images-of-text by rasterising it and running Tesseract.
 
     Rendering through PyMuPDF rather than pdf2image keeps this to one system
     dependency: no poppler needed, and PyMuPDF is already here.
     """
     import io
 
-    import pymupdf
     import pytesseract
     from PIL import Image
 
@@ -221,17 +220,9 @@ def _ocr(path: str, pages: list[int], progress=None) -> str:
     if binary:
         pytesseract.pytesseract.tesseract_cmd = binary
 
-    chunks = []
-    with pymupdf.open(path) as doc:
-        for done, number in enumerate(pages, 1):
-            if progress:
-                progress(f"Reading page {done} of {len(pages)}")
-            pix = doc.load_page(number).get_pixmap(dpi=OCR_DPI)
-            image = Image.open(io.BytesIO(pix.tobytes("png")))
-            text = _unwrap(pytesseract.image_to_string(image, lang=OCR_LANG).strip())
-            if text:
-                chunks.append(text)
-    return "\n\n".join(chunks)
+    pix = doc.load_page(number).get_pixmap(dpi=OCR_DPI)
+    image = Image.open(io.BytesIO(pix.tobytes("png")))
+    return _unwrap(pytesseract.image_to_string(image, lang=OCR_LANG).strip())
 
 
 def _llamaparse(path: str, pages: list[int]) -> str:
@@ -255,12 +246,49 @@ def _mistral(path: str, pages: list[int]) -> str:
     return "\n\n".join(p.markdown for i, p in enumerate(result.pages) if i in keep)
 
 
-_CONVERTERS = {"pymupdf": _pymupdf, "ocr": _ocr,
-               "llamaparse": _llamaparse, "mistral": _mistral}
+# Local converters work a page at a time, so they can stop the moment the
+# character budget is spent. Cloud converters process the whole document in one
+# API call, so they can only be trimmed afterwards.
+_PAGE_CONVERTERS = {"pymupdf": _page_pymupdf, "ocr": _page_ocr}
+_WHOLE_CONVERTERS = {"llamaparse": _llamaparse, "mistral": _mistral}
+_CONVERTERS = {**_PAGE_CONVERTERS, **_WHOLE_CONVERTERS}
+
+
+def _convert_by_page(path: str, pages: list[int], converter: str,
+                     budget: int | None, progress) -> tuple[str, int, bool]:
+    """Convert page by page, stopping once the budget is spent.
+
+    Returns the Markdown, how many pages were actually converted, and whether
+    it stopped early. Stopping at a page boundary keeps the result coherent;
+    truncating mid-sentence would not.
+    """
+    import pymupdf
+
+    read = _PAGE_CONVERTERS[converter]
+    chunks: list[str] = []
+    used = 0
+    converted = 0
+
+    with pymupdf.open(path) as doc:
+        for done, number in enumerate(pages, 1):
+            if progress:
+                progress(f"Reading page {done} of {len(pages)}")
+            text = normalize(read(doc, number)).strip()
+            if not text:
+                converted = done
+                continue
+            # keep at least one page, otherwise a single huge page yields nothing
+            if budget and chunks and used + len(text) > budget:
+                return "\n\n".join(chunks), converted, True
+            chunks.append(text)
+            used += len(text)
+            converted = done
+
+    return "\n\n".join(chunks), converted, False
 
 
 def to_markdown(path: str, converter: str = "pymupdf", page_spec: str = "",
-                progress=None) -> Result:
+                progress=None, max_chars: int | None = None) -> Result:
     if converter not in _CONVERTERS:
         raise ValueError(f"Unknown converter {converter!r}")
     ready = {c["name"]: c for c in available()}[converter]
@@ -286,11 +314,39 @@ def to_markdown(path: str, converter: str = "pymupdf", page_spec: str = "",
                if ocr_ok else f"Local OCR needs setting up first: {ocr_why}.")
         )
 
-    worker = _CONVERTERS[converter]
-    md = worker(path, pages, progress) if converter == "ocr" else worker(path, pages)
-    md = re.sub(r"\n{3,}", "\n\n", normalize(md)).strip()
+    if converter in _PAGE_CONVERTERS:
+        md, converted, stopped = _convert_by_page(path, pages, converter, max_chars, progress)
+    else:
+        # A cloud converter returns the whole document in one call, so the
+        # budget can only be applied after the fact.
+        md = normalize(_WHOLE_CONVERTERS[converter](path, pages))
+        converted, stopped = len(pages), False
+        if max_chars and len(md) > max_chars:
+            md, stopped = md[:max_chars].rsplit("\n\n", 1)[0], True
+
+    md = re.sub(r"\n{3,}", "\n\n", md).strip()
+
+    if stopped:
+        notes.append(
+            f"Stopped after {converted} of {len(pages)} pages, because more "
+            f"would be over the {max_chars:,} character limit that rendering accepts."
+        )
+    # Anything still outside ASCII is a script the handwriting has no glyphs
+    # for (Cyrillic, Arabic, CJK and so on). It cannot be transliterated, so
+    # say so here rather than letting it vanish silently at render time.
+    foreign = {ch for ch in md if ord(ch) > 126}
+    if foreign:
+        scripts = sorted({unicodedata.name(ch, "").split(" ")[0]
+                          for ch in foreign} - {""})
+        named = [s if s in ("CJK",) else s.title() for s in scripts[:5]]
+        notes.append(
+            "This document contains text the handwriting cannot draw ("
+            + ", ".join(named)
+            + "). Those characters are skipped when rendering."
+        )
     if not md:
         notes.append("The converter returned no text at all.")
 
-    return Result(markdown=md, converter=converter, pages_converted=len(pages),
-                  total_pages=total, scanned=scanned, truncated=truncated, notes=notes)
+    return Result(markdown=md, converter=converter, pages_converted=converted,
+                  total_pages=total, scanned=scanned,
+                  truncated=truncated or stopped, notes=notes)
