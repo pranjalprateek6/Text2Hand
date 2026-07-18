@@ -35,10 +35,16 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 
 RENDER_ROOT = Path(tempfile.gettempdir()) / "text2hand_web"
-KEEP_RENDERS = 12          # prune older render folders beyond this many
+# A full-res page is roughly 9 MB, and a long document can be 50+ pages, so
+# keeping many old renders around costs gigabytes. Keep only a few.
+KEEP_RENDERS = 5
 PREVIEW_WIDTH = 900        # downscaled width for the in-page preview
 THUMB_WIDTH = 200          # downscaled width for the page-strip thumbnails
-MAX_CHARS = 20_000         # guard against a paste that would render forever
+# Rendering runs on a worker thread with progress, so a long document no
+# longer risks hanging a request. This cap only exists to stop a runaway job
+# filling the disk: roughly CHARS_PER_PAGE of text becomes one ~9 MB page.
+MAX_CHARS = 60_000
+CHARS_PER_PAGE = 850       # rough, measured from real renders
 
 # The renderer keeps its settings in module globals, so only one render at a
 # time may touch them.
@@ -186,10 +192,25 @@ def api_convert():
     finally:
         shutil.rmtree(folder, ignore_errors=True)
 
+    # Say now if this is too long to render, rather than letting Generate fail
+    # after the user has already reviewed it.
+    notes = list(result.notes)
+    size = len(result.markdown)
+    estimate = size // CHARS_PER_PAGE
+    if size > MAX_CHARS:
+        notes.append(
+            f"This is {size:,} characters, about {estimate} handwritten pages, "
+            f"over the {MAX_CHARS:,} limit. Convert a smaller page range, "
+            "or cut it down before generating."
+        )
+    elif estimate >= 20:
+        notes.append(f"That is roughly {estimate} handwritten pages, so rendering will take a while.")
+
     return jsonify(markdown=result.markdown, converter=result.converter,
                    pages_converted=result.pages_converted,
                    total_pages=result.total_pages, scanned=result.scanned,
-                   truncated=result.truncated, notes=result.notes)
+                   truncated=result.truncated, notes=notes,
+                   chars=size, estimated_pages=estimate, over_limit=size > MAX_CHARS)
 
 
 def converters_safe_name(filename: str) -> str:
@@ -204,7 +225,12 @@ def api_render():
     if not text:
         return jsonify(error="Write some text first."), 400
     if len(text) > MAX_CHARS:
-        return jsonify(error=f"That is over the {MAX_CHARS:,} character limit."), 400
+        over = len(text)
+        return jsonify(error=(
+            f"That is {over:,} characters, over the {MAX_CHARS:,} limit "
+            f"(roughly {over // CHARS_PER_PAGE} handwritten pages). "
+            "Convert a page range such as 1-15, or trim the text."
+        )), 400
 
     opts = {
         "ruled": bool(data.get("ruled", True)),
