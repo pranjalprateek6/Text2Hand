@@ -8,4 +8,6 @@ It handles digits too, like 0 1 2 3 4 5 6 7 8 9.
 
 Punctuation works now: colons, semicolons; and "quotation marks" all render.
 
+It's got apostrophes too, so contractions like don't and can't look right.
+
 Put your own words in this file, or pass a file path on the command line, then run the script to see them written out by hand.
