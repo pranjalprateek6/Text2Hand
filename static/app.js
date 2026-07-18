@@ -19,9 +19,59 @@ const generate = $("generate");
 const alertBox = $("alert");
 const empty = $("empty");
 const output = $("output");
-const pages = $("pages");
 
 const MAX_CHARS = 20000;
+
+// current render: which id, how many pages, which one is on screen
+const view = { id: null, pages: 0, current: 1 };
+
+function showPage(n) {
+  if (!view.id) return;
+  view.current = Math.min(Math.max(n, 1), view.pages);
+
+  $("mainPage").src = `/preview/${view.id}/${view.current}.jpg`;
+  $("mainPage").alt = `Page ${view.current}`;
+  $("pageCounter").textContent = `${view.current} / ${view.pages}`;
+  $("prevPage").disabled = view.current === 1;
+  $("nextPage").disabled = view.current === view.pages;
+
+  $("dlPagePng").href = `/download/${view.id}/page_${view.current}.png`;
+  $("dlPagePdf").href = `/download/${view.id}/page_${view.current}.pdf`;
+
+  document.querySelectorAll(".thumb").forEach((t, i) => {
+    t.classList.toggle("thumb--active", i + 1 === view.current);
+  });
+}
+
+function buildViewer(id, count) {
+  view.id = id;
+  view.pages = count;
+
+  const strip = $("thumbs");
+  strip.innerHTML = "";
+  for (let i = 1; i <= count; i++) {
+    const btn = document.createElement("button");
+    btn.className = "thumb";
+    btn.title = `Page ${i}`;
+    btn.addEventListener("click", () => showPage(i));
+    const img = document.createElement("img");
+    img.src = `/thumb/${id}/${i}.jpg`;
+    img.alt = `Page ${i} thumbnail`;
+    btn.appendChild(img);
+    strip.appendChild(btn);
+  }
+
+  // A single page needs no navigation, so do not show a carousel for it.
+  const multi = count > 1;
+  $("viewerNav").hidden = !multi;
+  strip.hidden = !multi;
+
+  $("downloadPdf").href = `/download/${id}/handwriting.pdf`;
+  $("dlZip").href = `/download/${id}/pages.zip`;
+  $("outputLabel").textContent = count === 1 ? "Output, 1 page" : `Output, ${count} pages`;
+
+  showPage(1);
+}
 
 function updateCounter() {
   const n = text.value.length;
@@ -88,21 +138,7 @@ generate.addEventListener("click", async () => {
       return;
     }
 
-    // Loaded eagerly on purpose: these previews are the whole point of the
-    // panel and the user just asked for them, so deferring them is wrong.
-    pages.innerHTML = "";
-    for (let i = 1; i <= data.pages; i++) {
-      const img = document.createElement("img");
-      img.className = "page-img";
-      img.alt = "Page " + i;
-      img.src = `/preview/${data.id}/${i}.jpg`;
-      pages.appendChild(img);
-    }
-
-    $("outputLabel").textContent =
-      data.pages === 1 ? "Output, 1 page" : `Output, ${data.pages} pages`;
-    $("downloadPdf").href = `/download/${data.id}/handwriting.pdf`;
-
+    buildViewer(data.id, data.pages);
     empty.hidden = true;
     output.hidden = false;
 
@@ -117,6 +153,23 @@ generate.addEventListener("click", async () => {
   } finally {
     generate.disabled = false;
     generate.textContent = "Generate";
+  }
+});
+
+$("prevPage").addEventListener("click", () => showPage(view.current - 1));
+$("nextPage").addEventListener("click", () => showPage(view.current + 1));
+
+// Arrow keys page through the result, but never while the user is typing.
+document.addEventListener("keydown", (e) => {
+  if (output.hidden || view.pages < 2) return;
+  const tag = e.target && e.target.tagName;
+  if (tag === "TEXTAREA" || tag === "INPUT") return;
+  if (e.key === "ArrowLeft") {
+    e.preventDefault();
+    showPage(view.current - 1);
+  } else if (e.key === "ArrowRight") {
+    e.preventDefault();
+    showPage(view.current + 1);
   }
 });
 

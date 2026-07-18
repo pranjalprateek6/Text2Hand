@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="Turn typed text into handwriting on ruled paper" />
   <title>Text2Hand</title>
-  <!-- No webfont on purpose: the app claims to run entirely locally, so it must
-       not phone out for type. Falls back to the system mono stack, which is what
-       the reference UI renders with anyway. -->
+  <!-- No webfont: it would be a render-blocking external request for something
+       the system mono stack already provides, and it keeps the page working
+       offline. The reference UI renders with that same fallback stack anyway. -->
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
 </head>
 <body>
@@ -40,7 +40,7 @@
           </div>
 
           <div class="toolbar">
-            <p class="hint">Runs locally. Nothing leaves your machine.</p>
+            <p class="hint">Rendering runs locally on this machine.</p>
             <div class="toolbar__actions">
               <button class="btn" id="clear">Clear</button>
               <button class="btn btn--primary" id="generate">Generate</button>
@@ -59,9 +59,22 @@
 
           <div id="output" hidden>
             <span class="label" id="outputLabel">Output</span>
-            <div class="pages" id="pages"></div>
+
+            <img class="page-img" id="mainPage" alt="Page 1" />
+
+            <div class="viewer__nav" id="viewerNav" hidden>
+              <button class="btn" id="prevPage" aria-label="Previous page">&lsaquo; Prev</button>
+              <span class="viewer__counter" id="pageCounter">1 / 1</span>
+              <button class="btn" id="nextPage" aria-label="Next page">Next &rsaquo;</button>
+            </div>
+
+            <div class="thumbs" id="thumbs" hidden></div>
+
             <div class="results__actions">
-              <a class="btn btn--primary" id="downloadPdf" download>Download PDF</a>
+              <a class="btn" id="dlPagePng" download>This page PNG</a>
+              <a class="btn" id="dlPagePdf" download>This page PDF</a>
+              <a class="btn btn--primary" id="downloadPdf" download>All pages PDF</a>
+              <a class="btn" id="dlZip" download>ZIP</a>
             </div>
           </div>
         </section>

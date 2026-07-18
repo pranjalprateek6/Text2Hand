@@ -19,6 +19,7 @@ import shutil
 import tempfile
 import threading
 import uuid
+import zipfile
 from pathlib import Path
 
 from flask import Flask, abort, jsonify, render_template, request, send_file
@@ -27,10 +28,14 @@ from PIL import Image
 import text_to_handwriting as t2h
 
 app = Flask(__name__)
+# Never cache static assets. Otherwise an edited CSS or JS file can leave a
+# stale front end talking to a newer server, which looks like a broken app.
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 
 RENDER_ROOT = Path(tempfile.gettempdir()) / "text2hand_web"
 KEEP_RENDERS = 12          # prune older render folders beyond this many
 PREVIEW_WIDTH = 900        # downscaled width for the in-page preview
+THUMB_WIDTH = 200          # downscaled width for the page-strip thumbnails
 MAX_CHARS = 20_000         # guard against a paste that would render forever
 
 # The renderer keeps its settings in module globals, so only one render at a
@@ -70,6 +75,11 @@ def _render(text: str, ruled: bool, texture: bool, skew: bool):
         preview = page.copy()
         preview.thumbnail((PREVIEW_WIDTH, PREVIEW_WIDTH * 4), Image.LANCZOS)
         preview.save(folder / f"preview_{i}.jpg", quality=82, optimize=True)
+
+        thumb = page.copy()
+        thumb.thumbnail((THUMB_WIDTH, THUMB_WIDTH * 4), Image.LANCZOS)
+        thumb.save(folder / f"thumb_{i}.jpg", quality=72, optimize=True)
+
         page.save(folder / f"page_{i}.png")
     pages[0].save(folder / "handwriting.pdf", save_all=True, append_images=pages[1:])
 
@@ -121,6 +131,46 @@ def preview(rid: str, n: int):
     if not path.exists():
         abort(404)
     return send_file(path, mimetype="image/jpeg")
+
+
+@app.get("/thumb/<rid>/<int:n>.jpg")
+def thumb(rid: str, n: int):
+    path = _safe(rid) / f"thumb_{n}.jpg"
+    if not path.exists():
+        abort(404)
+    return send_file(path, mimetype="image/jpeg")
+
+
+@app.get("/download/<rid>/page_<int:n>.pdf")
+def download_page_pdf(rid: str, n: int):
+    """Single page as a PDF, built on first request and then cached."""
+    folder = _safe(rid)
+    pdf = folder / f"page_{n}.pdf"
+    if not pdf.exists():
+        src = folder / f"page_{n}.png"
+        if not src.exists():
+            abort(404)
+        Image.open(src).convert("RGB").save(pdf)
+    return send_file(pdf, mimetype="application/pdf",
+                     as_attachment=True, download_name=f"page_{n}.pdf")
+
+
+@app.get("/download/<rid>/pages.zip")
+def download_zip(rid: str):
+    """Every page PNG plus the combined PDF, zipped on first request."""
+    folder = _safe(rid)
+    zpath = folder / "pages.zip"
+    if not zpath.exists():
+        pngs = sorted(folder.glob("page_*.png"),
+                      key=lambda p: int(p.stem.split("_")[1]))   # page_10 after page_2
+        with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as z:
+            for p in pngs:
+                z.write(p, p.name)
+            combined = folder / "handwriting.pdf"
+            if combined.exists():
+                z.write(combined, combined.name)
+    return send_file(zpath, mimetype="application/zip",
+                     as_attachment=True, download_name="handwriting_pages.zip")
 
 
 @app.get("/download/<rid>/handwriting.pdf")

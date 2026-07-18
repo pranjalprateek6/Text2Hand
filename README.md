@@ -38,7 +38,7 @@ The friendlier way to use it. Type text in the browser, pick a couple of options
 python app.py
 ```
 
-Then open http://127.0.0.1:5000. Enter your text, hit **Generate**, and preview the pages or download the PDF. Rendering happens entirely on your own machine and nothing is uploaded, including the fonts, which is why the page deliberately loads no webfont.
+Then open http://127.0.0.1:5000. Enter your text, hit **Generate**, then page through the result and download it as images or PDF. Rendering runs locally on the machine hosting the app, and the page loads no webfont, so it works offline.
 
 ## Command line
 
