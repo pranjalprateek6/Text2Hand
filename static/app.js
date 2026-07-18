@@ -167,7 +167,7 @@ generate.addEventListener("click", async () => {
 
     // Long documents outlive a request, so the render runs on the server and
     // we poll it, showing whatever stage it reports.
-    const data = await pollJob(started.job);
+    const data = await pollJob(started.job, generate);
     if (!data) return;
 
     buildViewer(data.id, data.pages);
@@ -188,21 +188,23 @@ generate.addEventListener("click", async () => {
   }
 });
 
-async function pollJob(jobId) {
+// Both rendering and conversion run as server-side jobs, so both poll here and
+// report their stage on whichever button started them.
+async function pollJob(jobId, button) {
   while (true) {
     await new Promise((r) => setTimeout(r, 400));
     const res = await fetch(`/api/job/${jobId}`);
     if (!res.ok) {
-      showAlert("Lost track of that render.");
+      showAlert("Lost track of that job.");
       return null;
     }
     const job = await res.json();
     if (job.state === "running") {
-      generate.textContent = job.message + "...";
+      button.textContent = job.message + "...";
       continue;
     }
     if (job.state === "error") {
-      showAlert(job.error || "Rendering failed.");
+      showAlert(job.error || "That job failed.");
       return null;
     }
     return job;
@@ -229,11 +231,16 @@ $("convert").addEventListener("click", async () => {
 
   try {
     const res = await fetch("/api/convert", { method: "POST", body });
-    const data = await res.json();
+    const started = await res.json();
     if (!res.ok) {
-      showAlert(data.error || "Could not convert that PDF.");
+      showAlert(started.error || "Could not convert that PDF.");
       return;
     }
+
+    // OCR in particular can run for a minute or more, so it is a job too and
+    // reports which page it is reading.
+    const data = await pollJob(started.job, btn);
+    if (!data) return;
 
     // The textarea is the review pane: extraction is never perfect, so the
     // Markdown lands here to be corrected before it is rendered.

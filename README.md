@@ -65,7 +65,7 @@ python app.py
 
 Then open http://127.0.0.1:5000.
 
-Type or paste text, tick the options you want, and hit **Generate**. Long documents render on a worker thread and the button reports progress (`Writing page 7...`), so nothing hangs waiting on a request.
+Type or paste text, tick the options you want, and hit **Generate**. Converting and rendering both run on a worker thread and report progress on their button (`Reading page 3 of 19...`, `Writing page 7...`), so neither hangs waiting on a request.
 
 The result panel is a viewer, not a wall of images:
 
@@ -83,7 +83,7 @@ Upload a PDF, pick a converter, optionally give a page range like `1-10`, and hi
 - **Local OCR (Tesseract)** reads scanned PDFs, also without uploading anything. Needs `pip install pytesseract` plus the Tesseract binary (`winget install UB-Mannheim.TesseractOCR`, `apt install tesseract-ocr`, or `brew install tesseract`).
 - **Cloud (LlamaParse, Mistral OCR)** are opt-in, need their own API key in the environment, and upload the file to that provider. They are disabled in the UI until installed and keyed.
 
-A PDF with no text layer is detected and reported, and the app tells you to switch to OCR. OCR rasterises each page and reads it with Tesseract, then reflows the hard-wrapped result back into paragraphs and stitches words that were split across a line break. It runs at roughly a second or two per page, so it is capped at 15 pages rather than 50. Typographic characters the handwriting has no glyph for (curly quotes, dashes, ellipses, ligatures, currency and maths symbols) are folded to ASCII, and accented letters are reduced to their base letter, so `café` renders as `cafe` instead of losing characters. OCR of real documents throws these off constantly.
+A PDF with no text layer is detected and reported, and the app tells you to switch to OCR. OCR rasterises each page and reads it with Tesseract, then reflows the hard-wrapped result back into paragraphs and stitches words that were split across a line break. It runs at roughly a second or two per page, and reports which page it is reading as it goes. Typographic characters the handwriting has no glyph for (curly quotes, dashes, ellipses, ligatures, currency and maths symbols) are folded to ASCII, and accented letters are reduced to their base letter, so `café` renders as `cafe` instead of losing characters. OCR of real documents throws these off constantly.
 
 ## Markdown
 
@@ -121,7 +121,7 @@ Output goes to the `out` folder:
 
 Handwriting is far less dense than print, so a modest PDF becomes a lot of pages. Roughly 850 characters fill one handwritten page.
 
-- Conversion stops at **50 PDF pages**, and says so when it truncates.
+- Conversion stops at **50 PDF pages**, and says so when it truncates. OCR shares that limit.
 - Rendering stops at **60,000 characters**, about 70 pages. Over that, convert a smaller page range.
 - After converting, the app reports the character count and an estimated page count, and warns before you hit either limit rather than after.
 
@@ -194,7 +194,6 @@ Text To Handwriting.py    the original minimal version, kept for reference
 ## Known limitations
 
 - **OCR quality is OCR quality.** Tesseract reads scanned pages well but picks up page furniture (navigation, headers) and mangles footnote markers. That is what the review step is for.
-- **Conversion is synchronous.** Rendering runs in the background, but conversion does not, which is why OCR is capped at 15 pages.
 - **Cloud converters are untested.** The adapters are written and the UI disables them with a reason, but they have not been run against a live key.
 - **Running headers and footers leak in.** A repeated "Company Confidential" becomes body text. This is what the review step is for.
 - **Drawn symbols are not your handwriting.** The 21 technical symbols are approximations, unlike the composed punctuation.

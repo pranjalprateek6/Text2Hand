@@ -20,9 +20,9 @@ from dataclasses import dataclass, field
 MAX_PAGES = 50          # a 400-page report would render for hours; cap it
 SCAN_PROBE_PAGES = 3    # how many pages to check when guessing "scanned"
 
-# OCR runs at roughly a second or two per page and conversion is synchronous,
-# so it gets a tighter cap than the text extractors.
-OCR_MAX_PAGES = 15
+# OCR runs at roughly a second or two per page. Conversion happens on a worker
+# thread with progress, so it no longer needs a tighter cap than the text
+# extractors and shares MAX_PAGES with them.
 OCR_DPI = 300           # what Tesseract wants; lower loses small text
 OCR_LANG = "eng"
 
@@ -205,7 +205,7 @@ def _unwrap(text: str) -> str:
     return "\n\n".join(out)
 
 
-def _ocr(path: str, pages: list[int]) -> str:
+def _ocr(path: str, pages: list[int], progress=None) -> str:
     """Read images of text by rasterising each page and running Tesseract.
 
     Rendering through PyMuPDF rather than pdf2image keeps this to one system
@@ -223,7 +223,9 @@ def _ocr(path: str, pages: list[int]) -> str:
 
     chunks = []
     with pymupdf.open(path) as doc:
-        for number in pages:
+        for done, number in enumerate(pages, 1):
+            if progress:
+                progress(f"Reading page {done} of {len(pages)}")
             pix = doc.load_page(number).get_pixmap(dpi=OCR_DPI)
             image = Image.open(io.BytesIO(pix.tobytes("png")))
             text = _unwrap(pytesseract.image_to_string(image, lang=OCR_LANG).strip())
@@ -257,7 +259,8 @@ _CONVERTERS = {"pymupdf": _pymupdf, "ocr": _ocr,
                "llamaparse": _llamaparse, "mistral": _mistral}
 
 
-def to_markdown(path: str, converter: str = "pymupdf", page_spec: str = "") -> Result:
+def to_markdown(path: str, converter: str = "pymupdf", page_spec: str = "",
+                progress=None) -> Result:
     if converter not in _CONVERTERS:
         raise ValueError(f"Unknown converter {converter!r}")
     ready = {c["name"]: c for c in available()}[converter]
@@ -268,12 +271,10 @@ def to_markdown(path: str, converter: str = "pymupdf", page_spec: str = "") -> R
     pages = parse_pages(page_spec, total)
 
     notes: list[str] = []
-    cap = OCR_MAX_PAGES if converter == "ocr" else MAX_PAGES
-    truncated = len(pages) > cap
+    truncated = len(pages) > MAX_PAGES
     if truncated:
-        notes.append(f"Only the first {cap} of {len(pages)} selected pages were converted."
-                     + (" OCR is slow, so it has a tighter limit." if converter == "ocr" else ""))
-        pages = pages[:cap]
+        notes.append(f"Only the first {MAX_PAGES} of {len(pages)} selected pages were converted.")
+        pages = pages[:MAX_PAGES]
 
     if scanned and converter != "ocr":
         # No text layer, so a text extractor will return almost nothing.
@@ -285,7 +286,8 @@ def to_markdown(path: str, converter: str = "pymupdf", page_spec: str = "") -> R
                if ocr_ok else f"Local OCR needs setting up first: {ocr_why}.")
         )
 
-    md = _CONVERTERS[converter](path, pages)
+    worker = _CONVERTERS[converter]
+    md = worker(path, pages, progress) if converter == "ocr" else worker(path, pages)
     md = re.sub(r"\n{3,}", "\n\n", normalize(md)).strip()
     if not md:
         notes.append("The converter returned no text at all.")

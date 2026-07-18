@@ -115,32 +115,31 @@ def _job_set(jid: str, **fields) -> None:
             JOBS[jid].update(fields)
 
 
-def _job_start() -> str:
+def _job_start(message: str) -> str:
     jid = uuid.uuid4().hex[:12]
     with JOBS_LOCK:
-        JOBS[jid] = {"state": "running", "message": "Laying out the text",
-                     "pages": 0, "id": None, "missing": [], "error": None}
+        JOBS[jid] = {"state": "running", "message": message, "error": None}
         for old in list(JOBS)[:-KEEP_JOBS]:
             JOBS.pop(old, None)
     return jid
 
 
-def _job_worker(jid: str, text: str, opts: dict) -> None:
-    def progress(stage: str, count: int) -> None:
-        if stage == "page":
-            _job_set(jid, message=f"Writing page {count}", pages=count)
-        elif stage == "skew":
-            _job_set(jid, message="Finishing the pages")
-        elif stage == "previews":
-            _job_set(jid, message="Preparing previews")
+def _job_spawn(jid: str, work, failure: str) -> None:
+    """Run work(progress) on a thread; whatever it returns is merged into the job.
 
-    try:
-        rid, count, missing = _render(text, on_progress=progress, **opts)
-        _job_set(jid, state="done", message="Done", id=rid,
-                 pages=count, missing=missing)
-    except Exception as exc:
-        app.logger.exception("render job failed")
-        _job_set(jid, state="error", error=f"Could not render: {exc}")
+    Both rendering and conversion outlive a request, so both go through here.
+    """
+    def runner() -> None:
+        try:
+            result = work(lambda msg: _job_set(jid, message=msg))
+            _job_set(jid, state="done", message="Done", **result)
+        except (ValueError, RuntimeError) as exc:
+            _job_set(jid, state="error", error=str(exc))     # expected, already readable
+        except Exception as exc:
+            app.logger.exception("%s job failed", failure)
+            _job_set(jid, state="error", error=f"{failure}: {exc}")
+
+    threading.Thread(target=runner, daemon=True).start()
 
 
 def _safe(rid: str) -> Path:
@@ -178,39 +177,41 @@ def api_convert():
     path = folder / name
     upload.save(path)
 
-    try:
-        result = converters.to_markdown(
-            str(path),
-            converter=request.form.get("converter", "pymupdf"),
-            page_spec=request.form.get("pages", ""),
-        )
-    except (ValueError, RuntimeError) as exc:
-        return jsonify(error=str(exc)), 400
-    except Exception as exc:
-        app.logger.exception("convert failed")
-        return jsonify(error=f"Could not convert: {exc}"), 500
-    finally:
-        shutil.rmtree(folder, ignore_errors=True)
+    converter = request.form.get("converter", "pymupdf")
+    page_spec = request.form.get("pages", "")
 
-    # Say now if this is too long to render, rather than letting Generate fail
-    # after the user has already reviewed it.
-    notes = list(result.notes)
-    size = len(result.markdown)
-    estimate = size // CHARS_PER_PAGE
-    if size > MAX_CHARS:
-        notes.append(
-            f"This is {size:,} characters, about {estimate} handwritten pages, "
-            f"over the {MAX_CHARS:,} limit. Convert a smaller page range, "
-            "or cut it down before generating."
-        )
-    elif estimate >= 20:
-        notes.append(f"That is roughly {estimate} handwritten pages, so rendering will take a while.")
+    def work(progress):
+        try:
+            result = converters.to_markdown(str(path), converter=converter,
+                                            page_spec=page_spec, progress=progress)
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
 
-    return jsonify(markdown=result.markdown, converter=result.converter,
-                   pages_converted=result.pages_converted,
-                   total_pages=result.total_pages, scanned=result.scanned,
-                   truncated=result.truncated, notes=notes,
-                   chars=size, estimated_pages=estimate, over_limit=size > MAX_CHARS)
+        # Say now if this is too long to render, rather than letting Generate
+        # fail after the user has already reviewed it.
+        notes = list(result.notes)
+        size = len(result.markdown)
+        estimate = size // CHARS_PER_PAGE
+        if size > MAX_CHARS:
+            notes.append(
+                f"This is {size:,} characters, about {estimate} handwritten pages, "
+                f"over the {MAX_CHARS:,} limit. Convert a smaller page range, "
+                "or cut it down before generating."
+            )
+        elif estimate >= 20:
+            notes.append(f"That is roughly {estimate} handwritten pages, "
+                         "so rendering will take a while.")
+
+        return {"markdown": result.markdown, "converter": result.converter,
+                "pages_converted": result.pages_converted,
+                "total_pages": result.total_pages, "scanned": result.scanned,
+                "truncated": result.truncated, "notes": notes,
+                "chars": size, "estimated_pages": estimate,
+                "over_limit": size > MAX_CHARS}
+
+    jid = _job_start("Opening the PDF")
+    _job_spawn(jid, work, "Could not convert")
+    return jsonify(job=jid), 202
 
 
 def converters_safe_name(filename: str) -> str:
@@ -238,8 +239,20 @@ def api_render():
         "skew": bool(data.get("skew", True)),
         "as_markdown": bool(data.get("markdown", False)),
     }
-    jid = _job_start()
-    threading.Thread(target=_job_worker, args=(jid, text, opts), daemon=True).start()
+    def work(progress):
+        def on_stage(stage: str, count: int) -> None:
+            if stage == "page":
+                progress(f"Writing page {count}")
+            elif stage == "skew":
+                progress("Finishing the pages")
+            elif stage == "previews":
+                progress("Preparing previews")
+
+        rid, count, missing = _render(text, on_progress=on_stage, **opts)
+        return {"id": rid, "pages": count, "missing": missing}
+
+    jid = _job_start("Laying out the text")
+    _job_spawn(jid, work, "Could not render")
     return jsonify(job=jid), 202
 
 
