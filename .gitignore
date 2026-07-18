@@ -11,8 +11,9 @@ __pycache__/
 .venv/
 venv/
 
-# OS / editor cruft
+# OS / editor / local tooling cruft
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
+.claude/

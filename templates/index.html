@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Turn typed text into handwriting on ruled paper" />
+  <title>Text2Hand</title>
+  <!-- No webfont on purpose: the app claims to run entirely locally, so it must
+       not phone out for type. Falls back to the system mono stack, which is what
+       the reference UI renders with anyway. -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <div class="App">
+    <div class="app-shell">
+      <header class="app-header">
+        <h1 class="app-title">Text2Hand</h1>
+        <p class="app-subtitle">Turn typed text into handwriting on ruled paper.</p>
+      </header>
+
+      <div class="workspace">
+        <!-- input -->
+        <section class="panel">
+          <label class="label" for="text">Your text</label>
+          <textarea id="text" class="textarea" spellcheck="false"
+                    placeholder="Type or paste what you want written out by hand."></textarea>
+          <p class="counter" id="counter">0 characters</p>
+
+          <div class="examples">
+            <span class="examples__label">Try:</span>
+            <button class="examples__chip" data-sample="pangram">Pangram</button>
+            <button class="examples__chip" data-sample="punctuation">Punctuation</button>
+            <button class="examples__chip" data-sample="symbols">Symbols</button>
+          </div>
+
+          <div class="options">
+            <label class="check"><input type="checkbox" id="ruled" checked> Ruled paper</label>
+            <label class="check"><input type="checkbox" id="texture" checked> Paper texture</label>
+            <label class="check"><input type="checkbox" id="skew" checked> Scan skew</label>
+          </div>
+
+          <div class="toolbar">
+            <p class="hint">Runs locally. Nothing leaves your machine.</p>
+            <div class="toolbar__actions">
+              <button class="btn" id="clear">Clear</button>
+              <button class="btn btn--primary" id="generate">Generate</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- results -->
+        <section class="panel results">
+          <div id="alert" class="alert" hidden></div>
+
+          <div class="results__empty" id="empty">
+            <div class="results__empty-title">No pages yet</div>
+            <div class="results__empty-sub">Write something and hit Generate.</div>
+          </div>
+
+          <div id="output" hidden>
+            <span class="label" id="outputLabel">Output</span>
+            <div class="pages" id="pages"></div>
+            <div class="results__actions">
+              <a class="btn btn--primary" id="downloadPdf" download>Download PDF</a>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

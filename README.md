@@ -24,15 +24,23 @@ It also saves its output, keeps real line breaks, word wraps, spills onto new pa
 ## Requirements
 
 - Python 3.8 or newer
-- Pillow
-
-Install the dependency:
+- Pillow for the renderer, Flask for the web app
 
 ```
-pip install Pillow
+pip install -r requirements.txt
 ```
 
-## Usage
+## Web app
+
+The friendlier way to use it. Type text in the browser, pick a couple of options, get pages back:
+
+```
+python app.py
+```
+
+Then open http://127.0.0.1:5000. Enter your text, hit **Generate**, and preview the pages or download the PDF. Rendering happens entirely on your own machine and nothing is uploaded, including the fonts, which is why the page deliberately loads no webfont.
+
+## Command line
 
 Put your text in `dummy.txt`, or pass a file path:
 
@@ -84,7 +92,9 @@ All of the realism controls are plain constants near the top of `text_to_handwri
 ## Project layout
 
 ```
-text_to_handwriting.py    the renderer
+text_to_handwriting.py    the renderer, usable as a library or a CLI
+app.py                    Flask web app wrapping the renderer
+templates/, static/       the web app front end
 myfont/                   glyph images (one per ASCII code) and bg.png
 tools/                    generators for the composed and drawn glyphs
 dummy.txt                 default sample input text

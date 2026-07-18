@@ -232,6 +232,7 @@ class Sheet:
         self.template = Image.open(BG_PATH).convert("RGB")
         self.width, self.height = self.template.size
         self.pages: list[Image.Image] = []
+        self.missing: list[str] = []          # characters with no glyph
         self._new_page()
 
     def _new_page(self) -> None:
@@ -318,10 +319,34 @@ def render(text: str) -> Sheet:
             sheet.x += SPACE_WIDTH                 # space after the word
         sheet.newline()                            # real line break from source
 
+    sheet.missing = sorted(missing)
     if missing:
-        shown = " ".join(sorted(repr(c) for c in missing))
+        shown = " ".join(repr(c) for c in sheet.missing)
         print("Skipped {} unsupported character(s): {}".format(len(missing), shown))
     return sheet
+
+
+def render_pages(text: str) -> tuple[list[Image.Image], list[str]]:
+    """Render text and return the finished page images plus any skipped chars.
+
+    This is the entry point for anything embedding the renderer (the web app
+    uses it). main() is just a file-in, file-out wrapper around it.
+
+    The skew is applied last so the paper, rules included, rotates as one and
+    the exposed corners fill with the paper colour: the scanner-bed look.
+    """
+    derive_metrics()
+    sheet = render(text)
+
+    finals = []
+    for page in sheet.pages:
+        if SCAN_SKEW:
+            fill = PAPER_FILL if PAPER_TEXTURE else (255, 255, 255)
+            page = page.rotate(random.uniform(-SCAN_SKEW, SCAN_SKEW),
+                               resample=Image.BICUBIC, expand=False,
+                               fillcolor=fill)
+        finals.append(page)
+    return finals, sheet.missing
 
 
 # --------------------------------------------------------------------------- #
@@ -340,20 +365,7 @@ def main() -> None:
         with open(DEFAULT_INPUT, "r", encoding="utf-8") as fh:
             text = fh.read()
 
-    derive_metrics()
-    sheet = render(text)
-
-    # Final step: skew each finished page a hair, as if it were scanned crooked.
-    # The paper (rules included) rotates as one, filling the exposed corners
-    # with white -- the scanner-bed look.
-    finals = []
-    for page in sheet.pages:
-        if SCAN_SKEW:
-            fill = PAPER_FILL if PAPER_TEXTURE else (255, 255, 255)
-            page = page.rotate(random.uniform(-SCAN_SKEW, SCAN_SKEW),
-                               resample=Image.BICUBIC, expand=False,
-                               fillcolor=fill)
-        finals.append(page)
+    finals, _ = render_pages(text)
 
     os.makedirs(OUT_DIR, exist_ok=True)
     for i, page in enumerate(finals, 1):
@@ -362,7 +374,7 @@ def main() -> None:
     finals[0].save(pdf, save_all=True, append_images=finals[1:])
 
     print("Wrote {} page(s) to '{}/' (line height {}, space {}).".format(
-        len(sheet.pages), OUT_DIR, LINE_HEIGHT, SPACE_WIDTH))
+        len(finals), OUT_DIR, LINE_HEIGHT, SPACE_WIDTH))
 
 
 if __name__ == "__main__":

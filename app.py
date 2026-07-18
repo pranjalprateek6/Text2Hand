@@ -1,0 +1,146 @@
+"""Text2Hand web app: a small Flask wrapper around the renderer.
+
+Type text in the browser, get handwritten pages back. The heavy lifting is all
+in text_to_handwriting.py; this only handles requests, per-render options and
+serving the results.
+
+Renders are written to a temp directory keyed by a random id rather than kept
+in memory, because a full page is ~25 MB uncompressed and several requests
+would add up fast. The oldest renders are pruned as new ones arrive.
+
+Run:
+    pip install -r requirements.txt
+    python app.py
+Then open http://127.0.0.1:5000
+"""
+from __future__ import annotations
+
+import shutil
+import tempfile
+import threading
+import uuid
+from pathlib import Path
+
+from flask import Flask, abort, jsonify, render_template, request, send_file
+from PIL import Image
+
+import text_to_handwriting as t2h
+
+app = Flask(__name__)
+
+RENDER_ROOT = Path(tempfile.gettempdir()) / "text2hand_web"
+KEEP_RENDERS = 12          # prune older render folders beyond this many
+PREVIEW_WIDTH = 900        # downscaled width for the in-page preview
+MAX_CHARS = 20_000         # guard against a paste that would render forever
+
+# The renderer keeps its settings in module globals, so only one render at a
+# time may touch them.
+_render_lock = threading.Lock()
+
+
+def _prune() -> None:
+    """Keep only the most recent render folders."""
+    if not RENDER_ROOT.exists():
+        return
+    folders = sorted(
+        (p for p in RENDER_ROOT.iterdir() if p.is_dir()),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    for old in folders[KEEP_RENDERS:]:
+        shutil.rmtree(old, ignore_errors=True)
+
+
+def _render(text: str, ruled: bool, texture: bool, skew: bool):
+    """Render text to a fresh folder and return (render_id, page_count, missing)."""
+    with _render_lock:
+        t2h.RULED = ruled
+        t2h.MARGIN_RULE = ruled
+        t2h.PAPER_TEXTURE = texture
+        t2h.SCAN_SKEW = 0.7 if skew else 0
+        pages, missing = t2h.render_pages(text)
+
+    rid = uuid.uuid4().hex[:12]
+    folder = RENDER_ROOT / rid
+    folder.mkdir(parents=True, exist_ok=True)
+
+    for i, page in enumerate(pages, 1):
+        # JPEG for the preview: the paper grain makes PNG very inefficient here
+        # (roughly 5x larger) and this copy is only ever shown on screen.
+        preview = page.copy()
+        preview.thumbnail((PREVIEW_WIDTH, PREVIEW_WIDTH * 4), Image.LANCZOS)
+        preview.save(folder / f"preview_{i}.jpg", quality=82, optimize=True)
+        page.save(folder / f"page_{i}.png")
+    pages[0].save(folder / "handwriting.pdf", save_all=True, append_images=pages[1:])
+
+    _prune()
+    return rid, len(pages), missing
+
+
+def _safe(rid: str) -> Path:
+    """Resolve a render folder, refusing anything that is not a plain id."""
+    if not rid.isalnum():
+        abort(404)
+    folder = RENDER_ROOT / rid
+    if not folder.is_dir():
+        abort(404)
+    return folder
+
+
+@app.get("/")
+def index():
+    return render_template("index.html")
+
+
+@app.post("/api/render")
+def api_render():
+    data = request.get_json(silent=True) or {}
+    text = (data.get("text") or "").strip()
+    if not text:
+        return jsonify(error="Write some text first."), 400
+    if len(text) > MAX_CHARS:
+        return jsonify(error=f"That is over the {MAX_CHARS:,} character limit."), 400
+
+    try:
+        rid, count, missing = _render(
+            text,
+            ruled=bool(data.get("ruled", True)),
+            texture=bool(data.get("texture", True)),
+            skew=bool(data.get("skew", True)),
+        )
+    except Exception as exc:                       # surface the reason, do not 500 blindly
+        app.logger.exception("render failed")
+        return jsonify(error=f"Could not render: {exc}"), 500
+
+    return jsonify(id=rid, pages=count, missing=missing)
+
+
+@app.get("/preview/<rid>/<int:n>.jpg")
+def preview(rid: str, n: int):
+    path = _safe(rid) / f"preview_{n}.jpg"
+    if not path.exists():
+        abort(404)
+    return send_file(path, mimetype="image/jpeg")
+
+
+@app.get("/download/<rid>/handwriting.pdf")
+def download_pdf(rid: str):
+    path = _safe(rid) / "handwriting.pdf"
+    if not path.exists():
+        abort(404)
+    return send_file(path, mimetype="application/pdf",
+                     as_attachment=True, download_name="handwriting.pdf")
+
+
+@app.get("/download/<rid>/page_<int:n>.png")
+def download_page(rid: str, n: int):
+    path = _safe(rid) / f"page_{n}.png"
+    if not path.exists():
+        abort(404)
+    return send_file(path, mimetype="image/png",
+                     as_attachment=True, download_name=f"page_{n}.png")
+
+
+if __name__ == "__main__":
+    RENDER_ROOT.mkdir(parents=True, exist_ok=True)
+    app.run(debug=True)
