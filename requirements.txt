@@ -1,4 +1,13 @@
+# core
 Pillow>=10.0
 Flask>=3.0
 Markdown>=3.5
 beautifulsoup4>=4.12
+
+# PDF input (optional). Without it the app still runs; the Convert button
+# simply reports that the converter is not installed.
+pymupdf4llm>=0.0.17
+
+# Optional cloud converters, each also needs its API key in the environment.
+# llama-parse       # LLAMA_CLOUD_API_KEY
+# mistralai         # MISTRAL_API_KEY

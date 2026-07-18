@@ -40,6 +40,14 @@ python app.py
 
 Then open http://127.0.0.1:5000. Enter your text, hit **Generate**, then page through the result and download it as images or PDF. Rendering runs locally on the machine hosting the app, and the page loads no webfont, so it works offline.
 
+## PDF input
+
+Upload a PDF in the web app, pick a converter, optionally give a page range like `1-10`, and hit **Convert**. The PDF becomes Markdown *in the text box* rather than going straight to handwriting, because extraction is never perfect and the intermediate is readable: a wrong heading is a ten-second fix instead of a dead end. Review it, then Generate.
+
+Local extraction (PyMuPDF) is the default and the file stays on your machine. Cloud converters are opt-in, need their own API key in the environment, and upload the file to that provider. A PDF with no text layer is detected and reported, since a text extractor cannot read images of text.
+
+Typographic characters that the handwriting has no glyph for (curly quotes, en and em dashes, ellipses, ligatures) are folded to ASCII, so they render instead of silently vanishing.
+
 ## Markdown
 
 Tick **Markdown** in the web app, or pass a `.md` file on the command line, and the structure is rendered the way a person writing by hand would express it, since handwriting has no bold and no type sizes:
@@ -112,6 +120,7 @@ All of the realism controls are plain constants near the top of `text_to_handwri
 ```
 text_to_handwriting.py    the renderer, usable as a library or a CLI
 markdown_blocks.py        Markdown to drawable blocks
+converters.py             document to Markdown adapters (local and cloud)
 app.py                    Flask web app wrapping the renderer
 templates/, static/       the web app front end
 myfont/                   glyph images (one per ASCII code) and bg.png

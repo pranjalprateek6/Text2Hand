@@ -64,6 +64,27 @@ body {
   margin-bottom: 10px;
 }
 
+.label--spaced { margin-top: 22px; padding-top: 18px; border-top: 2px solid var(--line); }
+
+/* pdf upload */
+.upload { display: flex; flex-direction: column; gap: 10px; }
+.upload input[type="file"] { font-family: var(--font); font-size: 0.82rem; }
+.upload__row { display: flex; gap: 10px; flex-wrap: wrap; }
+
+.field {
+  font-family: var(--font);
+  font-size: 0.85rem;
+  color: var(--ink);
+  background: #fff;
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
+  padding: 7px 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.field--narrow { flex: 0 1 150px; }
+.field:focus { outline: none; box-shadow: 3px 3px 0 rgba(79, 70, 229, 0.25); }
+
 /* text input */
 .textarea {
   width: 100%;

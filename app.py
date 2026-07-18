@@ -15,6 +15,7 @@ Then open http://127.0.0.1:5000
 """
 from __future__ import annotations
 
+import os
 import shutil
 import tempfile
 import threading
@@ -25,6 +26,7 @@ from pathlib import Path
 from flask import Flask, abort, jsonify, render_template, request, send_file
 from PIL import Image
 
+import converters
 import text_to_handwriting as t2h
 
 app = Flask(__name__)
@@ -99,7 +101,52 @@ def _safe(rid: str) -> Path:
 
 @app.get("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", converters=converters.available())
+
+
+@app.post("/api/convert")
+def api_convert():
+    """PDF in, Markdown out. The user reviews and edits it before rendering.
+
+    Extraction is never perfect, so this deliberately stops at Markdown rather
+    than rendering straight through: the intermediate is readable, so a bad
+    heading is a ten-second fix instead of a dead end.
+    """
+    upload = request.files.get("file")
+    if upload is None or not upload.filename:
+        return jsonify(error="Choose a PDF first."), 400
+    if not upload.filename.lower().endswith(".pdf"):
+        return jsonify(error="Only PDF files are supported."), 400
+
+    name = converters_safe_name(upload.filename)
+    folder = RENDER_ROOT / f"upload_{uuid.uuid4().hex[:12]}"
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / name
+    upload.save(path)
+
+    try:
+        result = converters.to_markdown(
+            str(path),
+            converter=request.form.get("converter", "pymupdf"),
+            page_spec=request.form.get("pages", ""),
+        )
+    except (ValueError, RuntimeError) as exc:
+        return jsonify(error=str(exc)), 400
+    except Exception as exc:
+        app.logger.exception("convert failed")
+        return jsonify(error=f"Could not convert: {exc}"), 500
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+
+    return jsonify(markdown=result.markdown, converter=result.converter,
+                   pages_converted=result.pages_converted,
+                   total_pages=result.total_pages, scanned=result.scanned,
+                   truncated=result.truncated, notes=result.notes)
+
+
+def converters_safe_name(filename: str) -> str:
+    """Keep only a plain file name, never a path."""
+    return os.path.basename(filename).replace("\\", "_") or "upload.pdf"
 
 
 @app.post("/api/render")

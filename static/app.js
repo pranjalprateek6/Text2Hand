@@ -174,6 +174,53 @@ generate.addEventListener("click", async () => {
   }
 });
 
+// --- PDF to Markdown ------------------------------------------------------ #
+$("convert").addEventListener("click", async () => {
+  const file = $("pdfFile").files[0];
+  if (!file) {
+    showAlert("Choose a PDF first.");
+    return;
+  }
+
+  const body = new FormData();
+  body.append("file", file);
+  body.append("converter", $("converter").value);
+  body.append("pages", $("pageRange").value);
+
+  clearAlert();
+  const btn = $("convert");
+  btn.disabled = true;
+  btn.textContent = "Converting...";
+
+  try {
+    const res = await fetch("/api/convert", { method: "POST", body });
+    const data = await res.json();
+    if (!res.ok) {
+      showAlert(data.error || "Could not convert that PDF.");
+      return;
+    }
+
+    // The textarea is the review pane: extraction is never perfect, so the
+    // Markdown lands here to be corrected before it is rendered.
+    text.value = data.markdown;
+    $("markdown").checked = true;
+    updateCounter();
+
+    const bits = [
+      `Converted ${data.pages_converted} of ${data.total_pages} pages with ${data.converter}.`,
+      "Review the Markdown below, then Generate.",
+      ...(data.notes || []),
+    ];
+    showAlert(bits.join(" "), data.notes && data.notes.length ? "" : "note");
+    text.focus();
+  } catch (err) {
+    showAlert("Could not reach the server. Is it still running?");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Convert";
+  }
+});
+
 $("prevPage").addEventListener("click", () => showPage(view.current - 1));
 $("nextPage").addEventListener("click", () => showPage(view.current + 1));
 

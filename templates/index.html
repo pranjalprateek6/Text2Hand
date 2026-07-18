@@ -21,7 +21,28 @@
       <div class="workspace">
         <!-- input -->
         <section class="panel">
-          <label class="label" for="text">Your text</label>
+          <span class="label">Start from a PDF</span>
+          <div class="upload">
+            <input type="file" id="pdfFile" accept="application/pdf,.pdf" />
+            <div class="upload__row">
+              <select id="converter" class="field">
+                {% for c in converters %}
+                <option value="{{ c.name }}" {% if not c.ready %}disabled{% endif %}>
+                  {{ c.label }}{% if not c.ready %} - {{ c.reason }}{% endif %}
+                </option>
+                {% endfor %}
+              </select>
+              <input type="text" id="pageRange" class="field field--narrow"
+                     placeholder="pages, e.g. 1-10" />
+              <button class="btn" id="convert">Convert</button>
+            </div>
+            <p class="hint">
+              Converts to Markdown below so you can correct it before rendering.
+              Cloud converters upload the file to that provider.
+            </p>
+          </div>
+
+          <label class="label label--spaced" for="text">Your text</label>
           <textarea id="text" class="textarea" spellcheck="false"
                     placeholder="Type or paste what you want written out by hand."></textarea>
           <p class="counter" id="counter">0 characters</p>
