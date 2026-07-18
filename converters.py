@@ -43,6 +43,11 @@ _TYPOGRAPHY = {
     "→": "->", "←": "<-", "↔": "<->",                # arrows
     "½": "1/2", "¼": "1/4", "¾": "3/4",              # fractions
     "§": "Sec.", "¶": "", "†": "*", "‡": "**",
+    # Latin letters that decomposition cannot split, because they are distinct
+    # letters rather than a base plus an accent. Author names hit these.
+    "ł": "l", "Ł": "L", "ø": "o", "Ø": "O", "đ": "d", "Đ": "D",
+    "ħ": "h", "ı": "i", "æ": "ae", "Æ": "AE", "œ": "oe", "Œ": "OE",
+    "ß": "ss", "þ": "th", "Þ": "Th", "ð": "d", "Ð": "D",
 }
 
 
