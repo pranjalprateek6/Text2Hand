@@ -54,7 +54,7 @@ OUT_DIR = "out"
 DEFAULT_INPUT = "dummy.txt"
 
 # Page margins (px)
-MARGIN_L, MARGIN_T, MARGIN_R, MARGIN_B = 150, 180, 150, 200
+MARGIN_L, MARGIN_T, MARGIN_R, MARGIN_B = 150, 100, 150, 100
 
 # Metrics. Left as None => derived automatically from your glyph images, so the
 # engine adapts to whatever scale your handwriting was scanned at. Override with
@@ -62,14 +62,16 @@ MARGIN_L, MARGIN_T, MARGIN_R, MARGIN_B = 150, 180, 150, 200
 LINE_HEIGHT: int | None = None          # vertical distance between writing lines
 SPACE_WIDTH: int | None = None          # width of a space character
 
-# How big the hand writes. Applied once as each glyph is loaded, so every
-# derived metric follows from it and the source images are left alone. The
-# captured hand writes a 5.0 mm x-height, which is large: 0.70 brings it to
-# about 3.5 mm, closer to normal adult writing, and fits far more on a page.
-GLYPH_SCALE = 0.70
-# Word gap as a fraction of x-height. Print sits near 0.6; a little wider keeps
-# words apart once the letters get smaller.
-SPACE_RATIO = 0.85
+# Handwriting is specified in millimetres, the way ruled paper is, and turned
+# into pixels from the page width. Set any of these to None to fall back to
+# deriving it from the glyphs instead.
+PAGE_WIDTH_MM = 210.0                   # what the sheet is taken to be, A4 wide
+X_HEIGHT_MM: float | None = 3.0         # height of a c e m n o
+LINE_HEIGHT_MM: float | None = 9.0      # baseline to baseline
+WORD_GAP_MM: float | None = 4.0         # space between words
+
+GLYPH_SCALE = 1.0                       # set from X_HEIGHT_MM when metrics derive
+SPACE_RATIO = 0.85                      # only used when WORD_GAP_MM is None
 
 # --- Realism knobs. Set any to 0 to switch that effect off. -----------------
 ROT_JITTER = 2.2                        # max rotation per glyph, +/- degrees
@@ -84,7 +86,8 @@ DESCENDERS = set("gjpqy")               # tails that drop below the writing line
 DESCENDER_DROP = 0.25                   # fraction of glyph height pushed down
 RAISED = set("\"'*^`")                  # marks that hang high (quotes, apostrophe, * ^ `)
 RAISE_FRAC = 0.20                       # how far up, as a fraction of the line height
-CENTERED = set("+=<>~")                 # math symbols centred on the x-height axis
+CENTERED = set("+=<>~-")                # centred on the x-height axis; a hyphen
+                                        # left on the baseline reads as _
 X_HEIGHT = 0                            # derived from the glyphs at runtime
 
 INK_THRESHOLD = 240                     # luminance >= this is paper (transparent)
@@ -378,9 +381,38 @@ def add_paper_texture(page: Image.Image) -> Image.Image:
 # --------------------------------------------------------------------------- #
 # Metrics
 # --------------------------------------------------------------------------- #
+def _raw_x_height() -> int:
+    """x-height of the glyph files themselves, before GLYPH_SCALE is applied."""
+    found = []
+    for code in (97, 99, 101, 109, 110, 111, 114, 115, 117, 118, 119, 120, 122):
+        for path in sorted(glob.glob(os.path.join(FONT_DIR, "{}*.png".format(code)))):
+            rest = os.path.splitext(os.path.basename(path))[0][len(str(code)):]
+            if rest and rest[0].isdigit():
+                continue
+            grey = Image.open(path).convert("L")
+            box = grey.point(lambda p: 0 if p >= INK_THRESHOLD else 255 - p).getbbox()
+            if box:
+                found.append(box[3] - box[1])
+    return sorted(found)[len(found) // 2] if found else 1
+
+
+def px_per_mm() -> float:
+    with Image.open(BG_PATH) as page:
+        return page.width / PAGE_WIDTH_MM
+
+
 def derive_metrics() -> None:
     """Fill in LINE_HEIGHT / SPACE_WIDTH from the glyph images if not set."""
-    global LINE_HEIGHT, SPACE_WIDTH, X_HEIGHT
+    global LINE_HEIGHT, SPACE_WIDTH, X_HEIGHT, GLYPH_SCALE
+
+    # Size the glyphs before any of them are cached, since GLYPH_SCALE is
+    # applied as they load.
+    if X_HEIGHT_MM:
+        wanted = GLYPH_SCALE
+        GLYPH_SCALE = (X_HEIGHT_MM * px_per_mm()) / _raw_x_height()
+        if abs(wanted - GLYPH_SCALE) > 1e-6:
+            _cache.clear()
+
     heights, widths = [], []
     for code in range(33, 127):
         vs = glyph_variants(chr(code))
@@ -396,8 +428,11 @@ def derive_metrics() -> None:
     med_w = widths[len(widths) // 2]
 
     if LINE_HEIGHT is None:
-        # room for an ascender above the line and a descender below it, + gap
-        LINE_HEIGHT = int(tall * (1 + DESCENDER_DROP) * 1.15)
+        if LINE_HEIGHT_MM:
+            LINE_HEIGHT = max(1, round(LINE_HEIGHT_MM * px_per_mm()))
+        else:
+            # room for an ascender above the line and a descender below it, + gap
+            LINE_HEIGHT = int(tall * (1 + DESCENDER_DROP) * 1.15)
 
     # x-height, from letters that have neither ascender nor descender
     xs = []
@@ -411,7 +446,8 @@ def derive_metrics() -> None:
     # set from the x-height. Deriving it from the median glyph width instead
     # made it drift whenever the mix of wide and narrow letters changed.
     if SPACE_WIDTH is None:
-        SPACE_WIDTH = max(1, int(X_HEIGHT * SPACE_RATIO))
+        SPACE_WIDTH = (max(1, round(WORD_GAP_MM * px_per_mm())) if WORD_GAP_MM
+                       else max(1, int(X_HEIGHT * SPACE_RATIO)))
 
     # Word images and letter glyphs come from different sheets, written at
     # different sizes, so match them on x-height. For a word with no ascender

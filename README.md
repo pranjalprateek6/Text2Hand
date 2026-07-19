@@ -119,7 +119,7 @@ Output goes to the `out` folder:
 
 ## Limits
 
-Handwriting is far less dense than print, so a modest PDF becomes a lot of pages. How much text fits on one depends on how large the hand is, so it is measured from the glyphs rather than assumed: the bundled hand fits roughly 790 characters a page.
+Handwriting is far less dense than print, so a modest PDF becomes a lot of pages. How much text fits on one depends on how large the hand is, so it is measured from the glyphs rather than assumed: the bundled hand fits roughly 1,200 characters a page.
 
 - Rendering stops at **80 output pages**. That is the real cost, since each page is about 9 MB and a second of work, and the character equivalent is derived from the current handwriting.
 - Conversion stops at **50 PDF pages**, or sooner if the text would exceed that render limit. It stops on a page boundary and says how many pages it got through, so what comes out of Convert can always be rendered.
