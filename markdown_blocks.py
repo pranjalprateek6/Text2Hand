@@ -62,7 +62,11 @@ def _walk(node, out: list[Block], depth: int) -> None:
         img = node.find("img")
         text = _text(node)
         if img is not None and not text:
-            out.append(Block("image", img.get("alt") or "figure"))
+            # marker carries the source path: an image that resolves to a real
+            # file (a cropped equation) is traced onto the page instead of
+            # being stood in for by a drawn box.
+            out.append(Block("image", img.get("alt") or "figure",
+                             marker=img.get("src") or ""))
         elif text:
             out.append(Block("para", text))
 
@@ -89,7 +93,8 @@ def _walk(node, out: list[Block], depth: int) -> None:
                 out.append(Block("table", cells=cells))
 
     elif name == "img":
-        out.append(Block("image", node.get("alt") or "figure"))
+        out.append(Block("image", node.get("alt") or "figure",
+                         marker=node.get("src") or ""))
 
 
 def _list(node, out: list[Block], depth: int, ordered: bool) -> None:

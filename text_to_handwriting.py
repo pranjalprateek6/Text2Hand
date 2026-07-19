@@ -163,6 +163,14 @@ TABLE_PAD = 16                          # px of padding inside each cell
 TABLE_MIN_COL = 110                     # a column never squeezes below this
 FIGURE_LINES = 3                        # height of a figure box, in ruled lines
 
+# Cropped display equations arrive as images rendered from the PDF, and are
+# traced onto the page as ink rather than boxed, the way a person copies an
+# equation carefully into notes. The typeset strokes are thinner than a pen,
+# so the mask is thickened, and the type's x-height is mapped onto the hand's.
+EQ_DPI = 300                            # what converters render the crops at
+EQ_SOURCE_X_PT = 4.5                    # x-height of 10pt Computer Modern, in points
+EQ_MAX_WIDTH = 0.86                     # of the writing column
+
 # --------------------------------------------------------------------------- #
 # Glyph loading  (prepare once, cache, discover variants)
 # --------------------------------------------------------------------------- #
@@ -610,6 +618,53 @@ class Sheet:
         self.baseline = bottom
         self.gap(1)
 
+    def paste_equation(self, path: str) -> bool:
+        """Trace a cropped equation image onto the page as ink.
+
+        Returns False if the file is unusable, so the caller can fall back to
+        the figure box. The crop is typeset print: its alpha comes from ink
+        darkness exactly like a glyph's, the strokes are thickened toward pen
+        weight, and the whole thing is tilted a fraction of a degree so it
+        sits with the writing rather than on top of it.
+        """
+        from PIL import ImageFilter
+
+        try:
+            grey = Image.open(path).convert("L")
+        except OSError:
+            return False
+        alpha = grey.point(lambda p: 0 if p >= 200 else 255 - p)
+        box = alpha.getbbox()
+        if not box:
+            return False
+        alpha = alpha.crop(box).filter(ImageFilter.MaxFilter(3))
+
+        # map the type's x-height onto the hand's, then cap to the column
+        scale = X_HEIGHT / (EQ_DPI / 72.0 * EQ_SOURCE_X_PT)
+        column = self.right - MARGIN_L
+        width = alpha.width * scale
+        if width > column * EQ_MAX_WIDTH:
+            scale *= column * EQ_MAX_WIDTH / width
+        alpha = alpha.resize((max(1, round(alpha.width * scale)),
+                              max(1, round(alpha.height * scale))), Image.LANCZOS)
+
+        ink = Image.new("RGBA", alpha.size, tuple(INK_COLOR or (20, 26, 66)) + (0,))
+        ink.putalpha(alpha)
+        ink = ink.rotate(random.uniform(-0.8, 0.8), resample=Image.BICUBIC, expand=True)
+
+        lines = max(1, math.ceil(ink.height / LINE_HEIGHT))
+        if self.baseline + LINE_HEIGHT * lines > self.height - MARGIN_B:
+            self._new_page()
+
+        # centred in the column, vertically centred on the lines it occupies
+        x = MARGIN_L + (column - ink.width) // 2 + random.randint(-12, 12)
+        top = self.baseline - X_HEIGHT
+        y = top + (LINE_HEIGHT * lines - ink.height) // 2
+        self.page.paste(ink, (int(x), int(y)), ink)
+        self.baseline += LINE_HEIGHT * lines
+        self.gap(1)
+        return True
+
     def vrule(self, x: float, y0: float, y1: float, width: int) -> None:
         """A wobbly vertical pen stroke, for table column dividers."""
         steps = max(2, int((y1 - y0) / 70))
@@ -979,7 +1034,11 @@ def render_markdown(md_text: str) -> Sheet:
 
         if block.kind == "image":
             track(block.text)
-            sheet.figure_box(block.text or "figure")
+            # An image whose source is a real file gets traced onto the page;
+            # anything else keeps the drawn stand-in box.
+            src = block.marker
+            if not (src and os.path.exists(src) and sheet.paste_equation(src)):
+                sheet.figure_box(block.text or "figure")
             continue
 
         if block.kind == "heading":

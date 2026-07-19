@@ -38,6 +38,7 @@ RENDER_ROOT = Path(tempfile.gettempdir()) / "text2hand_web"
 # A full-res page is roughly 9 MB, and a long document can be 50+ pages, so
 # keeping many old renders around costs gigabytes. Keep only a few.
 KEEP_RENDERS = 5
+KEEP_EQ_ASSETS = 8      # equation-crop folders, one per PDF conversion
 PREVIEW_WIDTH = 900        # downscaled width for the in-page preview
 THUMB_WIDTH = 200          # downscaled width for the page-strip thumbnails
 # Rendering runs on a worker thread with progress, so a long document no longer
@@ -61,7 +62,13 @@ _render_lock = threading.Lock()
 
 
 def _prune() -> None:
-    """Keep only the most recent render folders."""
+    """Keep only the most recent render folders, and a few equation crops.
+
+    Equation assets are pruned on their own clock: they are referenced by
+    Markdown sitting in someone's editor, which outlives the renders made from
+    it, so tying their lifetime to the render count would break the images out
+    from under an edit session five renders in.
+    """
     if not RENDER_ROOT.exists():
         return
     folders = sorted(
@@ -69,7 +76,9 @@ def _prune() -> None:
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
-    for old in folders[KEEP_RENDERS:]:
+    renders = [p for p in folders if not p.name.startswith("eq_")]
+    assets = [p for p in folders if p.name.startswith("eq_")]
+    for old in renders[KEEP_RENDERS:] + assets[KEEP_EQ_ASSETS:]:
         shutil.rmtree(old, ignore_errors=True)
 
 
@@ -212,12 +221,16 @@ def api_convert():
     page_spec = request.form.get("pages", "")
 
     def work(progress):
+        # Display equations are cropped into this folder and referenced from
+        # the Markdown; it lives beyond the upload so the render can find them.
+        eq_dir = RENDER_ROOT / f"eq_{uuid.uuid4().hex[:12]}"
         try:
             # Hand the renderer's own limit down, so conversion can never
             # produce more text than Generate would accept.
             result = converters.to_markdown(str(path), converter=converter,
                                             page_spec=page_spec, progress=progress,
-                                            max_chars=render_limit())
+                                            max_chars=render_limit(),
+                                            assets_dir=str(eq_dir))
         finally:
             shutil.rmtree(folder, ignore_errors=True)
 
