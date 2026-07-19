@@ -174,7 +174,21 @@ All of the controls are plain constants near the top of `text_to_handwriting.py`
 
 ## Tests
 
-`tests/` holds the Markdown fixtures used to check the renderer: [fixture.md](tests/fixture.md) covers headings, nested lists, quotes, rules and figures, and [table.md](tests/table.md) covers table layout.
+[tests/regression.py](tests/regression.py) checks the renderer, the converters and the app's limits: glyph anatomy and placement, page metrics, Markdown blocks, quote direction, Greek and maths coverage, equation excision, and that no equation placeholder survives into the text. It exits non-zero if anything fails, so it can gate a commit.
+
+```
+python tests/regression.py
+```
+
+A few checks want a real paper, which is too big to keep in the repository. Those are skipped rather than failed when the file is not there. It looks in `tests/fixtures/`, in your Downloads, or wherever you point it:
+
+```
+T2H_FIXTURES=/path/to/papers python tests/regression.py
+```
+
+It wants `attention.pdf` (Attention Is All You Need) and `SOLVING A MILLION-STEP LLM TASK WITH ZERO ERRORS.pdf`. Everything that does not need a PDF still runs without them.
+
+`tests/` also holds the Markdown fixtures used to check layout by eye: [fixture.md](tests/fixture.md) covers headings, nested lists, quotes, rules and figures, and [table.md](tests/table.md) covers table layout.
 
 ```
 python text_to_handwriting.py tests/fixture.md
@@ -191,7 +205,7 @@ app.py                    Flask web app wrapping the renderer
 templates/, static/       the web app front end
 myfont/                   glyph images (one per ASCII code) and bg.png
 tools/                    generators for the composed and drawn glyphs
-tests/                    Markdown fixtures
+tests/                    regression.py, plus Markdown fixtures
 samples/                  the demo shown above
 dummy.txt                 default sample input text
 Text To Handwriting.py    the original minimal version, kept for reference
