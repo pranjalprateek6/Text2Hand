@@ -16,6 +16,7 @@ const PAGE_SIZE = window.PAGE_SIZE || 1200;
 const state = {
   id: null, pages: 0, page: 1,
   file: null,
+  statusLine: null,   // what the bar status returns to after a job ends
   rendered: null,     // JSON of what is on screen, to skip pointless re-renders
   timer: null,        // auto-render debounce
   busy: false,
@@ -214,7 +215,8 @@ async function render() {
     state.rendered = JSON.stringify(body);
     show(1);
     $("exportBtn").disabled = false;
-    $("status").textContent = `${done.pages} page${done.pages === 1 ? "" : "s"} · ${body.text.length.toLocaleString()} chars`;
+    state.statusLine = `${done.pages} page${done.pages === 1 ? "" : "s"} · ${body.text.length.toLocaleString()} chars`;
+    $("status").textContent = state.statusLine;
     remember(done, body);
 
     if (done.missing && done.missing.length) {
@@ -234,7 +236,7 @@ async function render() {
 function after() {
   if (state.id) { $("page").hidden = false; $("pager").hidden = state.pages < 2; }
   else $("empty").hidden = false;
-  $("status").textContent = "Ready";
+  $("status").textContent = state.statusLine || "Ready";
   $("status").classList.remove("is-live");
 }
 
@@ -343,14 +345,22 @@ function drawLibrary() {
       `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>` +
       `</span></span></span>`;
     card.querySelector(".cardlet__title").textContent = e.title;   // never innerHTML user text
+    const drop = () => {
+      localStorage.setItem(LIB_KEY, JSON.stringify(lib().filter((x) => x.ts !== e.ts)));
+      drawLibrary();
+    };
     card.addEventListener("click", (ev) => {
-      if (ev.target.closest(".cardlet__del")) {
-        const rest = lib().filter((x) => x.ts !== e.ts);
-        localStorage.setItem(LIB_KEY, JSON.stringify(rest));
-        drawLibrary();
-        return;
-      }
+      if (ev.target.closest(".cardlet__del")) { drop(); return; }
       openEntry(e);
+    });
+    // the delete control sits inside the card button, so Enter and Space
+    // would activate the card and open the entry instead of deleting it
+    card.querySelector(".cardlet__del").addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" || ev.key === " ") {
+        ev.preventDefault();
+        ev.stopPropagation();
+        drop();
+      }
     });
     grid.appendChild(card);
   });
@@ -360,6 +370,11 @@ function openEntry(e) {
   $("text").value = e.text;
   setOptions(e.opts, e.ink);
   count();
+  // restoring options fires the same handlers as clicking them, and each of
+  // those calls touched(); with Auto on that scheduled a pointless re-render
+  // of a document whose render already exists
+  clearTimeout(state.timer);
+  state.rendered = JSON.stringify(payload());
   showView("write");
   // The server may have pruned this render, so probe before trusting it.
   const img = new Image();
@@ -367,13 +382,15 @@ function openEntry(e) {
     state.id = e.id; state.pages = e.pages; state.rendered = JSON.stringify(payload());
     show(1);
     $("exportBtn").disabled = false;
-    $("status").textContent = `${e.pages} page${e.pages === 1 ? "" : "s"} · ${e.chars.toLocaleString()} chars`;
+    state.statusLine = `${e.pages} page${e.pages === 1 ? "" : "s"} · ${e.chars.toLocaleString()} chars`;
+    $("status").textContent = state.statusLine;
   };
   img.onerror = () => {
     state.id = null; state.pages = 0; state.rendered = null;
     $("page").hidden = true; $("pager").hidden = true;
     $("empty").hidden = false;
     $("exportBtn").disabled = true;
+    state.statusLine = null;
     $("status").textContent = "Ready";
     note("This render has been cleaned up on the server. Press Render to make it again.");
   };
@@ -400,7 +417,13 @@ document.addEventListener("click", (e) => {
 
 function takeFile(file) {
   if (!file) return;
-  if (!file.name.toLowerCase().endsWith(".pdf")) { note("That is not a PDF.", true); return; }
+  if (!file.name.toLowerCase().endsWith(".pdf")) {
+    // the note lives in the compose view; from the library the error would
+    // land in a hidden panel and the drop would appear to do nothing
+    showView("write");
+    note("That is not a PDF.", true);
+    return;
+  }
   state.file = file;
   $("pdfName").textContent = file.name;
   $("pdf").hidden = false;
@@ -454,7 +477,7 @@ $("read").addEventListener("click", async () => {
   } finally {
     $("read").disabled = false;
     $("read").textContent = "Read it";
-    $("status").textContent = "Ready";
+    $("status").textContent = state.statusLine || "Ready";
     $("status").classList.remove("is-live");
   }
 });

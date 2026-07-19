@@ -149,12 +149,18 @@ def inspect(path: str) -> tuple[int, bool]:
     """Return (page_count, looks_scanned)."""
     import pymupdf
 
-    with pymupdf.open(path) as doc:
-        total = doc.page_count
-        probe = min(SCAN_PROBE_PAGES, total)
-        # Same cheap heuristic as the reference pipeline: no extractable text on
-        # the first few pages means it is images of text, not text.
-        has_text = any(doc.load_page(i).get_text().strip() for i in range(probe))
+    try:
+        with pymupdf.open(path) as doc:
+            total = doc.page_count
+            probe = min(SCAN_PROBE_PAGES, total)
+            # Same cheap heuristic as the reference pipeline: no extractable
+            # text on the first few pages means it is images of text, not text.
+            has_text = any(doc.load_page(i).get_text().strip() for i in range(probe))
+    except Exception:
+        # pymupdf's own message includes the server's temp file path, which
+        # must not be shown to a browser
+        raise ValueError("That file could not be opened as a PDF. "
+                         "It may be damaged, or not really a PDF.")
     return total, not has_text
 
 
