@@ -62,6 +62,15 @@ MARGIN_L, MARGIN_T, MARGIN_R, MARGIN_B = 150, 180, 150, 200
 LINE_HEIGHT: int | None = None          # vertical distance between writing lines
 SPACE_WIDTH: int | None = None          # width of a space character
 
+# How big the hand writes. Applied once as each glyph is loaded, so every
+# derived metric follows from it and the source images are left alone. The
+# captured hand writes a 5.0 mm x-height, which is large: 0.70 brings it to
+# about 3.5 mm, closer to normal adult writing, and fits far more on a page.
+GLYPH_SCALE = 0.70
+# Word gap as a fraction of x-height. Print sits near 0.6; a little wider keeps
+# words apart once the letters get smaller.
+SPACE_RATIO = 0.85
+
 # --- Realism knobs. Set any to 0 to switch that effect off. -----------------
 ROT_JITTER = 2.2                        # max rotation per glyph, +/- degrees
 SCALE_JITTER = 0.05                     # max size change per glyph, +/- fraction
@@ -159,6 +168,9 @@ def _prepare(path: str) -> Image.Image:
     bbox = alpha.getbbox()                # crop to actual ink so spacing is tight
     if bbox:
         im = im.crop(bbox)
+    if GLYPH_SCALE != 1.0:                # resize once here, so all metrics follow
+        im = im.resize((max(1, round(im.width * GLYPH_SCALE)),
+                        max(1, round(im.height * GLYPH_SCALE))), Image.LANCZOS)
     if INK_COLOR is not None:
         # Recolor the stroke to a single pen color, keeping alpha (which still
         # encodes stroke darkness), so faint strokes read as lighter ink.
@@ -386,8 +398,6 @@ def derive_metrics() -> None:
     if LINE_HEIGHT is None:
         # room for an ascender above the line and a descender below it, + gap
         LINE_HEIGHT = int(tall * (1 + DESCENDER_DROP) * 1.15)
-    if SPACE_WIDTH is None:
-        SPACE_WIDTH = max(1, int(med_w * 0.72))
 
     # x-height, from letters that have neither ascender nor descender
     xs = []
@@ -397,6 +407,12 @@ def derive_metrics() -> None:
             xs += [v.height for v in vs]
     X_HEIGHT = sorted(xs)[len(xs) // 2] if xs else int(tall * 0.5)
 
+    # The word gap reads relative to letter size, not to letter width, so it is
+    # set from the x-height. Deriving it from the median glyph width instead
+    # made it drift whenever the mix of wide and narrow letters changed.
+    if SPACE_WIDTH is None:
+        SPACE_WIDTH = max(1, int(X_HEIGHT * SPACE_RATIO))
+
     # Word images and letter glyphs come from different sheets, written at
     # different sizes, so match them on x-height. For a word with no ascender
     # or descender the baseline offset is the x-height.
@@ -404,7 +420,11 @@ def derive_metrics() -> None:
     if WORD_SCALE is None:
         flat = ("on", "one", "or", "no", "so", "we", "as", "is", "in", "are",
                 "was", "us", "an", "a", "our", "see", "some", "were", "new")
-        heights = sorted(w[1] for w in (word_image(f) for f in flat) if w)
+        # Use the image height, not the baseline offset. With no ascender or
+        # descender the two ought to be the same, but the baseline is found by
+        # the steepest fall in ink, which sits a little above the true foot of
+        # the letters. Measuring from it made every word render ~12% too large.
+        heights = sorted(w[0].height for w in (word_image(f) for f in flat) if w)
         WORD_SCALE = (X_HEIGHT / heights[len(heights) // 2]) if heights else 1.0
 
 
