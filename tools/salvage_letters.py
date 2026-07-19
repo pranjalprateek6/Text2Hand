@@ -1,19 +1,35 @@
-"""Recover letters missing from the letter sheet by cutting them out of words.
+"""Recover letters the letter sheet did not capture well, from elsewhere in the
+same hand.
 
-v and w were skipped when the letter sheet was written, so they were the only
-two characters still coming from a different hand. Cutting a letter out of
-joined writing is normally unreliable, at 43% of words separable, but it is
-safe under two conditions that hold here:
+Two cases needed this:
+
+  * v and w were skipped when the letter sheet was written, so they were the
+    only two still coming from a different hand.
+  * x was written on the sheet as a single curl that reads as a u. There is no
+    crossed lowercase x anywhere in the captured writing, so it is taken from
+    the capital X and scaled down to x-height instead. That is a real shape
+    from the same hand, and a lowercase letter that reads as a different one
+    is worse than a slightly formal x.
+
+f looked like it belonged here too, since it read as a J. It did not: the sheet
+glyph was right and the renderer was placing it wrong, sitting its tail on the
+rule instead of below it. Adding f to DESCENDERS fixed it. The crossed f in the
+word "for" was the obvious salvage source and is a worse glyph, because the word
+image clips its tail at the bottom edge.
+
+Cutting a letter out of joined writing is normally unreliable, at 43% of words
+separable, but it is safe under two conditions that hold here:
 
   * the word splits into exactly as many shapes as it has letters, so the
     position of each letter is unambiguous, and
   * the result is looked at before it is kept.
 
-Word images are written smaller than the letter sheet, so each salvaged letter
-is scaled by the same x-height ratio the renderer uses to mix the two.
+Word images and glyph files are written at different sizes, so both sources are
+rescaled onto the glyph files' own x-height. Everything here writes glyph files
+at their stored size, before the renderer applies GLYPH_SCALE.
 
 Run from anywhere:   python tools/salvage_letters.py
-Writes:              myfont/118*.png (v) and myfont/119*.png (w)
+Writes:              myfont/118*.png (v), 119*.png (w), 120.png (x)
 """
 from __future__ import annotations
 
@@ -37,6 +53,11 @@ SALVAGE = [
     ("we", 0, "w"), ("was", 0, "w"), ("will", 0, "w"), ("woman", 0, "w"),
     ("have", 2, "v"), ("given", 2, "v"),
 ]
+
+# Lowercase letters taken from their capital, scaled to x-height. Only for
+# letters whose two cases are the same shape, where the sheet's lowercase is
+# unusable.
+FROM_CAPITAL = [("x", "X")]
 
 INK_LEVEL = 150
 MIN_BLOB = 60
@@ -85,10 +106,35 @@ def join_near(boxes: list[list[int]]) -> list[list[int]]:
     return merged
 
 
+def ink_height(image: Image.Image, threshold: int) -> int:
+    grey = image.convert("L")
+    box = grey.point(lambda p: 0 if p >= threshold else 255 - p).getbbox()
+    return (box[3] - box[1]) if box else 0
+
+
+def x_height_of_files(t2h, skip: str) -> int:
+    """Median x-height of the stored glyph files, ignoring one letter.
+
+    The letter being replaced has to be left out, or a bad glyph helps set the
+    size its own replacement is measured against.
+    """
+    heights = []
+    for letter in "acemnorsuvwz":
+        if letter == skip:
+            continue
+        path = FONT / f"{ord(letter)}.png"
+        if path.exists():
+            heights.append(ink_height(Image.open(path), t2h.INK_THRESHOLD))
+    heights = sorted(h for h in heights if h)
+    return heights[len(heights) // 2] if heights else 1
+
+
 def main() -> None:
     import text_to_handwriting as t2h
     t2h.derive_metrics()
-    scale = t2h.WORD_SCALE or 1.0        # words are written smaller than letters
+    # Word images and glyph files are written at different sizes. Each is
+    # rendered at its own scale, so the ratio of the two converts between them.
+    scale = (t2h.WORD_SCALE or 1.0) / (t2h.GLYPH_SCALE or 1.0)
 
     index = json.loads((WORDS / "index.json").read_text(encoding="utf-8"))
     seen: dict[str, int] = {}
@@ -116,7 +162,25 @@ def main() -> None:
         seen[letter] = n + 1
         print(f"  {letter} from {word!r} -> myfont/{name}")
 
-    print(f"scaled by {scale:.2f} to match the letter sheet")
+    print(f"words scaled by {scale:.2f} to match the letter sheet")
+
+    for letter, capital in FROM_CAPITAL:
+        source = FONT / f"{ord(capital)}.png"
+        if not source.exists():
+            print(f"  skip {letter}: no capital {capital}")
+            continue
+        image = Image.open(source).convert("RGB")
+        target = x_height_of_files(t2h, skip=letter)
+        have = ink_height(image, t2h.INK_THRESHOLD)
+        if not have:
+            print(f"  skip {letter}: capital {capital} has no ink")
+            continue
+        ratio = target / have
+        image = image.resize((max(1, round(image.width * ratio)),
+                              max(1, round(image.height * ratio))), Image.LANCZOS)
+        image.save(FONT / f"{ord(letter)}.png")
+        print(f"  {letter} from capital {capital} -> myfont/{ord(letter)}.png "
+              f"(scaled {ratio:.2f} to x-height {target})")
 
 
 if __name__ == "__main__":

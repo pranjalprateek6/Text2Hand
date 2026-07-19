@@ -82,7 +82,10 @@ KERN_JITTER = (-3, 4)                   # extra space between letters (min, max)
 MARGIN_JITTER = 6                        # ragged left margin, px of random indent
 INK_MIN, INK_MAX = 0.78, 1.0            # per-glyph opacity (pen-pressure) range
 
-DESCENDERS = set("gjpqy")               # tails that drop below the writing line
+# f is here because this hand writes it with a tail below the line. Left out, it
+# was aligned like an x-height letter, which sat the tail on the rule and made
+# every f read as a t.
+DESCENDERS = set("fgjpqy")              # tails that drop below the writing line
 DESCENDER_DROP = 0.25                   # fraction of glyph height pushed down
 RAISED = set("\"'*^`")                  # marks that hang high (quotes, apostrophe, * ^ `)
 RAISE_FRAC = 0.20                       # how far up, as a fraction of the line height

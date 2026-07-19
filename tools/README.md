@@ -41,12 +41,23 @@ ordinary prose and single letters come from boxes.
 python tools/salvage_letters.py
 ```
 
-Recovers a letter that never made it onto the letter sheet by cutting it out of
-a word that contains it. Only safe where the word splits into exactly as many
-shapes as it has letters, so the position is unambiguous, and the result should
-still be looked at. `v` and `w` came from `we`, `was`, `will`, `woman`, `have`
-and `given` this way, which is why they have more variants than any letter that
-was written once in a box.
+Recovers a letter the letter sheet did not capture usably, from elsewhere in
+the same hand. Cutting one out of a word is only safe where the word splits
+into exactly as many shapes as it has letters, so the position is unambiguous,
+and the result should still be looked at. `v` and `w` came from `we`, `was`,
+`will`, `woman`, `have` and `given` this way, which is why they have more
+variants than any letter that was written once in a box.
+
+`x` could not be recovered from a word, because this hand writes it as a single
+curl that reads as a `u` in every word containing it. It is taken from the
+capital `X` scaled down to x-height instead: still a real shape from the same
+hand, and a lowercase letter that reads as a different letter is worse than a
+slightly formal one.
+
+`f` looked like the same kind of problem, since it rendered as a `J`. It was
+not. The sheet glyph was correct and the renderer was placing it wrong, sitting
+its tail on the rule instead of below it, so adding `f` to `DESCENDERS` fixed it
+without touching the glyph. Worth checking placement before blaming a glyph.
 
 ## Drawn symbols
 
