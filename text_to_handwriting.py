@@ -1357,6 +1357,11 @@ def render_pages(text: str, as_markdown: bool = False,
         _report_finish("skew", len(sheet.pages))
 
     finals = list(sheet.pages)
+    # The sheet's own list is dropped here, so `finals` is the only thing
+    # holding a page. Without this the skew below cannot free anything as it
+    # goes: every unrotated page stays alive in the sheet while its rotated
+    # copy is built beside it, and a 29 page render peaks 900 MB higher.
+    sheet.pages.clear()
     if SCAN_SKEW and finals:
         fill = PAPER_FILL if PAPER_TEXTURE else (255, 255, 255)
         # Angles are drawn here, on one thread, rather than inside the workers.
@@ -1375,11 +1380,19 @@ def render_pages(text: str, as_markdown: bool = False,
         # but one idle through the slowest step in the pipeline.
         with ThreadPoolExecutor(max_workers=threads) as pool:
             if len(finals) >= threads:
-                def whole(i: int) -> tuple[int, Image.Image]:
-                    return i, finals[i].rotate(angles[i], resample=Image.BICUBIC,
-                                               expand=False, fillcolor=fill)
-                for i, page in pool.map(whole, range(len(finals))):
-                    finals[i] = page
+                def whole(i: int) -> Image.Image:
+                    return finals[i].rotate(angles[i], resample=Image.BICUBIC,
+                                            expand=False, fillcolor=fill)
+                # A thread at a time, but only a poolful of pages in flight. A
+                # page is 30 MB and rotating one makes a second copy of it, so
+                # handing the whole document to the pool at once meant every
+                # rotated page piling up beside its original: 900 MB of extra
+                # peak on a 29 page render. Each result is put straight back
+                # over its source, which lets the original go.
+                for start in range(0, len(finals), threads):
+                    batch = range(start, min(start + threads, len(finals)))
+                    for i, page in zip(batch, pool.map(whole, batch)):
+                        finals[i] = page
             else:
                 bands = max(1, -(-threads // len(finals)))
                 jobs = [(i, y0, fn)
