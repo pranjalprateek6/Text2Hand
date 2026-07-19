@@ -77,7 +77,6 @@ img { max-width: 100%; height: auto; display: block; }
 }
 .eyebrow::before { content: ""; width: 32px; height: 1px; background: color-mix(in oklch, var(--foreground) 30%, transparent); }
 .mono { font-family: var(--font-mono); }
-.dim { color: var(--muted-foreground); }
 
 /* --------------------------------------------------------------------------
    Buttons: pills, as the template ships them

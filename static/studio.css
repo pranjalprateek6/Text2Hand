@@ -22,7 +22,6 @@ body { overflow: hidden; height: 100vh; }
 .bar__home { display: flex; align-items: baseline; gap: 5px; transition: opacity 200ms var(--ease); }
 .bar__home:hover { opacity: 0.7; }
 .bar__wordmark { font-family: var(--font-display); font-size: 22px; letter-spacing: -0.01em; }
-.brandmark { display: none; }               /* the wordmark carries the brand now */
 
 .bar__tabs {
   display: flex; gap: 2px;

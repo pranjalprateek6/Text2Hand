@@ -63,17 +63,17 @@ Pillow and Flask are the only hard requirements. Markdown and beautifulsoup4 are
 python app.py
 ```
 
-Then open http://127.0.0.1:5000.
+Then open http://127.0.0.1:5000. The landing page is at `/` and the studio, the tool itself, at `/studio`.
 
-Type or paste text, tick the options you want, and hit **Generate**. Converting and rendering both run on a worker thread and report progress on their button (`Reading page 3 of 19...`, `Writing page 7...`), so neither hangs waiting on a request.
+Type or paste text into the studio's editor, pick the paper options and one of four pens, and press **Render**. Converting and rendering both run on a worker thread and report their stage live (`Reading page 3 of 19...`, `Writing page 7...`), so neither hangs a request. Turn on **Auto** and the pages re-render on their own when you stop typing.
 
-The result panel is a viewer, not a wall of images:
+The output pane is a viewer, not a wall of images:
 
-- one page at a time with a `3 / 12` counter, prev and next buttons, and **arrow key** paging
-- a thumbnail strip for jumping straight to a page
-- downloads for **this page** as PNG or PDF, **all pages** as one PDF, or a **ZIP** of everything
+- one page at a time with a `3 / 12` pager and **arrow key** paging
+- **Export** for this page as PNG or PDF, all pages as one PDF, or a ZIP of everything
+- a **Library** of everything rendered from this browser, with each entry restoring its text, options and ink when opened
 
-Rendering runs locally on the machine hosting the app, and the page loads no webfont, so it works offline. Cloud PDF converters are the one exception and are clearly marked.
+Rendering runs locally on the machine hosting the app. The cloud PDF converters are the one exception, and are clearly marked.
 
 ## PDF input
 

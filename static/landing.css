@@ -1,6 +1,6 @@
 /* Landing layout, after the Optimus template: a nav that condenses into a
    floating pill, a full-height hero with a serif display headline and a
-   rotating word, faint grid lines, an ASCII sphere, a stats marquee, numbered
+   rotating word, faint grid lines, an ASCII page writing itself, a stats marquee, numbered
    feature rows with animated SVG visuals, a stepped how-it-works with code,
    and a bordered CTA with a cursor spotlight. */
 
@@ -54,7 +54,7 @@ section { position: relative; }
   display: flex; flex-direction: column; justify-content: center;
   overflow: hidden;
 }
-.hero__sphere {
+.hero__art {
   position: absolute;
   right: -120px; top: 50%;
   transform: translateY(-50%);
@@ -220,6 +220,6 @@ section { position: relative; }
 
 @media (max-width: 700px) {
   .hero__in { padding: 140px 0 220px; }
-  .hero__sphere { opacity: 0.2; }
+  .hero__art { opacity: 0.2; }
   .codecard { position: static; }
 }
