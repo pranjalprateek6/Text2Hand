@@ -1,150 +1,169 @@
 "use strict";
 
-/* Text2Hand — the reference build's effects, ported to vanilla.
+/* Text2Hand — the Optimus template's behaviours, without React.
  *
- * The original runs these on framer-motion and GSAP ScrollTrigger. Nothing
- * here needs either: the flap is a timer per tile, the scramble is one rAF
- * loop, the reveals are an IntersectionObserver, and the noise is a canvas
- * painted every other frame. No dependencies, no build.
- *
- * Every effect degrades to its finished state under prefers-reduced-motion,
- * and to its finished state if it never runs at all.
+ * Each effect is a copy of what the original's hooks do: the nav condenses
+ * into a floating pill after 20px of scroll, the hero's last word swaps every
+ * 2.5s with a staggered per-character blur entrance, the how-it-works step
+ * advances on a timer (a click pins it), the ASCII sphere is a canvas of
+ * block characters projected from a rotating sphere, and reveals ride an
+ * IntersectionObserver. Everything settles to its finished state under
+ * reduced motion or when frames never run.
  */
 
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-/* ------------------------------------------------------------- split flap */
+/* ----------------------------------------------------------------- navbar */
 
-const FLAP_SET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-
-function splitFlap(host) {
-  const text = (host.dataset.flap || "").toUpperCase();
-  const speed = Number(host.dataset.flapSpeed || 80);
-  host.textContent = "";
-  host.setAttribute("aria-label", text);
-
-  const tiles = [...text].map((ch) => {
-    const cell = document.createElement("span");
-    cell.className = "flap__c" + (ch === " " ? " flap__c--space" : "");
-    cell.setAttribute("aria-hidden", "true");
-    cell.textContent = ch === " " ? "" : ch;
-    host.appendChild(cell);
-    return { cell, ch };
-  });
-
-  if (REDUCED) return;
-
-  tiles.forEach(({ cell, ch }, i) => {
-    if (ch === " ") return;
-    // Each tile flips through the charset, then settles. Later tiles run
-    // longer, so the word resolves left to right like a departure board.
-    const settleAfter = 8 + i * 3;
-    let n = 0;
-    cell.classList.add("is-flipping");
-    cell.textContent = FLAP_SET[(Math.random() * FLAP_SET.length) | 0];
-
-    setTimeout(() => {
-      const timer = setInterval(() => {
-        if (n >= settleAfter) {
-          clearInterval(timer);
-          cell.textContent = ch;
-          cell.classList.remove("is-flipping");
-          return;
-        }
-        cell.textContent = FLAP_SET[(Math.random() * FLAP_SET.length) | 0];
-        n++;
-      }, speed);
-    }, i * 120);
-  });
+function shrinkNav() {
+  const nav = document.querySelector("[data-nav]");
+  if (!nav) return;
+  const apply = () => nav.classList.toggle("is-scrolled", scrollY > 20);
+  addEventListener("scroll", apply, { passive: true });
+  apply();
 }
 
-/* --------------------------------------------------------------- scramble */
+/* ------------------------------------------------------------ word rotate */
 
-const GLYPHS = "!@#$%^&*()_+-=<>?/\\[]{}Xx";
+function wordRotator(host) {
+  const words = (host.dataset.words || "").split(",").map((w) => w.trim()).filter(Boolean);
+  if (!words.length) return;
 
-function scrambleOnHover(el) {
-  if (REDUCED) return;
-  const final = el.textContent;
-  let raf = null;
+  const swap = (word) => {
+    host.textContent = "";
+    [...word].forEach((ch, i) => {
+      const s = document.createElement("span");
+      s.className = "char-in";
+      s.style.animationDelay = `${i * 50}ms`;
+      s.textContent = ch;
+      host.appendChild(s);
+    });
+  };
 
-  // hover starts at the button's edge, not when the pointer reaches the text
-  const trigger = el.closest("a, button") || el;
-  trigger.addEventListener("mouseenter", () => {
-    if (raf) cancelAnimationFrame(raf);
-    const t0 = performance.now();
-    const dur = 600;
-    const chars = [...final];
-
-    const step = (t) => {
-      const k = Math.min((t - t0) / dur, 1);
-      const eased = 1 - Math.pow(1 - k, 2);      // power2.out, as the original
-      const locked = Math.floor(eased * chars.length);
-      el.textContent = chars
-        .map((c, i) => (i < locked || c === " " ? c : GLYPHS[(Math.random() * GLYPHS.length) | 0]))
-        .join("");
-      if (k < 1) raf = requestAnimationFrame(step);
-      else el.textContent = final;
-    };
-    raf = requestAnimationFrame(step);
-  });
+  swap(words[0]);
+  if (REDUCED || words.length < 2) return;
+  let at = 0;
+  setInterval(() => { at = (at + 1) % words.length; swap(words[at]); }, 2500);
 }
 
-/* ----------------------------------------------------------- canvas noise */
+/* ------------------------------------------------------------ ascii sphere */
 
-function animatedNoise(canvas) {
-  if (REDUCED) return;
-  const ctx = canvas.getContext("2d", { willReadFrequently: false });
+function sphere(canvas) {
+  const ctx = canvas.getContext("2d");
   if (!ctx) return;
+  const CHARS = "░▒▓█▀▄▌▐│─┤├┴┬╭╮╰╯";
+  let time = 0.6, raf = null, running = !REDUCED;
 
-  let frame = 0, raf = null, running = true;
-  const size = () => {
-    // half resolution, as the original: the grain reads the same and costs a
-    // quarter of the pixels
-    canvas.width = Math.max(1, canvas.offsetWidth / 2);
-    canvas.height = Math.max(1, canvas.offsetHeight / 2);
+  const resize = () => {
+    const dpr = devicePixelRatio || 1;
+    const r = canvas.getBoundingClientRect();
+    canvas.width = r.width * dpr;
+    canvas.height = r.height * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   };
 
   const paint = () => {
-    const img = ctx.createImageData(canvas.width, canvas.height);
-    const d = img.data;
-    for (let i = 0; i < d.length; i += 4) {
-      const v = (Math.random() * 255) | 0;
-      d[i] = d[i + 1] = d[i + 2] = v;
-      d[i + 3] = 255;
+    const r = canvas.getBoundingClientRect();
+    ctx.clearRect(0, 0, r.width, r.height);
+    const cx = r.width / 2, cy = r.height / 2;
+    const radius = Math.min(r.width, r.height) * 0.52;
+    ctx.font = "12px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    const pts = [];
+    for (let phi = 0; phi < Math.PI * 2; phi += 0.15) {
+      for (let theta = 0; theta < Math.PI; theta += 0.15) {
+        const x = Math.sin(theta) * Math.cos(phi + time * 0.5);
+        const y = Math.sin(theta) * Math.sin(phi + time * 0.5);
+        const z = Math.cos(theta);
+        const rotY = time * 0.3;
+        const nx = x * Math.cos(rotY) - z * Math.sin(rotY);
+        const nz = x * Math.sin(rotY) + z * Math.cos(rotY);
+        const rotX = time * 0.2;
+        const ny = y * Math.cos(rotX) - nz * Math.sin(rotX);
+        const fz = y * Math.sin(rotX) + nz * Math.cos(rotX);
+        pts.push({ x: cx + nx * radius, y: cy + ny * radius, z: fz,
+                   ch: CHARS[Math.floor(((fz + 1) / 2) * (CHARS.length - 1))] });
+      }
     }
-    ctx.putImageData(img, 0, 0);
+    pts.sort((a, b) => a.z - b.z);
+    for (const p of pts) {
+      ctx.fillStyle = `rgba(0, 0, 0, ${0.2 + (p.z + 1) * 0.4})`;
+      ctx.fillText(p.ch, p.x, p.y);
+    }
   };
 
   const loop = () => {
     if (!running) return;
-    if (++frame % 2 === 0) paint();
+    paint();
+    time += 0.02;
     raf = requestAnimationFrame(loop);
   };
 
-  size();
-  addEventListener("resize", size);
-  loop();
-
-  // stop painting when the hero scrolls away, so it costs nothing off-screen
-  new IntersectionObserver((entries) => {
-    entries.forEach((e) => {
-      running = e.isIntersecting;
-      if (running) loop();
-      else if (raf) cancelAnimationFrame(raf);
-    });
-  }).observe(canvas);
+  resize();
+  addEventListener("resize", resize);
+  // The canvas can measure 0x0 at boot if layout has not settled when the
+  // script runs, and a window resize never comes to correct it. Re-measure
+  // and repaint whenever the box itself changes size.
+  new ResizeObserver(() => { resize(); paint(); }).observe(canvas);
+  paint();                                   // a still sphere even if frames never run
+  if (!REDUCED) {
+    new IntersectionObserver((es) => {
+      es.forEach((e) => {
+        running = e.isIntersecting;
+        if (running) { if (raf) cancelAnimationFrame(raf); loop(); }
+        else if (raf) cancelAnimationFrame(raf);
+      });
+    }).observe(canvas);
+  }
 }
 
-/* ----------------------------------------------------------- scroll reveal */
+/* -------------------------------------------------------------- how it works */
+
+function steps() {
+  const items = [...document.querySelectorAll("[data-step]")];
+  const codes = [...document.querySelectorAll("[data-step-code]")];
+  if (!items.length) return;
+
+  let at = 0, pinned = false, timer = null;
+  const show = (n) => {
+    at = n;
+    items.forEach((el, i) => el.classList.toggle("is-active", i === n));
+    codes.forEach((el, i) => { el.hidden = i !== n; });
+  };
+  show(0);
+
+  items.forEach((el, i) => el.addEventListener("click", () => {
+    pinned = true;
+    if (timer) clearInterval(timer);
+    show(i);
+  }));
+
+  if (REDUCED) return;
+  timer = setInterval(() => { if (!pinned) show((at + 1) % items.length); }, 3200);
+}
+
+/* ---------------------------------------------------------------- spotlight */
+
+function spotlight(box) {
+  if (REDUCED) return;
+  box.addEventListener("mousemove", (e) => {
+    const r = box.getBoundingClientRect();
+    box.style.setProperty("--mx", `${((e.clientX - r.left) / r.width) * 100}%`);
+    box.style.setProperty("--my", `${((e.clientY - r.top) / r.height) * 100}%`);
+  });
+}
+
+/* ------------------------------------------------------------------ reveal */
 
 function reveals() {
   const els = [...document.querySelectorAll(".rv")];
-  const showAll = () => els.forEach((el) => el.classList.add("on"));
-  if (REDUCED || !("IntersectionObserver" in window)) return showAll();
+  const all = () => els.forEach((el) => el.classList.add("on"));
+  if (REDUCED || !("IntersectionObserver" in window)) return all();
 
-  // If frames never run (a hidden or prerendered tab), the page must not stay
-  // invisible. This fallback is why nothing here is opacity-0 forever.
-  setTimeout(() => { if (!document.querySelector(".rv.on")) showAll(); }, 2200);
+  // a hidden or prerendered tab runs no frames; never leave the page invisible
+  setTimeout(() => { if (!document.querySelector(".rv.on")) all(); }, 2200);
 
   const io = new IntersectionObserver((entries) => {
     entries.forEach((e) => {
@@ -153,16 +172,18 @@ function reveals() {
       setTimeout(() => e.target.classList.add("on"), wait);
       io.unobserve(e.target);
     });
-  }, { threshold: 0.15, rootMargin: "0px 0px -8% 0px" });
+  }, { threshold: 0.12, rootMargin: "0px 0px -6% 0px" });
   els.forEach((el) => io.observe(el));
 }
 
-/* ------------------------------------------------------------------- boot */
+/* -------------------------------------------------------------------- boot */
 
 function boot() {
-  document.querySelectorAll("[data-flap]").forEach(splitFlap);
-  document.querySelectorAll("[data-scramble]").forEach(scrambleOnHover);
-  document.querySelectorAll(".fx-noise").forEach(animatedNoise);
+  shrinkNav();
+  document.querySelectorAll("[data-words]").forEach(wordRotator);
+  document.querySelectorAll(".fx-sphere").forEach(sphere);
+  document.querySelectorAll("[data-spotlight]").forEach(spotlight);
+  steps();
   reveals();
 }
 

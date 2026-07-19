@@ -4,16 +4,15 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="Turn typed text or a PDF into pages in a real hand" />
-  <meta name="color-scheme" content="dark" />
-  <title>TEXT2HAND — Studio</title>
+  <meta name="color-scheme" content="light" />
+  <title>Text2Hand — Studio</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Instrument+Serif&family=JetBrains+Mono:wght@400;500&display=swap" />
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
   <link rel="stylesheet" href="{{ url_for('static', filename='studio.css') }}" />
 </head>
-<body>
-<div class="noise-overlay" aria-hidden="true"></div>
+<body class="noise-overlay">
 
 <div class="app">
 
@@ -22,8 +21,8 @@
     <!-- --------------------------------------------------------- top bar -->
     <header class="bar">
       <a class="bar__home" href="/" title="Back to the front" aria-label="Home">
-        <span class="brandmark" aria-hidden="true"></span>
-        <span class="bar__wordmark">T2H</span>
+        <span class="bar__wordmark">Text2Hand</span>
+        <span class="nav__tm" style="font-family: var(--font-mono); font-size: 10px; color: var(--muted-foreground)">TM</span>
       </a>
 
       <nav class="bar__tabs" aria-label="Views">
@@ -50,7 +49,7 @@
         </label>
 
         <div class="menu">
-          <button class="btn btn--sm" id="exportBtn" aria-haspopup="true" aria-expanded="false" disabled>
+          <button class="btn btn--sm btn--outline" id="exportBtn" aria-haspopup="true" aria-expanded="false" disabled>
             Export
           </button>
           <div class="pop" id="exportPop" hidden role="menu" aria-label="Export">
@@ -62,7 +61,7 @@
           </div>
         </div>
 
-        <button class="btn btn--sm btn--solid" id="render">
+        <button class="btn btn--sm" id="render">
           <span id="renderLabel">Render</span>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
@@ -78,7 +77,7 @@
         <div class="pane__bar">
           <span class="pane__label">01 / Source</span>
           <span class="pane__gap"></span>
-          <button class="btn btn--sm" id="pdfBtn">From a PDF</button>
+          <button class="btn btn--sm btn--outline" id="pdfBtn">From a PDF</button>
         </div>
 
         <div class="pdfstrip" id="pdf" hidden>
@@ -92,7 +91,7 @@
           </select>
           <input type="text" id="pageRange" class="mini mini--slim" placeholder="all"
                  aria-label="Page range, for example 1-10" />
-          <button class="btn btn--sm btn--solid" id="read">Read it</button>
+          <button class="btn btn--sm" id="read">Read it</button>
           <button class="iconbtn" id="pdfClear" aria-label="Remove file">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                  stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
@@ -170,7 +169,7 @@
     <!-- ----------------------------------------------------- library view -->
     <div class="library" id="viewLibrary" hidden>
       <div class="library__head">
-        <span class="label label--accent">Archive</span>
+        <span class="eyebrow">Archive</span>
         <h2>Library</h2>
         <p>Everything rendered from this browser. Open one to load its text and
           settings back into the editor.</p>

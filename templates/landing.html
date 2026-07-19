@@ -4,289 +4,350 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="Typed text in, pages in a real hand out. Paste text or drop a PDF; get ruled pages written in a captured human hand." />
-  <meta name="color-scheme" content="dark" />
-  <title>TEXT2HAND — Writing, Rendered</title>
+  <meta name="color-scheme" content="light" />
+  <title>Text2Hand — Typed text, in a real hand</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Instrument+Serif&family=JetBrains+Mono:wght@400;500&display=swap" />
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
   <link rel="stylesheet" href="{{ url_for('static', filename='landing.css') }}" />
 </head>
-<body>
-<div class="noise-overlay" aria-hidden="true"></div>
+<body class="noise-overlay">
 
-<main class="page">
-
-  <!-- one bar at every width; the old fixed rail sat on top of the copy on
-       phones and doubled the navigation on desktop -->
-  <header class="topbar">
-    <a class="topbar__brand" href="/" aria-label="Text2Hand">
-      <span class="brandmark" aria-hidden="true"></span>
-      <span class="topbar__name">Text2Hand</span>
+<!-- ---------------------------------------------------------------- nav -->
+<header class="nav" data-nav>
+  <div class="nav__in">
+    <a class="nav__brand" href="/">
+      <span class="nav__name">Text2Hand</span>
+      <span class="nav__tm">TM</span>
     </a>
-    <nav class="topbar__nav" aria-label="Sections">
-      <a href="#capability">Capability</a>
-      <a href="#method">Method</a>
-      <a href="#evidence">Evidence</a>
-      <a href="#colophon">Colophon</a>
+    <nav class="nav__links" aria-label="Sections">
+      <a class="growline" href="#features">Features</a>
+      <a class="growline" href="#how-it-works">How it works</a>
+      <a class="growline" href="#evidence">The hand</a>
     </nav>
-    <span class="topbar__gap"></span>
-    <a class="topbar__gh" href="https://github.com/pranjalprateek6/Text2Hand" target="_blank"
-       rel="noreferrer noopener" aria-label="GitHub">
-      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a12 12 0 0 0-3.79 23.4c.6.11.82-.26.82-.58v-2.2c-3.34.72-4.04-1.42-4.04-1.42-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.2.08 1.84 1.24 1.84 1.24 1.07 1.84 2.8 1.3 3.49 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.34-5.47-5.96 0-1.32.47-2.39 1.24-3.23-.13-.3-.54-1.53.11-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6.01 0c2.29-1.55 3.3-1.23 3.3-1.23.65 1.65.24 2.88.12 3.18.77.84 1.23 1.91 1.23 3.23 0 4.63-2.8 5.65-5.48 5.95.43.37.81 1.1.81 2.22v3.29c0 .32.22.7.83.58A12 12 0 0 0 12 .5Z"/></svg>
-    </a>
-    <a class="btn btn--sm btn--solid" href="{{ url_for('studio') }}">Studio</a>
-  </header>
+    <div class="nav__cta">
+      <a class="linkish" href="https://github.com/pranjalprateek6/Text2Hand"
+         target="_blank" rel="noreferrer noopener">GitHub</a>
+      <a class="btn btn--sm" href="{{ url_for('studio') }}">Open the studio</a>
+    </div>
+  </div>
+</header>
 
-  <div class="bg-grid grid-bg" aria-hidden="true"></div>
+<main>
 
-  <div class="layer">
+  <!-- --------------------------------------------------------------- hero -->
+  <section class="hero">
+    <div class="hero__sphere"><canvas class="fx-sphere" aria-hidden="true"></canvas></div>
 
-    <!-- ----------------------------------------------------------- hero -->
-    <section class="hero pad" id="hero">
-      <canvas class="fx-noise" style="opacity:.03" aria-hidden="true"></canvas>
+    <div class="hero__grid" aria-hidden="true">
+      {% for i in range(1, 8) %}<i class="h" style="top: {{ 12.5 * i }}%"></i>{% endfor %}
+      {% for i in range(1, 12) %}<i class="v" style="left: {{ 8.33 * i }}%"></i>{% endfor %}
+    </div>
 
-      <div class="hero__side label">Text2Hand</div>
+    <div class="wrap hero__in">
+      <p class="eyebrow rv">Typed text to real handwriting</p>
 
-      <div class="hero__in">
-        <div>
-          <div class="flap" data-flap="HANDWRITING" data-flap-speed="70" role="img"></div>
+      <h1 class="display hero__title" style="margin-top: 28px">
+        <span class="line">Typed text,</span>
+        <span class="line">to <span class="hero__word"><span
+          data-words="handwriting, pages, paper, ink"
+          aria-label="handwriting"></span><u aria-hidden="true"></u></span></span>
+      </h1>
 
-          <h2 class="hero__sub">Typed in. Written out.</h2>
-
-          <p class="hero__copy">
-            Paste text or drop a PDF and get ruled A4 pages written in a real,
-            captured human hand. Not a font. Every letter is a photograph of
-            one, and no two on the page are the same image.
-          </p>
-
-          <div class="hero__acts">
-            <a class="btn btn--solid" href="{{ url_for('studio') }}">
-              <span data-scramble>Open the studio</span>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
-                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-            </a>
-            <a class="linkish" href="#evidence">See a page</a>
-          </div>
+      <div class="hero__cols">
+        <p class="hero__lede rv" data-delay="150">
+          Paste text or drop a PDF and get ruled A4 pages written in a real,
+          captured human hand. Not a font: every letter is a photograph of one,
+          and no two on the page are the same image.
+        </p>
+        <div class="hero__acts rv" data-delay="250">
+          <a class="btn btn--lg" href="{{ url_for('studio') }}">
+            Open the studio
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </a>
+          <a class="btn btn--lg btn--outline" href="#evidence">See a page</a>
+          <span class="hero__note">Free · runs on your machine · no account</span>
         </div>
-      </div>
-
-      <div class="hero__tag">v.02 / Local Build</div>
-    </section>
-
-    <!-- --------------------------------------------------------- signals -->
-    <div class="strip">
-      <div class="strip__row">
-        <div class="stat rv"><b>112</b><span>Glyphs / one hand</span></div>
-        <div class="stat rv" data-delay="80"><b>70</b><span>Words / one stroke</span></div>
-        <div class="stat rv" data-delay="160"><b>1290</b><span>Chars / A4 page</span></div>
-        <div class="stat rv" data-delay="240"><b>33</b><span>Ruled lines</span></div>
       </div>
     </div>
 
-    <!-- ------------------------------------------------------ capability -->
-    <section class="pad" id="capability">
+    <div class="hero__stats" aria-label="Numbers from the renderer">
+      <div class="marquee">
+        {% for _ in range(2) %}
+        <div class="stat"><b>1,290</b><span>characters to a page<i>A4 · 33 RULED LINES</i></span></div>
+        <div class="stat"><b>112</b><span>glyphs, one hand<i>MYFONT</i></span></div>
+        <div class="stat"><b>70</b><span>words in one stroke<i>WORDFONT</i></span></div>
+        <div class="stat"><b>18</b><span>maths glyphs drawn<i>GREEK + OPERATORS</i></span></div>
+        <div class="stat"><b>80</b><span>pages a run<i>RENDERER</i></span></div>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <!-- ----------------------------------------------------------- features -->
+  <section class="features" id="features">
+    <div class="wrap">
       <div class="sec-head">
-        <div class="rv rv--l">
-          <span class="label label--accent">01 / Capability</span>
-          <h2 class="display">What it does</h2>
-        </div>
-        <p class="sec-head__note rv">
-          Text, Markdown or PDF in. Ruled pages and a PDF out, with the
-          document's structure intact.
-        </p>
+        <p class="eyebrow rv">What it does</p>
+        <h2 class="display rv">A hand, not a font</h2>
       </div>
 
-      <div class="bento">
-        <article class="cell sp-2x2 is-lit rv">
-          <div>
-            <span class="cell__k">Render</span>
-            <h3 class="cell__t">Text becomes pages</h3>
-          </div>
-          <p class="cell__d">Headings centred and underlined, lists indented, tables hand-ruled,
-            figures boxed. Long documents spill onto new pages, up to eighty at a run.</p>
-          <span class="cell__n">01</span>
-          <span class="cell__corner"></span>
-        </article>
-
-        <article class="cell sp-2x1 rv" data-delay="60">
-          <div>
-            <span class="cell__k">Extract</span>
-            <h3 class="cell__t">PDFs come along</h3>
-          </div>
-          <p class="cell__d">Read into Markdown you correct before anything is written.</p>
-          <span class="cell__n">02</span>
-          <span class="cell__corner"></span>
-        </article>
-
-        <article class="cell sp-1x1 rv" data-delay="120">
-          <div>
-            <span class="cell__k">Ink</span>
-            <h3 class="cell__t">Four pens</h3>
-          </div>
-          <p class="cell__d">Blue-black, black, blue, red.</p>
-          <span class="cell__n">03</span>
-          <span class="cell__corner"></span>
-        </article>
-
-        <article class="cell sp-1x1 rv" data-delay="180">
-          <div>
-            <span class="cell__k">Optical</span>
-            <h3 class="cell__t">Scanned too</h3>
-          </div>
-          <p class="cell__d">Local OCR, nothing uploaded.</p>
-          <span class="cell__n">04</span>
-          <span class="cell__corner"></span>
-        </article>
-
-        <article class="cell sp-2x1 rv" data-delay="240">
-          <div>
-            <span class="cell__k">Notation</span>
-            <h3 class="cell__t">Equations survive</h3>
-          </div>
-          <p class="cell__d">Display maths is cropped from the paper and traced back as ink.
-            Inline symbols are drawn glyphs.</p>
-          <span class="cell__n">05</span>
-          <span class="cell__corner"></span>
-        </article>
-
-        <article class="cell sp-2x1 rv" data-delay="300">
-          <div>
-            <span class="cell__k">Capture</span>
-            <h3 class="cell__t">Your own hand</h3>
-          </div>
-          <p class="cell__d">Print the sheets, write them out, photograph them. The extractors
-            cut your writing into a font of its own.</p>
-          <span class="cell__n">06</span>
-          <span class="cell__corner"></span>
-        </article>
-      </div>
-    </section>
-
-    <!-- ---------------------------------------------------------- method -->
-    <section class="pad" id="method">
-      <div class="sec-head">
-        <div class="rv rv--l">
-          <span class="label label--accent">02 / Method</span>
-          <h2 class="display">Why it convinces</h2>
-        </div>
-        <p class="sec-head__note rv">
-          A font pastes the same letter every time. A person never writes one
-          twice. Four things break that.
-        </p>
-      </div>
-
-      <div class="tenets">
-        <article class="tenet rv rv--l">
-          <span class="label">01 / Variance</span>
-          <h3>No two <span class="hl">the same</span></h3>
-          <p>Every glyph gets its own rotation, scale, baseline wobble, spacing and ink
-            pressure. Where several photographs of a letter exist, one is picked at random.</p>
-          <div class="tenet__rule"></div>
-        </article>
-
-        <article class="tenet tenet--r rv rv--r" data-delay="60">
-          <span class="label">02 / Ligature</span>
-          <h3>Whole words, <span class="hl">one stroke</span></h3>
-          <p>Common words are written as single captured strokes rather than assembled from
-            letters, keeping the joins a real hand makes. About a third of any page.</p>
-          <div class="tenet__rule"></div>
-        </article>
-
-        <article class="tenet rv rv--l" data-delay="60">
-          <span class="label">03 / Fatigue</span>
-          <h3>A hand that <span class="hl">tires</span></h3>
-          <p>Writing grows and loosens toward the foot of each page. Turn it on and the hand
-            will start a word wrong, cross it out, and write it again.</p>
-          <div class="tenet__rule"></div>
-        </article>
-
-        <article class="tenet tenet--r rv rv--r" data-delay="60">
-          <span class="label">04 / Artifact</span>
-          <h3>Paper that was <span class="hl">scanned</span></h3>
-          <p>Ruled lines and a red margin printed before a word is written, warm grain, and a
-            slight tilt. The rules skew with the writing, because they were on the page first.</p>
-          <div class="tenet__rule"></div>
-        </article>
-      </div>
-    </section>
-
-    <!-- -------------------------------------------------------- evidence -->
-    <section class="pad" id="evidence">
-      <div class="sec-head">
-        <div class="rv rv--l">
-          <span class="label label--accent">03 / Evidence</span>
-          <h2 class="display">A real page</h2>
-        </div>
-        <p class="sec-head__note rv">
-          Rendered from Markdown. Every mark on it comes from one hand,
-          captured from written sheets and cut apart.
-        </p>
-      </div>
-
-      <div class="proof">
+      <article class="frow rv">
+        <span class="frow__n">01</span>
         <div>
-          <div class="proof__list">
-            <div class="proof__row rv"><i>01</i><div><b>Captured, not drawn</b><span>Every letter, digit and punctuation mark is a photograph of real writing. Only the technical symbols are drawn.</span></div></div>
-            <div class="proof__row rv" data-delay="60"><i>02</i><div><b>Placed by anatomy</b><span>Descenders hang, commas cross the line, quotes lean by whether they open or close.</span></div></div>
-            <div class="proof__row rv" data-delay="120"><i>03</i><div><b>Millimetre metrics</b><span>3mm x-height, 8.4mm ruling, 33 lines on true A4 geometry.</span></div></div>
-            <div class="proof__row rv" data-delay="180"><i>04</i><div><b>Runs on your machine</b><span>Rendering is local. Only the optional cloud extractors ever see a file.</span></div></div>
-          </div>
+          <h3 class="frow__t">Text becomes pages</h3>
+          <p class="frow__d">Headings centred and underlined, lists indented, tables hand-ruled,
+            figures boxed. Long documents spill onto new pages, up to eighty at a run.</p>
+        </div>
+        <div class="frow__v" aria-hidden="true">
+          <!-- lines writing themselves onto a sheet -->
+          <svg viewBox="0 0 200 160">
+            <rect x="55" y="10" width="90" height="140" rx="3" fill="none" stroke="currentColor" stroke-width="2" />
+            {% for i in range(6) %}
+            <rect x="65" y="{{ 26 + i * 20 }}" width="70" height="6" rx="2" fill="currentColor" opacity="0.15">
+              <animate attributeName="opacity" values="0.15;0.8;0.15" dur="2s" begin="{{ i * 0.2 }}s" repeatCount="indefinite" />
+              <animate attributeName="width" values="12;70;12" dur="2s" begin="{{ i * 0.2 }}s" repeatCount="indefinite" />
+            </rect>
+            {% endfor %}
+          </svg>
+        </div>
+      </article>
 
-          <div class="eqframe rv" style="margin-top:40px">
+      <article class="frow rv">
+        <span class="frow__n">02</span>
+        <div>
+          <h3 class="frow__t">PDFs come along</h3>
+          <p class="frow__d">A PDF is read into Markdown you can correct before anything is written,
+            because extraction is never perfect and a wrong heading should be a ten-second
+            fix. Scanned PDFs go through local OCR.</p>
+        </div>
+        <div class="frow__v" aria-hidden="true">
+          <!-- a document flowing through a converter node -->
+          <svg viewBox="0 0 200 160">
+            <rect x="15" y="45" width="50" height="70" rx="3" fill="none" stroke="currentColor" stroke-width="2" />
+            <circle cx="100" cy="80" r="10" fill="currentColor">
+              <animate attributeName="r" values="10;12;10" dur="2s" repeatCount="indefinite" />
+            </circle>
+            <rect x="135" y="45" width="50" height="70" rx="3" fill="none" stroke="currentColor" stroke-width="2" />
+            <line x1="65" y1="80" x2="90" y2="80" stroke="currentColor" stroke-width="2" stroke-dasharray="4 4">
+              <animate attributeName="stroke-dashoffset" values="8;0" dur="0.6s" repeatCount="indefinite" />
+            </line>
+            <line x1="110" y1="80" x2="135" y2="80" stroke="currentColor" stroke-width="2" stroke-dasharray="4 4">
+              <animate attributeName="stroke-dashoffset" values="8;0" dur="0.6s" repeatCount="indefinite" />
+            </line>
+            {% for i in range(3) %}
+            <line x1="142" y1="{{ 60 + i * 16 }}" x2="178" y2="{{ 60 + i * 16 }}" stroke="currentColor" stroke-width="4" opacity="0.2">
+              <animate attributeName="opacity" values="0.2;0.7;0.2" dur="2s" begin="{{ i * 0.3 }}s" repeatCount="indefinite" />
+            </line>
+            {% endfor %}
+          </svg>
+        </div>
+      </article>
+
+      <article class="frow rv">
+        <span class="frow__n">03</span>
+        <div>
+          <h3 class="frow__t">Equations survive</h3>
+          <p class="frow__d">Display maths is found by font signature, cropped from the paper,
+            and traced back in as ink, fractions and product signs intact. Inline
+            symbols are drawn glyphs: &alpha; &beta; &psi; &phi; &Sigma; and friends.</p>
+        </div>
+        <div class="frow__v" aria-hidden="true">
+          <!-- a fraction pulsing under a summation -->
+          <svg viewBox="0 0 200 160">
+            <text x="58" y="92" font-family="Georgia, serif" font-size="52" fill="currentColor">&#8721;</text>
+            <line x1="105" y1="78" x2="155" y2="78" stroke="currentColor" stroke-width="2.5">
+              <animate attributeName="opacity" values="1;0.35;1" dur="2.4s" repeatCount="indefinite" />
+            </line>
+            <text x="118" y="68" font-family="Georgia, serif" font-size="24" fill="currentColor" opacity="0.75">1&#8722;p</text>
+            <text x="126" y="104" font-family="Georgia, serif" font-size="24" fill="currentColor" opacity="0.75">p</text>
+            <circle cx="172" cy="78" r="3" fill="currentColor">
+              <animate attributeName="opacity" values="0.3;1;0.3" dur="1.2s" repeatCount="indefinite" />
+            </circle>
+          </svg>
+        </div>
+      </article>
+
+      <article class="frow rv">
+        <span class="frow__n">04</span>
+        <div>
+          <h3 class="frow__t">Make it your own hand</h3>
+          <p class="frow__d">Print the capture sheets, write them out, photograph them, and the
+            extraction tools cut your writing into a font of its own. The bundled hand
+            is real, and yours can replace it.</p>
+        </div>
+        <div class="frow__v" aria-hidden="true">
+          <!-- a pen stroke drawing itself -->
+          <svg viewBox="0 0 200 160">
+            <path d="M20 100 C 45 60, 70 130, 95 90 S 150 50, 180 85"
+                  fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"
+                  stroke-dasharray="260" stroke-dashoffset="260">
+              <animate attributeName="stroke-dashoffset" values="260;0;0;260" keyTimes="0;0.55;0.8;1" dur="4s" repeatCount="indefinite" />
+            </path>
+            <line x1="20" y1="120" x2="180" y2="120" stroke="currentColor" stroke-width="1" opacity="0.25" />
+          </svg>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------- how it works -->
+  <section class="how" id="how-it-works">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow rv">How it works</p>
+        <h2 class="display rv">Three steps to paper</h2>
+      </div>
+
+      <div class="how__grid">
+        <div>
+          <div class="step" data-step>
+            <span class="step__n">I</span>
+            <h3 class="step__t">Type, or drop a PDF</h3>
+            <p class="step__d">The studio takes anything: notes, an essay, a whole paper.
+              A PDF lands as reviewable Markdown first, equations excised as images.</p>
+          </div>
+          <div class="step" data-step>
+            <span class="step__n">II</span>
+            <h3 class="step__t">Check it over</h3>
+            <p class="step__d">Extraction is never perfect, so the Markdown sits in the editor
+              to be corrected. Pick paper, tilt and one of four pens.</p>
+          </div>
+          <div class="step" data-step>
+            <span class="step__n">III</span>
+            <h3 class="step__t">Render and hand it in</h3>
+            <p class="step__d">Pages as PNG, the document as a PDF, or everything zipped.
+              Every render is different: no two letters are the same image.</p>
+          </div>
+        </div>
+
+        <figure class="codecard rv">
+          <div class="codecard__bar" aria-hidden="true">
+            <span class="codecard__dot"></span><span class="codecard__dot"></span><span class="codecard__dot"></span>
+          </div>
+          <pre data-step-code># Attention Is All You Need
+
+The dominant sequence transduction
+models are based on complex
+recurrent or convolutional
+networks...
+
+&gt; dropped a 29-page PDF
+&gt; reading page 5 of 29</pre>
+          <pre data-step-code hidden>## 3.1 Maximal Agentic
+## Decomposition
+
+- headings kept
+- lists and tables kept
+- display maths excised:
+  ![equations (1)-(3)](eq1.png)
+
+pen: blue-black &middot; paper: ruled</pre>
+          <pre data-step-code hidden>POST /api/render
+
+&rarr; writing page 1 &hellip; 4
+&rarr; 33 ruled lines each
+&rarr; 1,290 characters a page
+
+handwriting.pdf &middot; 4 pages
+pages.zip &middot; full-size PNGs</pre>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- ----------------------------------------------------------- evidence -->
+  <section class="evidence" id="evidence">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow rv">The hand</p>
+        <h2 class="display rv">No two letters the same</h2>
+        <p class="lede rv">This page was rendered from Markdown. Every mark on it comes from one
+          real hand, captured from written sheets and cut apart, letter by letter and
+          word by word.</p>
+      </div>
+
+      <div class="evidence__grid">
+        <div>
+          <div class="evrow rv"><i>01</i><div><b>Variants and jitter</b><span>Each glyph gets its own rotation, size, wobble and ink pressure. Repeats never match.</span></div></div>
+          <div class="evrow rv"><i>02</i><div><b>Whole words in one stroke</b><span>Common words are single captured strokes, keeping the joins a real hand makes.</span></div></div>
+          <div class="evrow rv"><i>03</i><div><b>A hand that tires</b><span>Writing grows and loosens toward the foot of each page, and can cross out a word and rewrite it.</span></div></div>
+          <div class="evrow rv"><i>04</i><div><b>Paper that was scanned</b><span>Ruled lines and a red margin printed before a word is written, warm grain, and a slight tilt.</span></div></div>
+
+          <figure class="eqcard rv">
             <img src="{{ url_for('static', filename='sample_eq.jpg') }}"
                  alt="Display equations traced as handwriting ink on ruled paper"
                  width="1100" height="329" loading="lazy" />
-            <p class="eqcap">Equations (5)–(7) / traced from a converted arXiv page</p>
-          </div>
+            <figcaption>Equations (5)–(7), traced from a converted arXiv page</figcaption>
+          </figure>
         </div>
 
-        <div class="proof__sheet rv rv--r">
+        <figure class="sheetcard hover-lift rv">
           <img src="{{ url_for('static', filename='sample_page.jpg') }}"
                alt="A full rendered page: handwritten headings, lists, a table and a figure on ruled paper"
                width="1100" height="1556" loading="lazy" />
-        </div>
+        </figure>
       </div>
-    </section>
+    </div>
+  </section>
 
-    <!-- -------------------------------------------------------- colophon -->
-    <section class="pad" id="colophon">
-      <div class="sec-head">
-        <div class="rv rv--l">
-          <span class="label label--accent">04 / Colophon</span>
-          <h2 class="display">Under the hood</h2>
-        </div>
-      </div>
-
-      <div class="colo">
-        <div class="colo__row rv"><span class="colo__k">Engine</span><span class="colo__v">Python · Pillow · per-glyph compositing</span></div>
-        <div class="colo__row rv"><span class="colo__k">Extraction</span><span class="colo__v">PyMuPDF · Tesseract OCR · Markdown as the contract</span></div>
-        <div class="colo__row rv"><span class="colo__k">Typeface</span><span class="colo__v">One human hand, captured on paper</span></div>
-        <div class="colo__row rv"><span class="colo__k">Page</span><span class="colo__v">A4 · 2632 × 3722 px · 33 ruled lines</span></div>
-        <div class="colo__row rv"><span class="colo__k">Source</span><span class="colo__v"><a href="https://github.com/pranjalprateek6/Text2Hand" target="_blank" rel="noreferrer noopener">github.com/pranjalprateek6/Text2Hand</a></span></div>
-      </div>
-
-      <div class="endcta">
-        <h2 class="rv">Stop writing<br />it out.</h2>
-        <div class="endcta__row rv">
-          <a class="btn btn--solid" href="{{ url_for('studio') }}">
-            <span data-scramble>Open the studio</span>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+  <!-- ---------------------------------------------------------------- cta -->
+  <section class="cta">
+    <div class="wrap">
+      <div class="cta__box rv" data-spotlight>
+        <p class="eyebrow">Ready when you are</p>
+        <h2 class="display" style="margin-top: 20px">Stop writing<br />it out.</h2>
+        <div class="cta__row">
+          <a class="btn btn--lg" href="{{ url_for('studio') }}">
+            Open the studio
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
           </a>
-          <span class="label">Free · Runs locally</span>
-        </div>
-
-        <div class="footline">
-          <span>Text2Hand</span>
-          <span class="footline__gap"></span>
-          <a href="{{ url_for('studio') }}">Studio</a>
-          <a href="https://github.com/pranjalprateek6/Text2Hand" target="_blank" rel="noreferrer noopener">GitHub</a>
+          <span class="hero__note" style="width:auto">Free while it lives on your machine</span>
         </div>
       </div>
-    </section>
+    </div>
+  </section>
 
-  </div>
+  <!-- ------------------------------------------------------------- footer -->
+  <footer class="footer">
+    <div class="wrap">
+      <div class="footer__grid">
+        <div class="footer__brand">
+          <a class="nav__brand" href="/">
+            <span class="nav__name">Text2Hand</span>
+            <span class="nav__tm">TM</span>
+          </a>
+          <p>Typed text in, pages in a real hand out. A Python renderer, a captured
+            hand, and a studio to drive them.</p>
+        </div>
+        <div>
+          <h4>Product</h4>
+          <ul>
+            <li><a href="#features">Features</a></li>
+            <li><a href="#how-it-works">How it works</a></li>
+            <li><a href="#evidence">The hand</a></li>
+            <li><a href="{{ url_for('studio') }}">Studio</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Source</h4>
+          <ul>
+            <li><a href="https://github.com/pranjalprateek6/Text2Hand" target="_blank" rel="noreferrer noopener">GitHub</a></li>
+            <li><a href="https://github.com/pranjalprateek6/Text2Hand#make-it-your-own-handwriting" target="_blank" rel="noreferrer noopener">Capture your hand</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer__base">
+        <span>Text2Hand</span>
+        <span class="footer__gap"></span>
+        <span>Runs locally &middot; no account &middot; no tracking</span>
+      </div>
+    </div>
+  </footer>
+
 </main>
 
 <script src="{{ url_for('static', filename='fx.js') }}"></script>

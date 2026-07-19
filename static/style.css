@@ -1,60 +1,42 @@
-/* Text2Hand — brutalist editorial design system.
+/* Text2Hand — the Optimus design system, ported to plain CSS.
  *
- * Ported from the reference build (Next + Tailwind + shadcn + GSAP) to plain
- * CSS and vanilla JS, so it drops onto the Flask app with no toolchain. The
- * tokens are the reference's own oklch values, kept in oklch rather than
- * converted to hex so the colours are exactly the ones it shipped.
- *
- * The rules of the system:
- *   radius      0. Nothing is rounded, anywhere.
- *   type        Bebas Neue for display, IBM Plex Mono for every label,
- *               IBM Plex Sans for prose.
- *   labels      10px, uppercase, 0.3em tracking, mono. Always numbered.
- *   accent      orange, spent only on state: active nav, hover borders,
- *               section numbers, selection.
- *   surfaces    no fills. A border and empty space is a card.
+ * Warm paper-white, near-black ink, a serif display face over a quiet sans,
+ * mono for annotations, pill buttons, 4px radius. The template's own oklch
+ * values, unconverted. Effects that were React hooks in the original are
+ * vanilla in fx.js; the utilities they rely on live here.
  */
 
 :root {
-  --background: oklch(0.08 0 0);
-  --foreground: oklch(0.95 0 0);
-  --card: oklch(0.12 0 0);
-  --popover: oklch(0.1 0 0);
-  --secondary: oklch(0.18 0 0);
-  --muted: oklch(0.25 0 0);
-  --muted-foreground: oklch(0.55 0 0);
-  --accent: oklch(0.7 0.2 45);
-  --accent-foreground: oklch(0.08 0 0);
+  --background: oklch(0.985 0.002 90);
+  --foreground: oklch(0.12 0.01 60);
+  --card: oklch(1 0 0);
+  --popover: oklch(1 0 0);
+  --primary: oklch(0.12 0.01 60);
+  --primary-foreground: oklch(0.985 0.002 90);
+  --secondary: oklch(0.96 0.005 90);
+  --muted: oklch(0.94 0.005 90);
+  --muted-foreground: oklch(0.45 0.02 60);
+  --accent: oklch(0.92 0.01 90);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.25 0 0);
-  --input: oklch(0.2 0 0);
-  --ring: oklch(0.7 0.2 45);
-  --radius: 0rem;
+  --border: oklch(0.88 0.01 90);
+  --input: oklch(0.92 0.01 90);
+  --ring: oklch(0.12 0.01 60);
+  --radius: 0.25rem;
 
-  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system,
+  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, -apple-system,
                "Segoe UI", Roboto, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo,
+  --font-display: "Instrument Serif", Georgia, "Times New Roman", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo,
                Consolas, monospace;
-  --font-display: "Bebas Neue", "Oswald", "Arial Narrow", Impact, sans-serif;
 
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
-
 
 *, *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
 
-html {
-  scroll-behavior: smooth;
-  overflow-x: hidden;
-  max-width: 100vw;
-  scrollbar-width: thin;
-  scrollbar-color: oklch(0.3 0 0) var(--background);
-}
-html::-webkit-scrollbar, body::-webkit-scrollbar { width: 10px; }
-html::-webkit-scrollbar-track, body::-webkit-scrollbar-track { background: var(--background); }
-html::-webkit-scrollbar-thumb, body::-webkit-scrollbar-thumb { background: oklch(0.3 0 0); border-radius: 0; }
-html::-webkit-scrollbar-thumb:hover, body::-webkit-scrollbar-thumb:hover { background: oklch(0.4 0 0); }
+html { scroll-behavior: smooth; }
 
 body {
   margin: 0;
@@ -74,36 +56,9 @@ a { color: inherit; text-decoration: none; }
 button, input, select, textarea { font: inherit; color: inherit; }
 img { max-width: 100%; height: auto; display: block; }
 
-::selection { background: var(--accent); color: var(--accent-foreground); }
-
-:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+::selection { background: var(--foreground); color: var(--background); }
+:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 4px; }
 :focus:not(:focus-visible) { outline: none; }
-
-/* --------------------------------------------------------------------------
-   Atmosphere: fixed noise, grid
-   -------------------------------------------------------------------------- */
-.noise-overlay {
-  position: fixed; inset: 0;
-  pointer-events: none;
-  z-index: 1000;
-  opacity: 0.03;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-}
-
-.grid-bg {
-  background-image:
-    linear-gradient(to right, oklch(0.2 0 0) 1px, transparent 1px),
-    linear-gradient(to bottom, oklch(0.2 0 0) 1px, transparent 1px);
-  background-size: 60px 60px;
-}
-
-/* canvas noise, painted per frame in fx.js */
-.fx-noise {
-  position: absolute; inset: 0;
-  width: 100%; height: 100%;
-  pointer-events: none;
-  mix-blend-mode: overlay;
-}
 
 /* --------------------------------------------------------------------------
    Type
@@ -111,99 +66,110 @@ img { max-width: 100%; height: auto; display: block; }
 .display {
   font-family: var(--font-display);
   font-weight: 400;
-  letter-spacing: 0.01em;
-  line-height: 0.9;
-  text-transform: uppercase;
+  letter-spacing: -0.02em;
+  line-height: 0.95;
 }
-.label {
+.eyebrow {
+  display: inline-flex; align-items: center; gap: 12px;
   font-family: var(--font-mono);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.3em;
+  font-size: 13px;
   color: var(--muted-foreground);
 }
-.label--accent { color: var(--accent); }
+.eyebrow::before { content: ""; width: 32px; height: 1px; background: color-mix(in oklch, var(--foreground) 30%, transparent); }
 .mono { font-family: var(--font-mono); }
 .dim { color: var(--muted-foreground); }
 
-/* The mark: a solid accent square. In a system built from borders, mono
-   labels and one orange, the logo is the one filled shape, not a picture. */
-.brandmark {
-  display: inline-block;
-  width: 12px; height: 12px;
-  background: var(--accent);
-  flex: none;
-}
-
-
 /* --------------------------------------------------------------------------
-   Buttons: bordered, mono, uppercase. No fills except the one CTA.
+   Buttons: pills, as the template ships them
    -------------------------------------------------------------------------- */
 .btn {
   appearance: none;
-  display: inline-flex; align-items: center; justify-content: center; gap: 12px;
-  padding: 13px 24px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 20%, transparent);
-  background: none;
-  color: var(--foreground);
-  font-family: var(--font-mono);
-  font-size: 11px; text-transform: uppercase; letter-spacing: 0.15em;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 44px;
+  padding: 0 24px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--foreground);
+  color: var(--background);
+  font-size: 14.5px; font-weight: 500;
   cursor: pointer;
-  transition: border-color 200ms var(--ease), color 200ms var(--ease), background 200ms var(--ease);
+  white-space: nowrap;
+  transition: background 200ms var(--ease), color 200ms var(--ease),
+              border-color 200ms var(--ease), transform 300ms var(--spring),
+              opacity 200ms var(--ease);
 }
-.btn:hover { border-color: var(--accent); color: var(--accent); }
-.btn svg { width: 12px; height: 12px; flex: none; transition: transform 400ms var(--ease); }
-.btn:hover svg { transform: rotate(45deg); }
-.btn--solid { background: var(--accent); border-color: var(--accent); color: var(--accent-foreground); }
-.btn--solid:hover { background: transparent; color: var(--accent); }
-.btn--solid:hover svg { transform: rotate(45deg); }
-.btn--sm { padding: 9px 16px; font-size: 10px; }
-.btn:disabled { opacity: 0.35; pointer-events: none; }
+.btn:hover { background: color-mix(in oklch, var(--foreground) 90%, transparent); }
+.btn svg { width: 15px; height: 15px; flex: none; transition: transform 200ms var(--ease); }
+.btn:hover svg { transform: translateX(3px); }
+.btn--outline {
+  background: transparent;
+  color: var(--foreground);
+  border-color: color-mix(in oklch, var(--foreground) 20%, transparent);
+}
+.btn--outline:hover { background: color-mix(in oklch, var(--foreground) 5%, transparent); }
+.btn--lg { height: 56px; padding: 0 32px; font-size: 16px; }
+.btn--sm { height: 34px; padding: 0 16px; font-size: 13px; }
+.btn:disabled { opacity: 0.4; pointer-events: none; }
 
 .linkish {
-  font-family: var(--font-mono);
-  font-size: 11px; text-transform: uppercase; letter-spacing: 0.15em;
-  color: var(--muted-foreground);
+  font-size: 14px;
+  color: color-mix(in oklch, var(--foreground) 70%, transparent);
   cursor: pointer;
-  transition: color 200ms var(--ease);
+  transition: color 250ms var(--ease);
 }
 .linkish:hover { color: var(--foreground); }
 
-/* --------------------------------------------------------------------------
-   Split-flap
-   -------------------------------------------------------------------------- */
-.flap { display: flex; flex-wrap: wrap; gap: 4px; perspective: 1000px; }
-.flap__c {
-  display: grid; place-items: center;
-  width: clamp(38px, 8.2vw, 108px);
-  height: clamp(52px, 11vw, 148px);
-  border: 1px solid var(--border);
-  background: oklch(0 0 0);
-  color: var(--foreground);
-  font-family: var(--font-display);
-  font-size: clamp(30px, 7vw, 96px);
-  line-height: 1;
-  transition: background 120ms linear, color 120ms linear, border-color 120ms linear;
+/* underline that grows from the left, for nav links */
+.growline { position: relative; }
+.growline::after {
+  content: "";
+  position: absolute; left: 0; bottom: -4px;
+  width: 0; height: 1px;
+  background: var(--foreground);
+  transition: width 300ms var(--ease);
 }
-.flap__c.is-flipping {
-  background: color-mix(in oklch, var(--accent) 20%, transparent);
-  color: var(--accent);
-  border-color: color-mix(in oklch, var(--accent) 45%, transparent);
-}
-.flap__c--space { border: 0; background: none; width: clamp(14px, 3vw, 34px); }
+.growline:hover::after { width: 100%; }
 
 /* --------------------------------------------------------------------------
-   Scroll reveal
+   Template utilities
    -------------------------------------------------------------------------- */
-.rv { opacity: 0; transform: translateY(28px); transition: opacity 900ms var(--ease), transform 900ms var(--ease); }
-.rv--l { transform: translateX(-60px); }
-.rv--r { transform: translateX(60px); }
+.noise-overlay { position: relative; }
+.noise-overlay::after {
+  content: "";
+  position: fixed; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  opacity: 0.03;
+  pointer-events: none;
+  z-index: 1000;
+}
+
+.marquee { display: flex; width: max-content; animation: marquee 30s linear infinite; }
+@keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+
+.hover-lift { transition: transform 400ms var(--spring), box-shadow 400ms var(--ease); }
+.hover-lift:hover { transform: translateY(-4px); }
+
+/* the hero's rotating word: each character arrives from below through a blur */
+.char-in {
+  display: inline-block;
+  animation: char-in 500ms var(--ease) forwards;
+  opacity: 0;
+  filter: blur(40px);
+  transform: translateY(100%);
+}
+@keyframes char-in {
+  to { opacity: 1; filter: blur(0); transform: translateY(0); }
+}
+
+/* scroll reveal */
+.rv { opacity: 0; transform: translateY(24px); transition: opacity 800ms var(--ease), transform 800ms var(--ease); }
 .rv.on { opacity: 1; transform: none; }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   .rv { opacity: 1 !important; transform: none !important; transition: none; }
-  .fx-noise { display: none; }
+  .char-in { animation: none; opacity: 1; filter: none; transform: none; }
+  .marquee { animation: none; }
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
