@@ -133,7 +133,9 @@ The `myfont` folder holds one PNG per character, named by its ASCII code. For ex
 
 To use your own handwriting, replace these images with cropped photos of your own letters, named by the matching ASCII code. You can add variants for extra realism by adding files such as `65_1.png` and `65_2.png`, and the engine picks among them at random.
 
-The bundled font covers the full printable ASCII set. Characters with no matching image are skipped and listed at the end, so a missing glyph never stops a run.
+The bundled font is a real hand, captured from the sheets in `sample/` and cut up by the extractors in `tools/`. It covers the full printable ASCII set. Two lowercase letters, `v` and `w`, were missing from the sheet and still come from the previous set, and the technical symbols are drawn rather than written. Characters with no matching image are skipped and listed at the end, so a missing glyph never stops a run.
+
+Alongside it, `wordfont/` holds whole words captured in one stroke. Where a word has an image it is drawn from that, keeping the joins a real hand makes; everything else is assembled from letters. On unseen text roughly a third of words come from images, and the two are not distinguishable by eye. Set `USE_WORDS = False` to render everything letter by letter.
 
 ## Glyph tools
 

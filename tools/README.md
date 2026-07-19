@@ -1,43 +1,52 @@
 # tools
 
-Generators for the glyphs that were not in the original handwriting sample.
-Both write straight into `myfont/`, overwriting the files they own. They are
-deterministic, so re-running them reproduces the committed glyphs exactly.
+Scripts for building and extending the handwriting set.
 
-Run from anywhere in the repo:
+## Capture
+
+`make_capture_sheets.py` prints the sheets to write on:
 
 ```
-python tools/make_punctuation.py
+python tools/make_capture_sheets.py
+```
+
+- `paragraph.pdf` plus `letters_min.pdf` is the two-page minimum
+- `words_short.pdf` / `words_full.pdf` are larger word sets
+- `letters.pdf` has three samples per letter, for real variants
+
+Each cell is a known rectangle holding known content. The guide text is grey and
+a pen is dark, so extraction drops the guide by brightness and keeps the ink.
+
+## Extraction
+
+```
+python tools/extract_glyphs.py     # letter sheet  -> myfont/<ascii>.png
+python tools/extract_words.py      # paragraph     -> wordfont/<n>.png + index.json
+```
+
+Both label by position rather than by recognising anything: the sheet holds
+known content in a known order, so a shape gets its label from the text. Any
+row or line whose count disagrees with the text is skipped rather than guessed
+at, because a silent mislabel would be permanent and invisible.
+
+Why the two are different: letters can only be cut out of writing that does not
+join up, which is why the letter sheet uses separated boxes. Measuring a real
+sample of joined handwriting found only 43% of words separable into letters,
+while words themselves separated 42 times out of 42. So whole words come from
+ordinary prose and single letters come from boxes.
+
+## Drawn symbols
+
+```
 python tools/make_symbols.py
 ```
 
-## make_punctuation.py
+Draws the 21 technical symbols that no handwriting sample covers:
+`# $ % & * + / < = > @ [ \ ] ^ _ ` { | } ~`. These are approximations in a hand
+style rather than real handwriting, so they read as neat rather than personal.
+Photograph the character and save it as `myfont/<ascii-code>.png` to replace one.
 
-Builds `"` `'` `:` `;` by **composing marks that already exist** in the
-handwriting: a colon is two periods, a semicolon is a period above a comma, a
-double quote is two commas, and an apostrophe is a single comma. Because these
-reuse real strokes, they match the rest of the handwriting exactly.
-
-Owns `myfont/34.png`, `39.png`, `58.png`, `59.png`.
-
-## make_symbols.py
-
-Draws the 21 technical symbols that have no natural building block in the
-sample: `# $ % & * + / < = > @ [ \ ] ^ _ ` { | } ~`. These are approximations
-in a hand style, not tracings of real handwriting, so they read as neat rather
-than personal. To make any of them genuinely yours, photograph the symbol and
-drop it in as `myfont/<ascii-code>.png`; the renderer will use it with no code
-change and this script simply stops owning that glyph.
-
-Owns `myfont/{35,36,37,38,42,43,47,60,61,62,64,91,92,93,94,95,96,123,124,125,126}.png`.
-
-## A note on vertical placement
-
-Neither script positions glyphs on the line. The renderer trims every glyph to
-its ink, so padding is discarded; height comes from the character sets in
-`text_to_handwriting.py`:
-
-- `CENTERED` (`+ = < > ~`) sit on the x-height axis
-- `RAISED` (`" ' * ^` and backtick) hang high on the line
-- `DESCENDERS` (`g j p q y`) drop their tails below it
-- everything else bottom-aligns to the writing line
+There used to be a `make_punctuation.py` here that composed `"` `'` `:` `;` out
+of the period and comma, for a font that lacked them. The current set has all
+four captured directly, so the script would have overwritten real glyphs with
+synthesised ones and has been removed.
