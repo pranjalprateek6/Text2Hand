@@ -35,6 +35,15 @@ sample of joined handwriting found only 43% of words separable into letters,
 while words themselves separated 42 times out of 42. So whole words come from
 ordinary prose and single letters come from boxes.
 
+A word image must not include the punctuation that followed it in the prose,
+or the renderer draws that mark a second time from the text: "it" was rendering
+as "it." everywhere it appeared. Splitting on gap width alone does not catch
+these, because a mark written tight against its word sits closer to it than
+two words ever sit to each other. `trim_trailing_mark` measures the shape
+instead. Dots and dashes are caught by being small, and a comma, which is as
+large as a letter, by hanging below the writing: it starts at 0.74 of the row
+band where the lowest trailing letter measured started at 0.46.
+
 ## Salvage
 
 ```
