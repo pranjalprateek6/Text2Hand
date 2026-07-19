@@ -138,6 +138,89 @@ INKS = {
 }
 
 
+
+
+def _write_streaming(text: str, folder: Path, as_markdown: bool, on_progress):
+    """Render, writing each page out as it is finished, and return (count, missing).
+
+    The renderer hands over one page at a time and keeps nothing, so the only
+    pages in memory are the one being written to disk and the few queued behind
+    it. Holding the whole document instead cost 1.7 GB on a thirty page render.
+
+    Writing runs on its own threads so it overlaps the next page being drawn,
+    and a semaphore caps how many pages can be waiting: without it a fast
+    renderer would just rebuild the pile it was supposed to avoid.
+    """
+    # One slot per writer thread. Fewer starves the pool and the renderer waits
+    # on disk: at half this the same document took three seconds longer. More
+    # is just pages queueing in memory, which is the thing being avoided, and
+    # measured no faster.
+    width = t2h._workers()
+    slots = threading.Semaphore(width)
+    failures: list[Exception] = []
+
+    def on_page(number: int, page):
+        slots.acquire()
+
+        def write(page=page, i=number):
+            try:
+                # JPEG for the preview: the paper grain makes PNG very
+                # inefficient here (roughly 5x larger) and this copy is only
+                # ever shown on screen.
+                preview = page.copy()
+                preview.thumbnail((PREVIEW_WIDTH, PREVIEW_WIDTH * 4), Image.LANCZOS)
+                preview.save(folder / f"preview_{i}.jpg", quality=82, optimize=True)
+
+                # From the preview rather than the page: a second full-size
+                # copy per page in flight is 30 MB that buys nothing, and
+                # 900px is still four times the thumbnail's width.
+                thumb = preview.copy()
+                thumb.thumbnail((THUMB_WIDTH, THUMB_WIDTH * 4), Image.LANCZOS)
+                thumb.save(folder / f"thumb_{i}.jpg", quality=72, optimize=True)
+
+                # Level 3 rather than zlib's default 6. A page is mostly paper
+                # grain, which is close to random and barely compresses, so the
+                # extra effort buys about 5% of file size for twice the time.
+                page.save(folder / f"page_{i}.png", compress_level=3)
+            except Exception as exc:
+                failures.append(exc)
+            finally:
+                slots.release()
+
+        pool.submit(write)
+
+    pool = ThreadPoolExecutor(max_workers=t2h._workers())
+    try:
+        count, missing = t2h.stream_pages(text, on_page, as_markdown=as_markdown,
+                                          on_progress=on_progress)
+    finally:
+        pool.shutdown(wait=True)
+    if failures:
+        raise failures[0]
+    return count, missing
+
+
+def _combine_pdf(folder: Path) -> Path:
+    """Build the whole-document PDF from the pages already on disk.
+
+    Appended a page at a time. Pillow's save_all collects everything handed to
+    it into a list first, so passing pages one by one that way still ends with
+    all thirty of them in memory, which is what writing them out as they were
+    finished was meant to avoid. Appending instead holds one page and costs
+    about 0.4% of file size in superseded page tables.
+    """
+    pdf = folder / "handwriting.pdf"
+    pngs = sorted(folder.glob("page_*.png"), key=lambda p: int(p.stem.split("_")[1]))
+    if not pngs:
+        raise FileNotFoundError("no pages to combine")
+    if pdf.exists():
+        pdf.unlink()                    # appending onto a stale file would grow it
+    for n, path in enumerate(pngs):
+        with Image.open(path) as page:
+            page.convert("RGB").save(pdf, append=n > 0)
+    return pdf
+
+
 def _render(text: str, ruled: bool, texture: bool, skew: bool, as_markdown: bool,
             ink: str = "blue-black", on_progress=None):
     """Render text to a fresh folder and return (render_id, page_count, missing)."""
@@ -153,59 +236,30 @@ def _render(text: str, ruled: bool, texture: bool, skew: bool, as_markdown: bool
             # has to flush all of them or it silently keeps the old ink.
             t2h.INK_COLOR = colour
             t2h.reset_glyph_caches()
-        pages, missing = t2h.render_pages(text, as_markdown=as_markdown,
-                                          on_progress=on_progress)
-
-    rid = uuid.uuid4().hex[:12]
-    folder = RENDER_ROOT / rid
-    folder.mkdir(parents=True, exist_ok=True)
-
-    def write_preview(item):
-        i, page = item
-        # JPEG for the preview: the paper grain makes PNG very inefficient here
-        # (roughly 5x larger) and this copy is only ever shown on screen.
-        preview = page.copy()
-        preview.thumbnail((PREVIEW_WIDTH, PREVIEW_WIDTH * 4), Image.LANCZOS)
-        preview.save(folder / f"preview_{i}.jpg", quality=82, optimize=True)
-
-        thumb = page.copy()
-        thumb.thumbnail((THUMB_WIDTH, THUMB_WIDTH * 4), Image.LANCZOS)
-        thumb.save(folder / f"thumb_{i}.jpg", quality=72, optimize=True)
-
-    # Each page writes its own files and shares nothing with the others. Pillow
-    # drops the GIL while encoding, so these overlap properly.
-    with ThreadPoolExecutor(max_workers=t2h._workers()) as pool:
-        list(pool.map(write_preview, enumerate(pages, 1)))
+        rid = uuid.uuid4().hex[:12]
+        folder = RENDER_ROOT / rid
+        folder.mkdir(parents=True, exist_ok=True)
+        count, missing = _write_streaming(text, folder, as_markdown, on_progress)
 
     pending = _Artefacts()
     with _artefacts_lock:
         _artefacts[rid] = pending
 
-    def write_full():
-        """The files only Export needs: full-size PNGs and the combined PDF."""
+    def build_pdf():
+        """The one file Export needs that a page cannot be written to alone."""
         try:
-            def one(item):
-                i, page = item
-                # Level 3 rather than zlib's default 6. A page is mostly paper
-                # grain, which is close to random and barely compresses, so the
-                # extra effort buys about 5% of file size for twice the time.
-                page.save(folder / f"page_{i}.png", compress_level=3)
-
-            with ThreadPoolExecutor(max_workers=t2h._workers()) as pool:
-                list(pool.map(one, enumerate(pages, 1)))
-            pages[0].save(folder / "handwriting.pdf", save_all=True,
-                          append_images=pages[1:])
+            _combine_pdf(folder)
         except Exception as exc:                    # surfaced by _await_artefacts
             pending.error = str(exc)
         finally:
             pending.done.set()
 
-    threading.Thread(target=write_full, daemon=True).start()
+    threading.Thread(target=build_pdf, daemon=True).start()
 
     if on_progress:
-        on_progress("previews", len(pages))
+        on_progress("previews", count)
     _prune()
-    return rid, len(pages), missing
+    return rid, count, missing
 
 
 # --------------------------------------------------------------------------- #
@@ -487,16 +541,14 @@ def download_pdf(rid: str):
     folder = _safe(rid)
     path = folder / "handwriting.pdf"
     if not path.exists():
-        # The combined PDF is written last, after the page PNGs, so a process
-        # that stopped mid-write can leave the pages without it. Rebuilding
-        # from them costs a second and saves the render; only a render whose
-        # PNGs are missing too is genuinely unrecoverable.
-        pngs = sorted(folder.glob("page_*.png"),
-                      key=lambda p: int(p.stem.split("_")[1]))
-        if not pngs:
+        # The combined PDF is built after the pages, so a process that stopped
+        # in between can leave the pages without it. Rebuilding from them costs
+        # a second and saves the render; only a render whose PNGs are missing
+        # too is genuinely unrecoverable.
+        try:
+            _combine_pdf(folder)
+        except FileNotFoundError:
             abort(404)
-        sheets = [Image.open(p).convert("RGB") for p in pngs]
-        sheets[0].save(path, save_all=True, append_images=sheets[1:])
     return send_file(path, mimetype="application/pdf",
                      as_attachment=True, download_name="handwriting.pdf")
 

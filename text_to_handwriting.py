@@ -472,6 +472,15 @@ def _skew_bands(page: Image.Image, angle: float, fill, bands: int) -> list:
     return [(y0, make(y0)) for y0 in range(0, h, step)]
 
 
+def _skew_page(page: Image.Image, angle: float, fill, pool) -> Image.Image:
+    """Rotate one page, its bands computed across the pool."""
+    out = Image.new(page.mode, page.size)
+    jobs = _skew_bands(page, angle, fill, _workers())
+    for (y0, _), strip in zip(jobs, pool.map(lambda j: j[1](), jobs)):
+        out.paste(strip, (0, y0))
+    return out
+
+
 def _workers() -> int:
     """Threads to use for the page-sized image work.
 
@@ -721,23 +730,64 @@ def derive_metrics() -> None:
 class Sheet:
     """A stack of pages you can write glyphs onto; starts a new page on demand."""
 
-    PAGE_POOL = 6                             # textured blank sheets kept to copy
+    # Textured blank sheets kept to copy. Each is a 30 MB page held for the
+    # whole render, and the gain flattens after the first few: two already
+    # avoid nearly all the retexturing, and a bigger pool measured both heavier
+    # and slower, since the memory traffic is what this is bound by.
+    PAGE_POOL = 3
 
-    def __init__(self) -> None:
+    def __init__(self, on_page=None) -> None:
         self.template = Image.open(BG_PATH).convert("RGB")
         self.width, self.height = self.template.size
+        # With an on_page sink a finished page is handed over and forgotten, so
+        # only the one being written is held. Without one they pile up here,
+        # which is what the command line and the tests want.
+        self.on_page = on_page
         self.pages: list[Image.Image] = []
+        self.count = 0                        # pages finished, kept or not
         self.missing: list[str] = []          # characters with no glyph
         self.scale = 1.0                      # block-level glyph size
         self._last = ""                       # last character written, for quote direction
         self._in_quote = False                # inside a quotation, for quote direction
         self._blanks: list[Image.Image] = []   # prepared sheets, copied per page
+        self.page = None
+        self._skew_pool = None
         self._new_page()
 
     def close(self) -> None:
         self._blanks.clear()
+        if self._skew_pool is not None:
+            self._skew_pool.shutdown(wait=True)
+            self._skew_pool = None
+
+    def finish(self) -> None:
+        """Hand over the page still being written. Call once, at the end."""
+        self._emit()
+        self.close()
+
+    def _emit(self) -> None:
+        """Skew the page just finished and pass it on, then let go of it."""
+        page, self.page = self.page, None
+        if page is None:
+            return
+        if SCAN_SKEW:
+            if self._skew_pool is None:
+                self._skew_pool = ThreadPoolExecutor(max_workers=_workers())
+            fill = PAPER_FILL if PAPER_TEXTURE else (255, 255, 255)
+            # Drawn here, one page at a time in page order, so the sequence of
+            # angles does not depend on thread scheduling.
+            angle = random.uniform(-SCAN_SKEW, SCAN_SKEW)
+            # One page at a time means banding it: every core works on this
+            # sheet rather than each core taking a sheet of its own.
+            page = _skew_page(page, angle, fill, self._skew_pool)
+        self.count += 1
+        if self.on_page is not None:
+            self.on_page(self.count, page)
+        else:
+            self.pages.append(page)
 
     def _new_page(self) -> None:
+        self._emit()                          # the previous page is done with
         # A page is 30 MB, and texturing one means a multiply and two blends
         # across every pixel of it. That, not the writing, is the bulk of a
         # render, and threads cannot fix it because the limit is memory
@@ -755,10 +805,8 @@ class Sheet:
             self._blanks.append(blank)
         else:
             blank = random.choice(self._blanks)
-        page = blank.copy()                    # the sheet is kept clean to reuse
-        self.page = page
-        self.pages.append(page)
-        _report("page", len(self.pages))
+        self.page = blank.copy()               # the sheet is kept clean to reuse
+        _report("page", self.count + 1)
         self.x = MARGIN_L
         self.baseline = MARGIN_T + LINE_HEIGHT
         self._drift_phase = 0.0
@@ -1127,8 +1175,8 @@ def _drop_below_line(ch: str, height: int) -> int:
     return 0
 
 
-def render(text: str) -> Sheet:
-    sheet = Sheet()
+def render(text: str, on_page=None) -> Sheet:
+    sheet = Sheet(on_page)
     missing: set[str] = set()
 
     column = sheet.right - MARGIN_L
@@ -1206,7 +1254,7 @@ def chars_per_page() -> int:
     return int(packed * 0.65)
 
 
-def render_markdown(md_text: str) -> Sheet:
+def render_markdown(md_text: str, on_page=None) -> Sheet:
     """Render Markdown, expressing its structure in handwriting conventions.
 
     Headings are centred and underlined rather than bold, lists are indented
@@ -1215,7 +1263,7 @@ def render_markdown(md_text: str) -> Sheet:
     """
     from markdown_blocks import to_blocks
 
-    sheet = Sheet()
+    sheet = Sheet(on_page)
     missing: set[str] = set()
     column = sheet.right - MARGIN_L
 
@@ -1333,77 +1381,45 @@ def render_markdown(md_text: str) -> Sheet:
     return sheet
 
 
-def render_pages(text: str, as_markdown: bool = False,
-                 on_progress=None) -> tuple[list[Image.Image], list[str]]:
-    """Render text and return the finished page images plus any skipped chars.
+def stream_pages(text: str, on_page, as_markdown: bool = False,
+                 on_progress=None) -> tuple[int, list[str]]:
+    """Render text, handing each finished page to `on_page(number, image)`.
 
-    This is the entry point for anything embedding the renderer (the web app
-    uses it). main() is just a file-in, file-out wrapper around it.
+    The page is skewed before it is handed over, so what arrives is final, and
+    the renderer keeps no reference to it afterwards. A caller that writes the
+    page out and lets go holds one page instead of the whole document: a
+    thirty page render used to carry 1.7 GB of pixels for no reason other than
+    that the pages were all returned together at the end.
 
-    The skew is applied last so the paper, rules included, rotates as one and
-    the exposed corners fill with the paper colour: the scanner-bed look.
+    Returns how many pages were made and any characters with no glyph.
     """
     global _progress
     _progress = on_progress
     try:
         derive_metrics()
-        sheet = render_markdown(text) if as_markdown else render(text)
+        sheet = render_markdown(text, on_page) if as_markdown else render(text, on_page)
+        sheet.finish()
     finally:
         _progress = None
-    sheet.close()
+    return sheet.count, sheet.missing
 
-    _report_finish = on_progress
-    if _report_finish:
-        _report_finish("skew", len(sheet.pages))
 
-    finals = list(sheet.pages)
-    # The sheet's own list is dropped here, so `finals` is the only thing
-    # holding a page. Without this the skew below cannot free anything as it
-    # goes: every unrotated page stays alive in the sheet while its rotated
-    # copy is built beside it, and a 29 page render peaks 900 MB higher.
-    sheet.pages.clear()
-    if SCAN_SKEW and finals:
-        fill = PAPER_FILL if PAPER_TEXTURE else (255, 255, 255)
-        # Angles are drawn here, on one thread, rather than inside the workers.
-        # random is one shared generator and thread scheduling is not
-        # deterministic, so drawing from it inside the pool would make the draw
-        # order vary run to run. That is a source of nondeterminism threading
-        # would otherwise have added, and it costs nothing to avoid.
-        angles = [random.uniform(-SCAN_SKEW, SCAN_SKEW) for _ in finals]
-        threads = _workers()
-        # Pillow drops the GIL inside these C routines, so this really does run
-        # at once. How to divide it depends on how much there is: with pages to
-        # spare, a thread takes a whole page, because banding costs an extra
-        # copy of the page to stitch the strips back together. Below that there
-        # are not enough pages to go round, so pages are split into bands until
-        # there is a job per thread. A one-page render used to leave every core
-        # but one idle through the slowest step in the pipeline.
-        with ThreadPoolExecutor(max_workers=threads) as pool:
-            if len(finals) >= threads:
-                def whole(i: int) -> Image.Image:
-                    return finals[i].rotate(angles[i], resample=Image.BICUBIC,
-                                            expand=False, fillcolor=fill)
-                # A thread at a time, but only a poolful of pages in flight. A
-                # page is 30 MB and rotating one makes a second copy of it, so
-                # handing the whole document to the pool at once meant every
-                # rotated page piling up beside its original: 900 MB of extra
-                # peak on a 29 page render. Each result is put straight back
-                # over its source, which lets the original go.
-                for start in range(0, len(finals), threads):
-                    batch = range(start, min(start + threads, len(finals)))
-                    for i, page in zip(batch, pool.map(whole, batch)):
-                        finals[i] = page
-            else:
-                bands = max(1, -(-threads // len(finals)))
-                jobs = [(i, y0, fn)
-                        for i, (p, ang) in enumerate(zip(finals, angles))
-                        for y0, fn in _skew_bands(p, ang, fill, bands)]
-                out = [Image.new(p.mode, p.size) for p in finals]
-                futures = [pool.submit(fn) for _, _, fn in jobs]
-                for (i, y0, _), fut in zip(jobs, futures):
-                    out[i].paste(fut.result(), (0, y0))
-                finals = out
-    return finals, sheet.missing
+def render_pages(text: str, as_markdown: bool = False,
+                 on_progress=None) -> tuple[list[Image.Image], list[str]]:
+    """Render text and return the finished page images plus any skipped chars.
+
+    Every page is held until the last one is done, which is convenient and
+    costs a page of memory each. Anything rendering a long document should use
+    stream_pages and write each page as it arrives.
+
+    The skew is applied to each page as it is finished, so the paper, rules
+    included, rotates as one and the exposed corners fill with the paper
+    colour: the scanner-bed look.
+    """
+    pages: list[Image.Image] = []
+    _, missing = stream_pages(text, lambda _n, page: pages.append(page),
+                              as_markdown=as_markdown, on_progress=on_progress)
+    return pages, missing
 
 
 # --------------------------------------------------------------------------- #
