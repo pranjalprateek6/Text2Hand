@@ -15,6 +15,7 @@ Then open http://127.0.0.1:5000
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import shutil
 import tempfile
@@ -250,6 +251,27 @@ def _job_spawn(jid: str, work, failure: str) -> None:
     threading.Thread(target=runner, daemon=True).start()
 
 
+# Converting the same PDF twice is pure repetition: extraction is settled by
+# the file and the page range, and gives the same Markdown every time. Renders
+# are deliberately not cached. Every one draws its own jitter, so a second
+# render of the same text is a different hand, and handing back the first would
+# make the button look broken.
+CONVERSIONS = KEEP_EQ_ASSETS    # matched, so a kept conversion keeps its crops
+_conversions: dict[str, dict] = {}
+_conversions_lock = threading.Lock()
+
+
+def _upload_key(path: Path, *parts: str) -> str:
+    """Identify a conversion by the bytes uploaded and how they were asked for."""
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for block in iter(lambda: fh.read(1 << 20), b""):
+            h.update(block)
+    for part in parts:
+        h.update(b"\0" + part.encode())
+    return h.hexdigest()
+
+
 def _safe(rid: str) -> Path:
     """Resolve a render folder, refusing anything that is not a plain id."""
     if not rid.isalnum():
@@ -299,6 +321,17 @@ def api_convert():
     page_spec = request.form.get("pages", "")
 
     def work(progress):
+        key = _upload_key(path, converter, page_spec, str(render_limit()))
+        with _conversions_lock:
+            hit = _conversions.get(key)
+        # The crops are referenced by path from the cached Markdown, so a
+        # conversion is only still usable while its folder survives pruning.
+        if hit and Path(hit["assets"]).is_dir():
+            shutil.rmtree(folder, ignore_errors=True)
+            os.utime(hit["assets"], None)   # touched, so use keeps it from pruning
+            progress("Already converted")
+            return dict(hit["response"])
+
         # Display equations are cropped into this folder and referenced from
         # the Markdown; it lives beyond the upload so the render can find them.
         eq_dir = RENDER_ROOT / f"eq_{uuid.uuid4().hex[:12]}"
@@ -327,12 +360,17 @@ def api_convert():
             notes.append(f"That is roughly {estimate} handwritten pages, "
                          "so rendering will take a while.")
 
-        return {"markdown": result.markdown, "converter": result.converter,
-                "pages_converted": result.pages_converted,
-                "total_pages": result.total_pages, "scanned": result.scanned,
-                "truncated": result.truncated, "notes": notes,
-                "chars": size, "estimated_pages": estimate,
-                "over_limit": size > render_limit()}
+        response = {"markdown": result.markdown, "converter": result.converter,
+                    "pages_converted": result.pages_converted,
+                    "total_pages": result.total_pages, "scanned": result.scanned,
+                    "truncated": result.truncated, "notes": notes,
+                    "chars": size, "estimated_pages": estimate,
+                    "over_limit": size > render_limit()}
+        with _conversions_lock:
+            _conversions[key] = {"assets": str(eq_dir), "response": dict(response)}
+            while len(_conversions) > CONVERSIONS:      # oldest out first
+                _conversions.pop(next(iter(_conversions)))
+        return response
 
     jid = _job_start("Opening the PDF")
     _job_spawn(jid, work, "Could not convert")
