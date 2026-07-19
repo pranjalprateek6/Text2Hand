@@ -46,13 +46,19 @@ function wordRotator(host) {
   setInterval(() => { at = (at + 1) % words.length; swap(words[at]); }, 2500);
 }
 
-/* ------------------------------------------------------------ ascii sphere */
+/* -------------------------------------------------------------- ascii page */
 
-function sphere(canvas) {
+/* The template shipped an ASCII sphere here. Ours is an ASCII page: a tilted
+   A4 sheet sketched in characters, faint blue rules and a red margin, with
+   letter-like marks arriving line by line behind a pen cursor. When the page
+   fills, it clears and starts over: the product, drawn in the template's own
+   medium. */
+function asciiPage(canvas) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
-  const CHARS = "░▒▓█▀▄▌▐│─┤├┴┬╭╮╰╯";
-  let time = 0.6, raf = null, running = !REDUCED;
+  const INK = "aeimnorsuvwx";
+  const CELL = 13;
+  let t = 0, written = 0, hold = 0, seed = 7, raf = null, running = !REDUCED;
 
   const resize = () => {
     const dpr = devicePixelRatio || 1;
@@ -62,42 +68,73 @@ function sphere(canvas) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   };
 
+  // one deterministic mark per cell, so written text does not flicker
+  const mark = (row, col) => INK[(row * 31 + col * 7 + seed * 13) % INK.length];
+
   const paint = () => {
     const r = canvas.getBoundingClientRect();
+    if (!r.width) return;
     ctx.clearRect(0, 0, r.width, r.height);
+
+    const ph = r.height * 0.84;               // A4, portrait
+    const pw = ph / 1.414;
+    const x0 = (r.width - pw) / 2, y0 = (r.height - ph) / 2;
+    const cols = Math.floor(pw / CELL), rows = Math.floor(ph / CELL);
     const cx = r.width / 2, cy = r.height / 2;
-    const radius = Math.min(r.width, r.height) * 0.52;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(-0.055 + Math.sin(t * 0.5) * 0.02);   // resting tilt plus a slow sway
+    ctx.translate(-cx, -cy);
     ctx.font = "12px monospace";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 
-    const pts = [];
-    for (let phi = 0; phi < Math.PI * 2; phi += 0.15) {
-      for (let theta = 0; theta < Math.PI; theta += 0.15) {
-        const x = Math.sin(theta) * Math.cos(phi + time * 0.5);
-        const y = Math.sin(theta) * Math.sin(phi + time * 0.5);
-        const z = Math.cos(theta);
-        const rotY = time * 0.3;
-        const nx = x * Math.cos(rotY) - z * Math.sin(rotY);
-        const nz = x * Math.sin(rotY) + z * Math.cos(rotY);
-        const rotX = time * 0.2;
-        const ny = y * Math.cos(rotX) - nz * Math.sin(rotX);
-        const fz = y * Math.sin(rotX) + nz * Math.cos(rotX);
-        pts.push({ x: cx + nx * radius, y: cy + ny * radius, z: fz,
-                   ch: CHARS[Math.floor(((fz + 1) / 2) * (CHARS.length - 1))] });
-      }
+    const at = (c, row, col, alpha, colour) => {
+      ctx.fillStyle = colour || `rgba(0, 0, 0, ${alpha})`;
+      ctx.fillText(c, x0 + col * CELL + CELL / 2, y0 + row * CELL + CELL / 2);
+    };
+
+    // the sheet's edge
+    for (let c = 0; c < cols; c++) { at("─", 0, c, 0.3); at("─", rows - 1, c, 0.3); }
+    for (let rw = 0; rw < rows; rw++) { at("│", rw, 0, 0.3); at("│", rw, cols - 1, 0.3); }
+    at("╭", 0, 0, 0.35); at("╮", 0, cols - 1, 0.35);
+    at("╰", rows - 1, 0, 0.35); at("╯", rows - 1, cols - 1, 0.35);
+
+    // ruling every other row, and the red margin two cells in
+    for (let rw = 2; rw < rows - 1; rw += 2) {
+      for (let c = 1; c < cols - 1; c++) at("─", rw, c, 0, "rgba(70, 110, 180, 0.13)");
     }
-    pts.sort((a, b) => a.z - b.z);
-    for (const p of pts) {
-      ctx.fillStyle = `rgba(0, 0, 0, ${0.2 + (p.z + 1) * 0.4})`;
-      ctx.fillText(p.ch, p.x, p.y);
+    for (let rw = 1; rw < rows - 1; rw++) at("│", rw, 2, 0, "rgba(180, 60, 50, 0.18)");
+
+    // the writing: lines sit on the rules, indented past the margin
+    const lineRows = [];
+    for (let rw = 2; rw < rows - 2; rw += 2) lineRows.push(rw - 1);
+    const perLine = cols - 5;
+    const total = lineRows.length * perLine;
+    const done = Math.min(written, total);
+    for (let i = 0; i < done; i++) {
+      const row = lineRows[Math.floor(i / perLine)];
+      const col = 4 + (i % perLine);
+      at(mark(row, col), row, col, 0.55);
     }
+    // the pen, blinking at the write head
+    if (done < total && Math.floor(t * 2.4) % 2 === 0) {
+      at("▌", lineRows[Math.floor(done / perLine)], 4 + (done % perLine), 0.8);
+    }
+    ctx.restore();
+    return total;
   };
 
   const loop = () => {
     if (!running) return;
-    paint();
-    time += 0.02;
+    const total = paint() || 0;
+    t += 0.016;
+    if (written >= total && total > 0) {
+      if (++hold > 110) { written = 0; hold = 0; seed = (seed * 17 + 3) % 97; }
+    } else {
+      written += 1.6;                        // a hurried but human pace
+    }
     raf = requestAnimationFrame(loop);
   };
 
@@ -107,7 +144,8 @@ function sphere(canvas) {
   // script runs, and a window resize never comes to correct it. Re-measure
   // and repaint whenever the box itself changes size.
   new ResizeObserver(() => { resize(); paint(); }).observe(canvas);
-  paint();                                   // a still sphere even if frames never run
+  if (REDUCED) written = 1e9;                // a finished page, held still
+  paint();                                   // painted once even if frames never run
   if (!REDUCED) {
     new IntersectionObserver((es) => {
       es.forEach((e) => {
@@ -181,7 +219,7 @@ function reveals() {
 function boot() {
   shrinkNav();
   document.querySelectorAll("[data-words]").forEach(wordRotator);
-  document.querySelectorAll(".fx-sphere").forEach(sphere);
+  document.querySelectorAll(".fx-page").forEach(asciiPage);
   document.querySelectorAll("[data-spotlight]").forEach(spotlight);
   steps();
   reveals();

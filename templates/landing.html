@@ -19,7 +19,6 @@
   <div class="nav__in">
     <a class="nav__brand" href="/">
       <span class="nav__name">Text2Hand</span>
-      <span class="nav__tm">TM</span>
     </a>
     <nav class="nav__links" aria-label="Sections">
       <a class="growline" href="#features">Features</a>
@@ -29,7 +28,7 @@
     <div class="nav__cta">
       <a class="linkish" href="https://github.com/pranjalprateek6/Text2Hand"
          target="_blank" rel="noreferrer noopener">GitHub</a>
-      <a class="btn btn--sm" href="{{ url_for('studio') }}">Open the studio</a>
+      <a class="linkish growline" href="{{ url_for('studio') }}">Studio</a>
     </div>
   </div>
 </header>
@@ -38,7 +37,7 @@
 
   <!-- --------------------------------------------------------------- hero -->
   <section class="hero">
-    <div class="hero__sphere"><canvas class="fx-sphere" aria-hidden="true"></canvas></div>
+    <div class="hero__sphere"><canvas class="fx-page" role="img" aria-label="A sketched page of ruled paper writing itself, on a loop"></canvas></div>
 
     <div class="hero__grid" aria-hidden="true">
       {% for i in range(1, 8) %}<i class="h" style="top: {{ 12.5 * i }}%"></i>{% endfor %}
@@ -318,7 +317,6 @@ pages.zip &middot; full-size PNGs</pre>
         <div class="footer__brand">
           <a class="nav__brand" href="/">
             <span class="nav__name">Text2Hand</span>
-            <span class="nav__tm">TM</span>
           </a>
           <p>Typed text in, pages in a real hand out. A Python renderer, a captured
             hand, and a studio to drive them.</p>
