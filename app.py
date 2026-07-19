@@ -58,43 +58,10 @@ def page_size() -> int:
 def render_limit() -> int:
     return MAX_OUTPUT_PAGES * page_size()
 
+
 # The renderer keeps its settings in module globals, so only one render at a
 # time may touch them.
 _render_lock = threading.Lock()
-
-# Previews are written before a render reports done; the full-size PNGs and the
-# combined PDF follow on a background thread, because nobody looks at those
-# until they press Export. Waiting for them was most of what a one-page render
-# spent its time on.
-ARTEFACT_WAIT = 180             # seconds a download will wait for the writer
-_artefacts: dict[str, "_Artefacts"] = {}
-_artefacts_lock = threading.Lock()
-
-
-class _Artefacts:
-    """The state of one render's still-being-written downloadable files."""
-
-    def __init__(self) -> None:
-        self.done = threading.Event()
-        self.error: str | None = None
-
-
-def _await_artefacts(rid: str) -> None:
-    """Block until a render's downloadable files are on disk.
-
-    A download that arrives before the writer has finished waits for it, rather
-    than 404ing on a file that is merely late. Renders made before a restart
-    have no record here and fall through: their files either exist or the route
-    404s on its own, exactly as before.
-    """
-    with _artefacts_lock:
-        pending = _artefacts.get(rid)
-    if pending is None:
-        return
-    if not pending.done.wait(ARTEFACT_WAIT):
-        abort(504)                                  # writer wedged or too slow
-    if pending.error:
-        abort(500)
 
 
 def _prune() -> None:
@@ -114,17 +81,8 @@ def _prune() -> None:
     )
     renders = [p for p in folders if not p.name.startswith("eq_")]
     assets = [p for p in folders if p.name.startswith("eq_")]
-    with _artefacts_lock:
-        busy = {rid for rid, a in _artefacts.items() if not a.done.is_set()}
     for old in renders[KEEP_RENDERS:] + assets[KEEP_EQ_ASSETS:]:
-        if old.name in busy:
-            continue                  # a background writer is still filling it
         shutil.rmtree(old, ignore_errors=True)
-    # forget finished writers whose folder has since been pruned
-    with _artefacts_lock:
-        for rid in [r for r, a in _artefacts.items()
-                    if a.done.is_set() and not (RENDER_ROOT / r).exists()]:
-            del _artefacts[rid]
 
 
 # The engine has always supported any pen colour; the app just never passed one
@@ -136,8 +94,6 @@ INKS = {
     "blue": (21, 60, 152),
     "red": (150, 28, 24),
 }
-
-
 
 
 def _write_streaming(text: str, folder: Path, as_markdown: bool, on_progress):
@@ -158,6 +114,29 @@ def _write_streaming(text: str, folder: Path, as_markdown: bool, on_progress):
     width = t2h._workers()
     slots = threading.Semaphore(width)
     failures: list[Exception] = []
+
+    # The whole-document PDF is appended here, from the page already in hand.
+    # Building it afterwards from the PNGs meant decoding every page back off
+    # disk, and that decode was 87% of the cost: 4.1s of a 4.7s rebuild against
+    # 20ms a page to append. Appending has to happen in page order, so a page
+    # waits its turn, which is cheap at that price.
+    pdf_path = folder / "handwriting.pdf"
+    if pdf_path.exists():
+        pdf_path.unlink()
+    turn = threading.Condition()
+    next_up = [1]
+
+    def append_pdf(page, i):
+        with turn:
+            while next_up[0] != i:
+                turn.wait()
+            try:
+                page.convert("RGB").save(pdf_path, append=i > 1)
+            finally:
+                # advanced even if this page failed, or every page behind it
+                # would wait for a turn that never comes
+                next_up[0] += 1
+                turn.notify_all()
 
     def on_page(number: int, page):
         slots.acquire()
@@ -182,6 +161,7 @@ def _write_streaming(text: str, folder: Path, as_markdown: bool, on_progress):
                 # grain, which is close to random and barely compresses, so the
                 # extra effort buys about 5% of file size for twice the time.
                 page.save(folder / f"page_{i}.png", compress_level=3)
+                append_pdf(page, i)
             except Exception as exc:
                 failures.append(exc)
             finally:
@@ -240,21 +220,6 @@ def _render(text: str, ruled: bool, texture: bool, skew: bool, as_markdown: bool
         folder = RENDER_ROOT / rid
         folder.mkdir(parents=True, exist_ok=True)
         count, missing = _write_streaming(text, folder, as_markdown, on_progress)
-
-    pending = _Artefacts()
-    with _artefacts_lock:
-        _artefacts[rid] = pending
-
-    def build_pdf():
-        """The one file Export needs that a page cannot be written to alone."""
-        try:
-            _combine_pdf(folder)
-        except Exception as exc:                    # surfaced by _await_artefacts
-            pending.error = str(exc)
-        finally:
-            pending.done.set()
-
-    threading.Thread(target=build_pdf, daemon=True).start()
 
     if on_progress:
         on_progress("previews", count)
@@ -504,7 +469,6 @@ def thumb(rid: str, n: int):
 @app.get("/download/<rid>/page_<int:n>.pdf")
 def download_page_pdf(rid: str, n: int):
     """Single page as a PDF, built on first request and then cached."""
-    _await_artefacts(rid)                 # it is built from the full-size PNG
     folder = _safe(rid)
     pdf = folder / f"page_{n}.pdf"
     if not pdf.exists():
@@ -519,7 +483,6 @@ def download_page_pdf(rid: str, n: int):
 @app.get("/download/<rid>/pages.zip")
 def download_zip(rid: str):
     """Every page PNG plus the combined PDF, zipped on first request."""
-    _await_artefacts(rid)
     folder = _safe(rid)
     zpath = folder / "pages.zip"
     if not zpath.exists():
@@ -537,7 +500,6 @@ def download_zip(rid: str):
 
 @app.get("/download/<rid>/handwriting.pdf")
 def download_pdf(rid: str):
-    _await_artefacts(rid)
     folder = _safe(rid)
     path = folder / "handwriting.pdf"
     if not path.exists():
@@ -555,7 +517,6 @@ def download_pdf(rid: str):
 
 @app.get("/download/<rid>/page_<int:n>.png")
 def download_page(rid: str, n: int):
-    _await_artefacts(rid)
     path = _safe(rid) / f"page_{n}.png"
     if not path.exists():
         abort(404)
