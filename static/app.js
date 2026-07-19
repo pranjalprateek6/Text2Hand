@@ -75,8 +75,15 @@ function setOptions(opts, ink) {
 /* ---------------------------------------------------------- title and count */
 
 function title() {
+  // First non-empty line, with Markdown markers stripped for display: the
+  // title of "# **Notes**" is "Notes", and a converted PDF's bold header
+  // must not show its asterisks in the bar or on a library card.
   const first = ($("text").value.split("\n").find((l) => l.trim()) || "").trim()
-    .replace(/^#+\s*/, "");
+    .replace(/^[#>\s-]+/, "")
+    // strip emphasis markers but keep single underscores: Pranjal_Prateek is
+    // a name, not italics
+    .replace(/(\*\*|__|[*`])/g, "")
+    .trim();
   return first ? (first.length > 40 ? first.slice(0, 40) + "…" : first) : "Untitled";
 }
 

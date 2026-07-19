@@ -9,13 +9,16 @@ body { overflow: hidden; height: 100vh; }
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 
 .bar__home {
-  display: grid; place-items: center;
-  width: 32px; height: 32px;
-  color: var(--muted-foreground);
+  display: flex; align-items: center; gap: 9px;
+  color: var(--foreground);
   transition: color 200ms var(--ease);
 }
 .bar__home:hover { color: var(--accent); }
-.bar__home svg { width: 16px; height: 16px; }
+.bar__wordmark {
+  font-family: var(--font-display);
+  font-size: 19px; letter-spacing: 0.06em;
+  line-height: 1;
+}
 
 .bar__tabs { display: flex; border: 1px solid var(--border); }
 .tab {
@@ -290,6 +293,11 @@ select.mini { max-width: 190px; cursor: pointer; }
 .cardlet {
   appearance: none;
   display: flex; flex-direction: column;
+  /* grid items default to min-width auto, so a nowrap title used to set the
+     card's minimum width to the title's full length: cards overflowed their
+     tracks and titles overlapped the neighbouring card */
+  min-width: 0;
+  overflow: hidden;
   padding: 0;
   border: 1px solid var(--border);
   background: none;
@@ -302,8 +310,9 @@ select.mini { max-width: 190px; cursor: pointer; }
 .cardlet:hover { border-color: var(--accent); }
 .cardlet__thumb { aspect-ratio: 2632 / 3722; max-height: 210px; overflow: hidden; background: var(--input); display: grid; place-items: center; font-family: var(--font-mono); font-size: 10px; color: var(--muted-foreground); }
 .cardlet__thumb img { width: 100%; height: 100%; object-fit: cover; object-position: top; }
-.cardlet__meta { padding: 12px 13px 13px; border-top: 1px solid var(--border); }
-.cardlet__title { font-family: var(--font-mono); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color 200ms var(--ease); }
+.cardlet__meta { padding: 12px 13px 13px; border-top: 1px solid var(--border); min-width: 0; }
+/* display block, because text-overflow does nothing on an inline span */
+.cardlet__title { display: block; font-family: var(--font-mono); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color 200ms var(--ease); }
 .cardlet:hover .cardlet__title { color: var(--accent); }
 .cardlet__sub { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; font-family: var(--font-mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.16em; color: color-mix(in oklch, var(--muted-foreground) 70%, transparent); }
 .cardlet__del { appearance: none; border: 0; background: none; padding: 2px; color: inherit; cursor: pointer; transition: color 160ms var(--ease); }

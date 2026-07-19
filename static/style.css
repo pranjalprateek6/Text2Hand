@@ -126,6 +126,15 @@ img { max-width: 100%; height: auto; display: block; }
 .mono { font-family: var(--font-mono); }
 .dim { color: var(--muted-foreground); }
 
+/* The mark: a solid accent square. In a system built from borders, mono
+   labels and one orange, the logo is the one filled shape, not a picture. */
+.brandmark {
+  display: inline-block;
+  width: 12px; height: 12px;
+  background: var(--accent);
+  flex: none;
+}
+
 
 /* --------------------------------------------------------------------------
    Buttons: bordered, mono, uppercase. No fills except the one CTA.

@@ -29,7 +29,6 @@
 }
 @media (min-width: 768px) { .topbar { padding: 0 48px; } }
 .topbar__brand { display: flex; align-items: center; gap: 10px; }
-.topbar__brand svg { width: 16px; height: 16px; }
 .topbar__name { font-family: var(--font-display); font-size: 20px; letter-spacing: 0.04em; text-transform: uppercase; }
 .topbar__nav { display: none; gap: 22px; margin-left: 10px; }
 @media (min-width: 900px) { .topbar__nav { display: flex; } }
