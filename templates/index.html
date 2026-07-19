@@ -3,29 +3,92 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="Turn typed text into handwriting on ruled paper" />
+  <meta name="description" content="Turn typed text or a PDF into your own handwriting on ruled paper" />
+  <meta name="color-scheme" content="light" />
   <title>Text2Hand</title>
-  <!-- No webfont: it would be a render-blocking external request for something
-       the system mono stack already provides, and it keeps the page working
-       offline. The reference UI renders with that same fallback stack anyway. -->
+  <!-- No webfont: it would be a render-blocking third-party request for
+       something the system stack already covers, and it keeps the app working
+       with no network at all. -->
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
 </head>
 <body>
-  <div class="App">
-    <div class="app-shell">
-      <header class="app-header">
-        <h1 class="app-title">Text2Hand</h1>
-        <p class="app-subtitle">Turn typed text into handwriting on ruled paper.</p>
-      </header>
+<div class="app">
 
-      <div class="workspace">
-        <!-- input -->
-        <section class="panel">
-          <span class="label">Start from a PDF</span>
-          <div class="upload">
-            <input type="file" id="pdfFile" accept="application/pdf,.pdf" />
-            <div class="upload__row">
-              <select id="converter" class="field">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand__mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/>
+        </svg>
+      </span>
+      <span class="brand__name">Text2Hand</span>
+      <span class="brand__sep" aria-hidden="true">/</span>
+      <span class="brand__tag">Type it, get it in your own hand</span>
+    </div>
+    <div class="topbar__spacer"></div>
+    <a class="btn btn--sm btn--ghost" href="https://github.com/pranjalprateek6/Text2Hand"
+       target="_blank" rel="noreferrer noopener">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M12 .5a12 12 0 0 0-3.79 23.4c.6.11.82-.26.82-.58v-2.2c-3.34.72-4.04-1.42-4.04-1.42-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.2.08 1.84 1.24 1.84 1.24 1.07 1.84 2.8 1.3 3.49 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.34-5.47-5.96 0-1.32.47-2.39 1.24-3.23-.13-.3-.54-1.53.11-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6.01 0c2.29-1.55 3.3-1.23 3.3-1.23.65 1.65.24 2.88.12 3.18.77.84 1.23 1.91 1.23 3.23 0 4.63-2.8 5.65-5.48 5.95.43.37.81 1.1.81 2.22v3.29c0 .32.22.7.83.58A12 12 0 0 0 12 .5Z"/>
+      </svg>
+      GitHub
+    </a>
+  </header>
+
+  <main class="main">
+
+    <!-- ---------------------------------------------------------------- -->
+    <!-- Left: source and settings                                        -->
+    <!-- ---------------------------------------------------------------- -->
+    <div>
+
+      <section class="card">
+        <div class="card__head">
+          <span class="step step--on">1</span>
+          <h2 class="card__title">Source</h2>
+          <div class="card__spacer"></div>
+          <div class="seg" role="tablist" aria-label="Where the text comes from">
+            <button class="seg__btn" id="tabText" role="tab" aria-selected="true"
+                    aria-controls="paneText">Text</button>
+            <button class="seg__btn" id="tabPdf" role="tab" aria-selected="false"
+                    aria-controls="panePdf">PDF</button>
+          </div>
+        </div>
+
+        <div class="card__body">
+          <!-- PDF pane -->
+          <div id="panePdf" role="tabpanel" aria-labelledby="tabPdf" hidden>
+            <label class="drop" id="drop" for="pdfFile">
+              <input type="file" id="pdfFile" accept="application/pdf,.pdf"
+                     aria-label="Choose a PDF file" />
+              <span class="drop__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                     stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5-5 5 5"/><path d="M12 5v12"/>
+                </svg>
+              </span>
+              <span class="drop__title">Drop a PDF here, or browse</span>
+              <span class="drop__sub">Text is extracted to Markdown you can correct</span>
+            </label>
+
+            <div class="file" id="fileCard" hidden style="margin-top:10px">
+              <span class="file__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                     stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>
+                </svg>
+              </span>
+              <span class="file__name" id="fileName">document.pdf</span>
+              <span class="file__size" id="fileSize"></span>
+              <button class="btn btn--sm btn--ghost btn--icon" id="fileClear" aria-label="Remove file">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+
+            <div class="row row--wrap" style="margin-top:10px">
+              <select id="converter" class="field grow" aria-label="Extraction method">
                 {% for c in converters %}
                 <option value="{{ c.name }}" {% if not c.ready %}disabled{% endif %}>
                   {{ c.label }}{% if not c.ready %} - {{ c.reason }}{% endif %}
@@ -33,79 +96,168 @@
                 {% endfor %}
               </select>
               <input type="text" id="pageRange" class="field field--narrow"
-                     placeholder="pages, e.g. 1-10" />
-              <button class="btn" id="convert">Convert</button>
-            </div>
-            <p class="hint">
-              Converts to Markdown below so you can correct it before rendering.
-              Cloud converters upload the file to that provider.
-            </p>
-          </div>
-
-          <label class="label label--spaced" for="text">Your text</label>
-          <textarea id="text" class="textarea" spellcheck="false"
-                    placeholder="Type or paste what you want written out by hand."></textarea>
-          <p class="counter" id="counter">0 characters</p>
-
-          <div class="examples">
-            <span class="examples__label">Try:</span>
-            <button class="examples__chip" data-sample="pangram">Pangram</button>
-            <button class="examples__chip" data-sample="punctuation">Punctuation</button>
-            <button class="examples__chip" data-sample="symbols">Symbols</button>
-            <button class="examples__chip" data-sample="markdown">Markdown</button>
-          </div>
-
-          <div class="options">
-            <label class="check"><input type="checkbox" id="markdown"> Markdown</label>
-            <label class="check"><input type="checkbox" id="ruled" checked> Ruled paper</label>
-            <label class="check"><input type="checkbox" id="texture" checked> Paper texture</label>
-            <label class="check"><input type="checkbox" id="skew" checked> Scan skew</label>
-          </div>
-
-          <div class="toolbar">
-            <p class="hint">Rendering runs locally on this machine.</p>
-            <div class="toolbar__actions">
-              <button class="btn" id="clear">Clear</button>
-              <button class="btn btn--primary" id="generate">Generate</button>
-            </div>
-          </div>
-        </section>
-
-        <!-- results -->
-        <section class="panel results">
-          <div id="alert" class="alert" hidden></div>
-
-          <div class="results__empty" id="empty">
-            <div class="results__empty-title">No pages yet</div>
-            <div class="results__empty-sub">Write something and hit Generate.</div>
-          </div>
-
-          <div id="output" hidden>
-            <span class="label" id="outputLabel">Output</span>
-
-            <img class="page-img" id="mainPage" alt="Page 1" />
-
-            <div class="viewer__nav" id="viewerNav" hidden>
-              <button class="btn" id="prevPage" aria-label="Previous page">&lsaquo; Prev</button>
-              <span class="viewer__counter" id="pageCounter">1 / 1</span>
-              <button class="btn" id="nextPage" aria-label="Next page">Next &rsaquo;</button>
+                     placeholder="Pages, all" aria-label="Page range, for example 1-10" />
             </div>
 
-            <div class="thumbs" id="thumbs" hidden></div>
+            <button class="btn btn--primary" id="convert" style="width:100%;margin-top:10px">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+              </svg>
+              Extract text
+            </button>
+            <p class="hint">Cloud extractors upload the file to that provider. The local ones do not.</p>
+          </div>
 
-            <div class="results__actions">
-              <a class="btn" id="dlPagePng" download>This page PNG</a>
-              <a class="btn" id="dlPagePdf" download>This page PDF</a>
-              <a class="btn btn--primary" id="downloadPdf" download>All pages PDF</a>
-              <a class="btn" id="dlZip" download>ZIP</a>
+          <!-- Text pane -->
+          <div id="paneText" role="tabpanel" aria-labelledby="tabText">
+            <label class="label" for="text">Your text</label>
+            <textarea id="text" class="editor" spellcheck="false"
+                      placeholder="Type or paste what you want written out by hand."></textarea>
+            <div class="meta">
+              <span id="counter">0 characters</span>
+              <span id="estimate"></span>
+            </div>
+
+            <div class="chips" style="margin-top:12px">
+              <button class="chip" data-sample="pangram">Pangram</button>
+              <button class="chip" data-sample="punctuation">Punctuation</button>
+              <button class="chip" data-sample="symbols">Symbols</button>
+              <button class="chip" data-sample="markdown">Markdown</button>
             </div>
           </div>
-        </section>
-      </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card__head">
+          <span class="step">2</span>
+          <h2 class="card__title">Paper</h2>
+        </div>
+        <div class="card__body">
+          <div class="switches">
+            <label class="switch">
+              <input type="checkbox" id="markdown" />
+              <span class="switch__track"></span>
+              <span class="switch__text">
+                <span class="switch__name">Read as Markdown</span>
+                <span class="switch__note">Headings, lists and tables become layout</span>
+              </span>
+            </label>
+            <label class="switch">
+              <input type="checkbox" id="ruled" checked />
+              <span class="switch__track"></span>
+              <span class="switch__text">
+                <span class="switch__name">Ruled paper</span>
+                <span class="switch__note">33 lines with a margin rule</span>
+              </span>
+            </label>
+            <label class="switch">
+              <input type="checkbox" id="texture" checked />
+              <span class="switch__track"></span>
+              <span class="switch__text">
+                <span class="switch__name">Paper texture</span>
+                <span class="switch__note">Warm tint and grain</span>
+              </span>
+            </label>
+            <label class="switch">
+              <input type="checkbox" id="skew" checked />
+              <span class="switch__track"></span>
+              <span class="switch__text">
+                <span class="switch__name">Scan skew</span>
+                <span class="switch__note">Slight tilt, as if scanned</span>
+              </span>
+            </label>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn btn--ghost" id="clear">Clear</button>
+          <div class="card__spacer"></div>
+          <button class="btn btn--primary" id="generate">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
+            </svg>
+            <span id="generateLabel">Write it out</span>
+          </button>
+        </div>
+      </section>
     </div>
-  </div>
 
-  <script>window.MAX_CHARS = {{ max_chars }};</script>
-  <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <!-- ---------------------------------------------------------------- -->
+    <!-- Right: result                                                    -->
+    <!-- ---------------------------------------------------------------- -->
+    <section class="card viewer">
+      <div class="card__head">
+        <span class="step" id="stepOut">3</span>
+        <h2 class="card__title" id="outputLabel">Pages</h2>
+        <div class="card__spacer"></div>
+
+        <div class="pager" id="pager" hidden>
+          <button class="btn btn--sm btn--ghost btn--icon" id="prevPage" aria-label="Previous page">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <span class="pager__count" id="pageCounter">1 / 1</span>
+          <button class="btn btn--sm btn--ghost btn--icon" id="nextPage" aria-label="Next page">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+          </button>
+        </div>
+
+        <div class="row" id="outActions" hidden>
+          <button class="btn btn--sm" id="zoom" aria-pressed="false">Actual size</button>
+          <a class="btn btn--sm" id="dlPagePng" download>Page</a>
+          <a class="btn btn--sm btn--primary" id="downloadPdf" download>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>
+            </svg>
+            PDF
+          </a>
+          <a class="btn btn--sm" id="dlZip" download>ZIP</a>
+        </div>
+      </div>
+
+      <div class="card__body" id="alertWrap" hidden style="padding-bottom:0">
+        <div id="alert" class="alert"></div>
+      </div>
+
+      <!-- empty -->
+      <div class="state" id="empty">
+        <span class="state__art" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>
+            <path d="M8 13h8"/><path d="M8 17h5"/>
+          </svg>
+        </span>
+        <p class="state__title">No pages yet</p>
+        <p class="state__sub">Add some text, or extract it from a PDF, then write it out.</p>
+      </div>
+
+      <!-- working -->
+      <div class="state" id="busy" hidden>
+        <span class="state__art" aria-hidden="true"><span class="spinner"></span></span>
+        <p class="state__title" id="busyTitle">Working</p>
+        <p class="state__sub" id="busyNote">This runs on the machine serving the page.</p>
+        <div class="progress"><div class="progress__bar"></div></div>
+      </div>
+
+      <!-- result -->
+      <div class="viewer__stage" id="stage" hidden>
+        <img class="page-img page-img--fit" id="mainPage" alt="Page 1" />
+      </div>
+      <div class="thumbs" id="thumbs" hidden></div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  window.MAX_CHARS = {{ max_chars }};
+  window.PAGE_SIZE = {{ page_size }};
+</script>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>

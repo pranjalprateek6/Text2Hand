@@ -163,8 +163,10 @@ def _safe(rid: str) -> Path:
 
 @app.get("/")
 def index():
+    # page_size goes down too, so the editor can say how much paper the text is
+    # before anyone waits for a render.
     return render_template("index.html", converters=converters.available(),
-                           max_chars=render_limit())
+                           max_chars=render_limit(), page_size=page_size())
 
 
 @app.post("/api/convert")
