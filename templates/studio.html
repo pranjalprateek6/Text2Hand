@@ -8,11 +8,10 @@
   <title>Text2Hand</title>
   <script>
     // Theme before first paint, so there is no flash of the wrong one.
+    // Light is the site's default; a stored choice from the toggle wins.
     (function () {
       var saved = localStorage.getItem("t2h.theme");
-      var dark = saved ? saved === "dark"
-                       : matchMedia("(prefers-color-scheme: dark)").matches;
-      document.documentElement.dataset.theme = dark ? "dark" : "light";
+      document.documentElement.dataset.theme = saved === "dark" ? "dark" : "light";
     })();
   </script>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />

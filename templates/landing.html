@@ -4,27 +4,24 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="Typed text in, pages in a real hand out. Paste text or drop a PDF; get ruled pages written in a captured human hand." />
-  <meta name="color-scheme" content="dark" />
+  <meta name="color-scheme" content="light" />
   <title>Text2Hand - typed text, in a real hand</title>
   <style>
-    /* The landing is its own thing: near-black, one typeface at one weight,
-       type doing all the work. Modelled on the reference's rhythm: huge
-       display headings at tight tracking, 8rem section padding, tiny
-       uppercase kickers, numbered blocks, mono numerals, and a single
-       inverted white section. Here the white section is a rendered page,
-       because the product's best argument is the product.
-       Self-contained on purpose: no shared stylesheet, no webfont. */
+    /* Light editorial, after the second reference: warm white, near-black
+       type at one weight, hairline rules, mono kickers, pill CTAs, and one
+       section inverted to black. The hero animation is ours, not theirs: a
+       written page tears itself to pieces and mends again, on a loop. The
+       pieces are twelve clip-path fragments of one image, animated on
+       transform and opacity only, so the whole thing stays on the
+       compositor. No webfonts, no libraries, two JPEGs. */
     :root {
-      --ink0: #060607;          /* page */
-      --ink1: #0d0d0f;          /* raised block */
-      --line: rgba(235, 233, 226, 0.14);
-      --line-soft: rgba(235, 233, 226, 0.08);
-      --fg: #eceae3;            /* warm off-white */
-      --fg-dim: #97948b;
-      --fg-faint: #55534d;
-      --paper: #f2efe7;         /* the inverted section */
-      --paper-ink: #131313;
-      --paper-dim: #6d6a62;
+      --bg: #f9f8f4;
+      --bg-tint: #f1efe8;
+      --ink: #0a0908;
+      --dim: #6d6960;
+      --faint: #a19c91;
+      --line: rgba(10, 9, 8, 0.14);
+      --line-soft: rgba(10, 9, 8, 0.08);
       --font: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
               "Helvetica Neue", Arial, sans-serif;
       --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
@@ -34,8 +31,8 @@
     html { scroll-behavior: smooth; }
     body {
       margin: 0;
-      background: var(--ink0);
-      color: var(--fg);
+      background: var(--bg);
+      color: var(--ink);
       font-family: var(--font);
       font-size: 16px;
       font-weight: 400;
@@ -49,24 +46,24 @@
 
     .wrap { max-width: 1240px; margin: 0 auto; padding: 0 24px; }
 
-    /* type scale */
     .display {
-      font-size: clamp(44px, 8.6vw, 118px);
-      line-height: 0.94;
+      font-size: clamp(42px, 7.8vw, 108px);
+      line-height: 0.96;
       letter-spacing: -0.028em;
     }
     .kicker {
+      display: flex; align-items: center; gap: 10px;
       font-family: var(--mono);
       font-size: 11.5px;
-      letter-spacing: 0.14em;
+      letter-spacing: 0.12em;
       text-transform: uppercase;
-      color: var(--fg-dim);
+      color: var(--dim);
     }
-    .lede { font-size: clamp(16px, 1.6vw, 19px); color: var(--fg-dim); max-width: 54ch; }
-    .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+    .kicker::before { content: ""; width: 26px; height: 1px; background: var(--ink); opacity: 0.5; }
+    .lede { font-size: clamp(16px, 1.6vw, 19px); color: var(--dim); max-width: 52ch; }
+    .num { font-variant-numeric: tabular-nums; }
 
-    /* reveal on scroll; harmless when JS or motion is off */
-    .rv { opacity: 0; transform: translateY(22px); transition: opacity 700ms var(--ease), transform 700ms var(--ease); }
+    .rv { opacity: 0; transform: translateY(20px); transition: opacity 650ms var(--ease), transform 650ms var(--ease); }
     .rv.on { opacity: 1; transform: none; }
     @media (prefers-reduced-motion: reduce) {
       html { scroll-behavior: auto; }
@@ -74,130 +71,192 @@
     }
 
     /* ------------------------------------------------------------ nav */
-    .nav {
-      position: sticky; top: 0; z-index: 40;
-      background: color-mix(in srgb, var(--ink0) 82%, transparent);
-      backdrop-filter: blur(10px);
-      border-bottom: 1px solid var(--line-soft);
-    }
-    .nav__in {
-      display: flex; align-items: center; gap: 28px;
-      height: 60px;
-    }
-    .brand { display: flex; align-items: center; gap: 9px; font-size: 15px; letter-spacing: -0.01em; }
+    .nav { position: sticky; top: 0; z-index: 40; background: var(--bg); border-bottom: 1px solid var(--line-soft); }
+    .nav__in { display: flex; align-items: center; gap: 26px; height: 62px; }
+    .brand { display: flex; align-items: center; gap: 9px; font-size: 15.5px; letter-spacing: -0.01em; }
     .brand svg { width: 16px; height: 16px; }
-    .nav__links { display: flex; gap: 22px; margin-left: 12px; }
-    .nav__links a { font-size: 13.5px; color: var(--fg-dim); transition: color 160ms; }
-    .nav__links a:hover { color: var(--fg); }
+    .nav__links { display: flex; gap: 24px; margin-left: 14px; }
+    .nav__links a { font-size: 14px; color: var(--dim); transition: color 160ms; }
+    .nav__links a:hover { color: var(--ink); }
     .nav__gap { flex: 1; }
+
     .pill {
-      display: inline-flex; align-items: center; gap: 8px;
-      height: 34px; padding: 0 18px;
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      height: 40px; padding: 0 20px;
       border-radius: 999px;
-      background: var(--fg); color: var(--ink0);
-      font-size: 13.5px; font-weight: 500;
-      transition: transform 200ms var(--ease), background 200ms;
+      background: var(--ink); color: var(--bg);
+      font-size: 14px; font-weight: 500;
+      transition: transform 200ms var(--ease), opacity 200ms;
     }
-    .pill:hover { transform: translateY(-1px); background: #fff; }
-    .pill--ghost { background: transparent; color: var(--fg); border: 1px solid var(--line); }
-    .pill--ghost:hover { background: var(--ink1); }
-    .pill--big { height: 46px; padding: 0 26px; font-size: 15px; }
+    .pill:hover { transform: translateY(-1px); opacity: 0.92; }
+    .pill--ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+    .pill--ghost:hover { opacity: 1; background: var(--bg-tint); }
+    .pill--big { height: 52px; padding: 0 28px; font-size: 15px; }
 
     /* ------------------------------------------------------------ hero */
-    .hero { padding: clamp(72px, 12vh, 140px) 0 clamp(56px, 9vh, 110px); }
-    .hero .kicker { margin-bottom: 26px; }
-    .hero p.lede { margin: 30px 0 38px; }
-    .hero__cta { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
-    .hero__note { font-family: var(--mono); font-size: 12px; color: var(--fg-faint); }
-
-    .stats {
-      display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
-      border-top: 1px solid var(--line);
-      margin-top: clamp(48px, 8vh, 90px);
+    .hero { padding: clamp(56px, 9vh, 110px) 0 clamp(40px, 6vh, 70px); overflow: hidden; }
+    .hero__grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+      gap: clamp(28px, 5vw, 70px);
+      align-items: center;
     }
-    .stat { padding: 26px 20px 4px 0; border-right: 1px solid var(--line-soft); }
-    .stat:last-child { border-right: 0; }
-    .stat b { display: block; font-size: clamp(30px, 4vw, 46px); font-weight: 400; letter-spacing: -0.02em; }
-    .stat span { font-size: 13px; color: var(--fg-dim); }
+    .hero .kicker { margin-bottom: 26px; }
+    .hero p.lede { margin: 28px 0 36px; }
+    .hero__cta { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+    .hero__note { font-family: var(--mono); font-size: 12px; color: var(--faint); }
+
+    /* the tear loop */
+    .tear {
+      position: relative;
+      width: min(100%, 380px);
+      margin: 0 auto;
+      aspect-ratio: 2632 / 3722;
+    }
+    .tear__shadow {
+      position: absolute; inset: 4% 6% -2% 6%;
+      border-radius: 8px;
+      box-shadow: 0 34px 70px rgba(35, 28, 12, 0.22), 0 8px 20px rgba(35, 28, 12, 0.12);
+      animation: shadowfade 7s ease-in-out infinite alternate;
+    }
+    .pc {
+      position: absolute; inset: 0;
+      background: #fff url("{{ url_for('static', filename='sample_page.jpg') }}") center / cover no-repeat;
+      animation-duration: 7s;
+      animation-timing-function: ease-in-out;
+      animation-iteration-count: infinite;
+      animation-direction: alternate;
+      will-change: transform, opacity;
+    }
+    @keyframes shadowfade { 0%, 30% { opacity: 1; } 70%, 100% { opacity: 0; } }
+    /* pieces: jagged shared boundaries, generated deterministically */
+    .pc1 { clip-path: polygon(0.0% 0.0%, 25.0% 0.0%, 25.6% 16.7%, 22.9% 33.3%, 16.7% 33.5%, 0.0% 33.3%, 0.0% 0.0%); }
+    .pc2 { clip-path: polygon(50.0% 0.0%, 47.2% 16.7%, 48.7% 33.3%, 50.0% 33.3%, 33.3% 34.3%, 22.9% 33.3%, 25.6% 16.7%, 25.0% 0.0%); }
+    .pc3 { clip-path: polygon(75.0% 0.0%, 71.9% 16.7%, 78.3% 33.3%, 66.7% 34.4%, 50.0% 33.3%, 48.7% 33.3%, 47.2% 16.7%, 50.0% 0.0%); }
+    .pc4 { clip-path: polygon(100.0% 0.0%, 100.0% 0.0%, 100.0% 33.3%, 83.3% 33.0%, 78.3% 33.3%, 71.9% 16.7%, 75.0% 0.0%); }
+    .pc5 { clip-path: polygon(0.0% 33.3%, 16.7% 33.5%, 22.9% 33.3%, 25.1% 50.0%, 25.9% 66.7%, 16.7% 65.2%, 0.0% 66.7%); }
+    .pc6 { clip-path: polygon(33.3% 34.3%, 50.0% 33.3%, 48.7% 33.3%, 47.2% 50.0%, 52.1% 66.7%, 50.0% 70.0%, 33.3% 70.1%, 25.9% 66.7%, 25.1% 50.0%, 22.9% 33.3%); }
+    .pc7 { clip-path: polygon(50.0% 33.3%, 66.7% 34.4%, 78.3% 33.3%, 78.2% 50.0%, 76.0% 66.7%, 66.7% 69.0%, 50.0% 70.0%, 52.1% 66.7%, 47.2% 50.0%, 48.7% 33.3%); }
+    .pc8 { clip-path: polygon(83.3% 33.0%, 100.0% 33.3%, 100.0% 66.7%, 83.3% 68.1%, 76.0% 66.7%, 78.2% 50.0%, 78.3% 33.3%); }
+    .pc9 { clip-path: polygon(0.0% 66.7%, 16.7% 65.2%, 25.9% 66.7%, 27.0% 83.3%, 25.0% 100.0%, 0.0% 100.0%, 0.0% 100.0%); }
+    .pc10 { clip-path: polygon(33.3% 70.1%, 50.0% 70.0%, 52.1% 66.7%, 51.3% 83.3%, 50.0% 100.0%, 25.0% 100.0%, 27.0% 83.3%, 25.9% 66.7%); }
+    .pc11 { clip-path: polygon(50.0% 70.0%, 66.7% 69.0%, 76.0% 66.7%, 75.8% 83.3%, 75.0% 100.0%, 50.0% 100.0%, 51.3% 83.3%, 52.1% 66.7%); }
+    .pc12 { clip-path: polygon(83.3% 68.1%, 100.0% 66.7%, 100.0% 100.0%, 100.0% 100.0%, 75.0% 100.0%, 75.8% 83.3%, 76.0% 66.7%); }
+    @keyframes tear1 { 0%, 22% { transform: none; opacity: 1; } 78%, 100% { transform: translate(-89%, -89%) rotate(26deg); opacity: 0; } }
+    .pc1 { animation-name: tear1; }
+    @keyframes tear2 { 0%, 38% { transform: none; opacity: 1; } 78%, 100% { transform: translate(-37%, -122%) rotate(37deg); opacity: 0; } }
+    .pc2 { animation-name: tear2; }
+    @keyframes tear3 { 0%, 16% { transform: none; opacity: 1; } 78%, 100% { transform: translate(20%, -103%) rotate(-17deg); opacity: 0; } }
+    .pc3 { animation-name: tear3; }
+    @keyframes tear4 { 0%, 32% { transform: none; opacity: 1; } 78%, 100% { transform: translate(81%, -117%) rotate(-29deg); opacity: 0; } }
+    .pc4 { animation-name: tear4; }
+    @keyframes tear5 { 0%, 9% { transform: none; opacity: 1; } 78%, 100% { transform: translate(-106%, -11%) rotate(-24deg); opacity: 0; } }
+    .pc5 { animation-name: tear5; }
+    @keyframes tear6 { 0%, 25% { transform: none; opacity: 1; } 78%, 100% { transform: translate(-38%, -12%) rotate(-28deg); opacity: 0; } }
+    .pc6 { animation-name: tear6; }
+    @keyframes tear7 { 0%, 41% { transform: none; opacity: 1; } 78%, 100% { transform: translate(25%, -25%) rotate(-17deg); opacity: 0; } }
+    .pc7 { animation-name: tear7; }
+    @keyframes tear8 { 0%, 19% { transform: none; opacity: 1; } 78%, 100% { transform: translate(136%, -9%) rotate(-22deg); opacity: 0; } }
+    .pc8 { animation-name: tear8; }
+    @keyframes tear9 { 0%, 35% { transform: none; opacity: 1; } 78%, 100% { transform: translate(-89%, 65%) rotate(37deg); opacity: 0; } }
+    .pc9 { animation-name: tear9; }
+    @keyframes tear10 { 0%, 12% { transform: none; opacity: 1; } 78%, 100% { transform: translate(-38%, 75%) rotate(-15deg); opacity: 0; } }
+    .pc10 { animation-name: tear10; }
+    @keyframes tear11 { 0%, 28% { transform: none; opacity: 1; } 78%, 100% { transform: translate(15%, 66%) rotate(8deg); opacity: 0; } }
+    .pc11 { animation-name: tear11; }
+    @keyframes tear12 { 0%, 6% { transform: none; opacity: 1; } 78%, 100% { transform: translate(98%, 87%) rotate(6deg); opacity: 0; } }
+    .pc12 { animation-name: tear12; }
+    @media (prefers-reduced-motion: reduce) {
+      .pc, .tear__shadow { animation: none !important; }
+    }
+
+    /* ------------------------------------------------------------ marquee */
+    .ribbon {
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      overflow: hidden;
+      padding: 22px 0;
+    }
+    .ribbon__track {
+      display: flex; gap: 64px;
+      width: max-content;
+      animation: slide 36s linear infinite;
+    }
+    @keyframes slide { to { transform: translateX(-50%); } }
+    @media (prefers-reduced-motion: reduce) { .ribbon__track { animation: none; } }
+    .fact { display: flex; align-items: baseline; gap: 12px; white-space: nowrap; }
+    .fact b { font-size: 34px; font-weight: 400; letter-spacing: -0.02em; }
+    .fact span { font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); }
 
     /* ------------------------------------------------------------ sections */
-    section { padding: clamp(80px, 14vh, 150px) 0; border-top: 1px solid var(--line-soft); }
-    .sec-head { margin-bottom: clamp(36px, 6vh, 70px); }
+    section { padding: clamp(76px, 13vh, 140px) 0; }
+    section + section { border-top: 1px solid var(--line-soft); }
+    .sec-head { margin-bottom: clamp(34px, 6vh, 64px); }
     .sec-head .kicker { margin-bottom: 18px; }
     .sec-head .lede { margin-top: 22px; }
 
-    /* numbered capability rows */
     .rows { border-top: 1px solid var(--line); }
     .row {
       display: grid;
       grid-template-columns: 72px minmax(0, 1.05fr) minmax(0, 1.4fr);
       gap: 26px;
-      padding: 34px 0;
+      padding: 32px 0;
       border-bottom: 1px solid var(--line-soft);
       align-items: baseline;
     }
-    .row__n { font-family: var(--mono); font-size: 13px; color: var(--fg-faint); }
+    .row__n { font-family: var(--mono); font-size: 13px; color: var(--faint); }
     .row__t { font-size: clamp(21px, 2.6vw, 30px); letter-spacing: -0.02em; line-height: 1.15; }
-    .row__d { color: var(--fg-dim); font-size: 15px; max-width: 58ch; }
-    .row__d .num { color: var(--fg); }
+    .row__d { color: var(--dim); font-size: 15px; max-width: 58ch; }
 
-    /* process trio */
     .trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--line-soft); border: 1px solid var(--line-soft); }
-    .step { background: var(--ink1); padding: 38px 30px 44px; min-height: 250px; display: flex; flex-direction: column; }
-    .step__n { font-family: var(--mono); font-size: 12px; color: var(--fg-faint); margin-bottom: 40px; }
+    .step { background: var(--bg); padding: 36px 28px 42px; min-height: 240px; display: flex; flex-direction: column; }
+    .step__n { font-family: var(--mono); font-size: 12px; color: var(--faint); margin-bottom: 38px; }
     .step__t { font-size: clamp(22px, 2.4vw, 30px); letter-spacing: -0.02em; line-height: 1.12; margin-bottom: 14px; }
-    .step__d { color: var(--fg-dim); font-size: 14.5px; margin-top: auto; }
+    .step__d { color: var(--dim); font-size: 14.5px; margin-top: auto; }
 
-    /* ------------------------------------------------------------ paper (inverted) */
-    .paper { background: var(--paper); color: var(--paper-ink); border-top: 0; }
-    .paper .kicker { color: var(--paper-dim); }
-    .paper .lede { color: var(--paper-dim); }
-    .paper__grid {
-      display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
-      gap: clamp(28px, 5vw, 72px);
-      align-items: start;
-    }
-    .paper__sticky { position: sticky; top: 90px; }
-    .sheet {
-      border-radius: 4px;
-      box-shadow: 0 30px 80px rgba(20, 15, 5, 0.35), 0 6px 18px rgba(20, 15, 5, 0.18);
-      transform: rotate(0.4deg);
-    }
-    .ticks { border-top: 1px solid rgba(19, 19, 19, 0.16); margin-top: 34px; }
-    .tick { display: grid; grid-template-columns: 26px 1fr; gap: 14px; padding: 15px 0; border-bottom: 1px solid rgba(19, 19, 19, 0.1); }
+    /* paper section stays light, framed */
+    .paper { background: var(--bg-tint); }
+    .paper__grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: clamp(28px, 5vw, 72px); align-items: start; }
+    .paper__sticky { position: sticky; top: 92px; }
+    .sheet { border-radius: 4px; box-shadow: 0 28px 70px rgba(35, 28, 12, 0.2), 0 6px 16px rgba(35, 28, 12, 0.1); transform: rotate(0.4deg); }
+    .ticks { border-top: 1px solid var(--line); margin-top: 34px; }
+    .tick { display: grid; grid-template-columns: 26px 1fr; gap: 14px; padding: 15px 0; border-bottom: 1px solid var(--line-soft); }
     .tick svg { width: 15px; height: 15px; margin-top: 5px; }
     .tick b { font-weight: 500; font-size: 15px; display: block; }
-    .tick span { font-size: 13.5px; color: var(--paper-dim); }
+    .tick span { font-size: 13.5px; color: var(--dim); }
 
-    /* equations strip */
-    .eqcard { background: var(--ink1); border: 1px solid var(--line-soft); padding: 18px; }
+    /* the single inverted section */
+    .dark { background: #0a0908; color: #eceae3; }
+    .dark .kicker { color: #98948a; }
+    .dark .kicker::before { background: #eceae3; }
+    .dark .lede { color: #98948a; }
+    .eqcard { border: 1px solid rgba(236, 234, 227, 0.16); padding: 18px; }
     .eqcard img { border-radius: 3px; }
-    .eqcap { font-family: var(--mono); font-size: 11.5px; color: var(--fg-faint); margin-top: 12px; }
+    .eqcap { font-family: var(--mono); font-size: 11.5px; color: #77736a; margin-top: 12px; }
 
-    /* own hand */
     .own { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: clamp(28px, 5vw, 80px); align-items: end; }
     .own__list { border-top: 1px solid var(--line); }
-    .own__item { display: grid; grid-template-columns: 30px 1fr; gap: 12px; padding: 16px 0; border-bottom: 1px solid var(--line-soft); font-size: 14.5px; color: var(--fg-dim); }
-    .own__item i { font-family: var(--mono); font-style: normal; font-size: 12px; color: var(--fg-faint); }
+    .own__item { display: grid; grid-template-columns: 30px 1fr; gap: 12px; padding: 16px 0; border-bottom: 1px solid var(--line-soft); font-size: 14.5px; color: var(--dim); }
+    .own__item i { font-family: var(--mono); font-style: normal; font-size: 12px; color: var(--faint); }
 
     /* ------------------------------------------------------------ footer */
-    .fin { padding: clamp(90px, 16vh, 170px) 0 60px; border-top: 1px solid var(--line-soft); }
-    .fin .display { margin-bottom: 40px; }
+    .fin { padding: clamp(84px, 15vh, 160px) 0 56px; border-top: 1px solid var(--line-soft); }
+    .fin .display { margin-bottom: 38px; }
     .fin__row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
     .foot {
       display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
-      margin-top: clamp(70px, 10vh, 120px);
+      margin-top: clamp(64px, 9vh, 110px);
       padding-top: 24px;
       border-top: 1px solid var(--line-soft);
-      font-size: 12.5px; color: var(--fg-faint);
+      font-size: 12.5px; color: var(--faint);
     }
-    .foot a:hover { color: var(--fg); }
+    .foot a:hover { color: var(--ink); }
     .foot__gap { flex: 1; }
 
-    @media (max-width: 860px) {
+    @media (max-width: 880px) {
       .nav__links { display: none; }
-      .stats { grid-template-columns: 1fr; }
-      .stat { border-right: 0; border-bottom: 1px solid var(--line-soft); padding-bottom: 20px; }
+      .hero__grid { grid-template-columns: 1fr; }
+      .tear { width: min(72vw, 300px); }
       .row { grid-template-columns: 44px 1fr; }
       .row__d { grid-column: 2; }
       .trio { grid-template-columns: 1fr; }
@@ -232,22 +291,45 @@
 
   <!-- ---------------------------------------------------------- hero -->
   <div class="hero">
-    <div class="wrap">
-      <p class="kicker rv">Typed text to real handwriting</p>
-      <h1 class="display rv">Type it.<br />Hand it in.</h1>
-      <p class="lede rv">Paste text or drop a PDF, and get back ruled A4 pages written in a
-        real, captured human hand. Ink, paper grain, crooked scan and all.</p>
-      <div class="hero__cta rv">
-        <a class="pill pill--big" href="{{ url_for('studio') }}">Open the studio</a>
-        <a class="pill pill--big pill--ghost" href="#paper">See a page</a>
-        <span class="hero__note">runs locally &middot; no account</span>
+    <div class="wrap hero__grid">
+      <div>
+        <p class="kicker rv">Typed text to real handwriting</p>
+        <h1 class="display rv">Type it.<br />Hand it in.</h1>
+        <p class="lede rv">Paste text or drop a PDF, and get back ruled A4 pages written in
+          a real, captured human hand. Ink, paper grain, crooked scan and all.</p>
+        <div class="hero__cta rv">
+          <a class="pill pill--big" href="{{ url_for('studio') }}">Open the studio</a>
+          <a class="pill pill--big pill--ghost" href="#paper">See a page</a>
+          <span class="hero__note">runs locally &middot; no account</span>
+        </div>
       </div>
+      <div class="tear rv" role="img"
+           aria-label="A handwritten page tearing into pieces and reassembling, on a loop">
+        <div class="tear__shadow"></div>
+        <div class="pc pc1"></div><div class="pc pc2"></div><div class="pc pc3"></div>
+        <div class="pc pc4"></div><div class="pc pc5"></div><div class="pc pc6"></div>
+        <div class="pc pc7"></div><div class="pc pc8"></div><div class="pc pc9"></div>
+        <div class="pc pc10"></div><div class="pc pc11"></div><div class="pc pc12"></div>
+      </div>
+    </div>
+  </div>
 
-      <div class="stats">
-        <div class="stat rv"><b class="num" data-count="112">112</b><span>characters captured or drawn from one hand</span></div>
-        <div class="stat rv"><b class="num" data-count="70">70</b><span>whole words written in a single stroke</span></div>
-        <div class="stat rv"><b class="num" data-count="1290">1,290</b><span>characters on a ruled A4 page, 33 lines</span></div>
-      </div>
+  <!-- ---------------------------------------------------------- facts ribbon -->
+  <div class="ribbon" aria-label="Numbers from the renderer">
+    <div class="ribbon__track">
+      <!-- list twice, so the loop is seamless -->
+      <span class="fact"><b class="num">1,290</b><span>chars / A4 page</span></span>
+      <span class="fact"><b class="num">112</b><span>glyphs / one hand</span></span>
+      <span class="fact"><b class="num">70</b><span>words / one stroke</span></span>
+      <span class="fact"><b class="num">33</b><span>ruled lines</span></span>
+      <span class="fact"><b class="num">80</b><span>pages / run</span></span>
+      <span class="fact"><b class="num">4</b><span>real pens</span></span>
+      <span class="fact"><b class="num">1,290</b><span>chars / A4 page</span></span>
+      <span class="fact"><b class="num">112</b><span>glyphs / one hand</span></span>
+      <span class="fact"><b class="num">70</b><span>words / one stroke</span></span>
+      <span class="fact"><b class="num">33</b><span>ruled lines</span></span>
+      <span class="fact"><b class="num">80</b><span>pages / run</span></span>
+      <span class="fact"><b class="num">4</b><span>real pens</span></span>
     </div>
   </div>
 
@@ -262,9 +344,9 @@
         <div class="row rv">
           <span class="row__n">01</span>
           <span class="row__t">Text becomes pages</span>
-          <span class="row__d">Plain text or Markdown in, page images and a PDF out. Headings are
-            centred and underlined, lists indent, tables get a hand-ruled grid,
-            and long documents spill onto new pages up to <span class="num">80</span> at a run.</span>
+          <span class="row__d">Plain text or Markdown in, page images and a PDF out. Headings
+            centred and underlined, lists indented, tables hand-ruled, and long
+            documents spill onto new pages up to 80 at a run.</span>
         </div>
         <div class="row rv">
           <span class="row__n">02</span>
@@ -283,7 +365,7 @@
         <div class="row rv">
           <span class="row__n">04</span>
           <span class="row__t">Four real pens</span>
-          <span class="row__d">Blue-black, black, blue and red, applied to every stroke with
+          <span class="row__d">Blue-black, black, blue and red, applied stroke by stroke with
             per-glyph pressure, so a page never reads as one flat colour.</span>
         </div>
       </div>
@@ -328,8 +410,8 @@
           <p class="kicker rv">The hand</p>
           <h2 class="display rv">No two<br />letters<br />the same.</h2>
           <p class="lede rv" style="margin-top: 24px">This page was rendered from Markdown.
-            Every mark on it comes from one real hand, captured from written sheets
-            and cut apart, letter by letter and word by word.</p>
+            Every mark on it comes from one real hand, captured from written
+            sheets and cut apart, letter by letter and word by word.</p>
           <div class="ticks">
             <div class="tick rv">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
@@ -341,7 +423,7 @@
             </div>
             <div class="tick rv">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-              <div><b>A hand that tires</b><span>Writing grows and loosens toward the foot of each page. Optionally it makes a mistake, crosses it out, and rewrites.</span></div>
+              <div><b>A hand that tires</b><span>Writing grows and loosens toward the foot of each page. Optionally it crosses out a word and rewrites it.</span></div>
             </div>
             <div class="tick rv">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
@@ -358,8 +440,8 @@
     </div>
   </section>
 
-  <!-- ---------------------------------------------------------- equations -->
-  <section id="maths">
+  <!-- ---------------------------------------------------------- equations (inverted) -->
+  <section class="dark" id="maths">
     <div class="wrap">
       <div class="sec-head">
         <p class="kicker rv">From a real paper</p>
@@ -384,8 +466,9 @@
           <p class="kicker rv">Your hand</p>
           <h2 class="display rv">Make it<br />yours.</h2>
           <p class="lede rv" style="margin-top: 24px">The bundled hand is real, and yours can
-            replace it. Print the capture sheets, write them out, photograph them,
-            and the extraction tools cut your writing into a font of its own.</p>
+            replace it. Print the capture sheets, write them out, photograph
+            them, and the extraction tools cut your writing into a font of its
+            own.</p>
         </div>
         <div class="own__list">
           <div class="own__item rv"><i>01</i><span>Print the letter and word capture sheets</span></div>
@@ -417,44 +500,22 @@
 </main>
 
 <script>
-  // Reveal-on-scroll and stat count-ups. Enhancements only: with JS off the
-  // final numbers are already in the markup and prefers-reduced-motion keeps
-  // everything visible from the start.
+  // Reveal-on-scroll, an enhancement only: reduced motion shows everything,
+  // and if the observer never fires (a hidden tab runs no rendering frames)
+  // a fallback reveals the page rather than leaving it at opacity zero.
   (function () {
-    var reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
     var els = [].slice.call(document.querySelectorAll(".rv"));
-    if (reduce || !("IntersectionObserver" in window)) {
-      els.forEach(function (el) { el.classList.add("on"); });
-      return;
-    }
-    // If the observer never fires (a prerendered or hidden tab runs no
-    // rendering frames), the page must not sit invisible: reveal everything,
-    // skipping the count-up since it needs animation frames.
+    var all = function () { els.forEach(function (el) { el.classList.add("on"); }); };
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches ||
+        !("IntersectionObserver" in window)) { all(); return; }
     setTimeout(function () {
-      if (!document.querySelector(".rv.on")) {
-        els.forEach(function (el) { el.classList.add("on"); });
-      }
+      if (!document.querySelector(".rv.on")) all();
     }, 2000);
     var io = new IntersectionObserver(function (entries) {
       entries.forEach(function (e) {
-        if (!e.isIntersecting) return;
-        e.target.classList.add("on");
-        io.unobserve(e.target);
-        var n = e.target.querySelector("[data-count]") ||
-                (e.target.matches("[data-count]") ? e.target : null);
-        if (n && !n.dataset.done) {
-          n.dataset.done = "1";
-          var end = parseInt(n.dataset.count, 10);
-          var t0 = performance.now();
-          (function tick(t) {
-            var k = Math.min((t - t0) / 900, 1);
-            k = 1 - Math.pow(1 - k, 3);
-            n.textContent = Math.round(end * k).toLocaleString();
-            if (k < 1) requestAnimationFrame(tick);
-          })(t0);
-        }
+        if (e.isIntersecting) { e.target.classList.add("on"); io.unobserve(e.target); }
       });
-    }, { threshold: 0.18 });
+    }, { threshold: 0.16 });
     els.forEach(function (el) { io.observe(el); });
   })();
 </script>
