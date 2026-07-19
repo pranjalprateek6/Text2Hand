@@ -61,6 +61,40 @@ def render_limit() -> int:
 # time may touch them.
 _render_lock = threading.Lock()
 
+# Previews are written before a render reports done; the full-size PNGs and the
+# combined PDF follow on a background thread, because nobody looks at those
+# until they press Export. Waiting for them was most of what a one-page render
+# spent its time on.
+ARTEFACT_WAIT = 180             # seconds a download will wait for the writer
+_artefacts: dict[str, "_Artefacts"] = {}
+_artefacts_lock = threading.Lock()
+
+
+class _Artefacts:
+    """The state of one render's still-being-written downloadable files."""
+
+    def __init__(self) -> None:
+        self.done = threading.Event()
+        self.error: str | None = None
+
+
+def _await_artefacts(rid: str) -> None:
+    """Block until a render's downloadable files are on disk.
+
+    A download that arrives before the writer has finished waits for it, rather
+    than 404ing on a file that is merely late. Renders made before a restart
+    have no record here and fall through: their files either exist or the route
+    404s on its own, exactly as before.
+    """
+    with _artefacts_lock:
+        pending = _artefacts.get(rid)
+    if pending is None:
+        return
+    if not pending.done.wait(ARTEFACT_WAIT):
+        abort(504)                                  # writer wedged or too slow
+    if pending.error:
+        abort(500)
+
 
 def _prune() -> None:
     """Keep only the most recent render folders, and a few equation crops.
@@ -79,8 +113,17 @@ def _prune() -> None:
     )
     renders = [p for p in folders if not p.name.startswith("eq_")]
     assets = [p for p in folders if p.name.startswith("eq_")]
+    with _artefacts_lock:
+        busy = {rid for rid, a in _artefacts.items() if not a.done.is_set()}
     for old in renders[KEEP_RENDERS:] + assets[KEEP_EQ_ASSETS:]:
+        if old.name in busy:
+            continue                  # a background writer is still filling it
         shutil.rmtree(old, ignore_errors=True)
+    # forget finished writers whose folder has since been pruned
+    with _artefacts_lock:
+        for rid in [r for r, a in _artefacts.items()
+                    if a.done.is_set() and not (RENDER_ROOT / r).exists()]:
+            del _artefacts[rid]
 
 
 # The engine has always supported any pen colour; the app just never passed one
@@ -116,7 +159,7 @@ def _render(text: str, ruled: bool, texture: bool, skew: bool, as_markdown: bool
     folder = RENDER_ROOT / rid
     folder.mkdir(parents=True, exist_ok=True)
 
-    def write(item):
+    def write_preview(item):
         i, page = item
         # JPEG for the preview: the paper grain makes PNG very inefficient here
         # (roughly 5x larger) and this copy is only ever shown on screen.
@@ -128,16 +171,35 @@ def _render(text: str, ruled: bool, texture: bool, skew: bool, as_markdown: bool
         thumb.thumbnail((THUMB_WIDTH, THUMB_WIDTH * 4), Image.LANCZOS)
         thumb.save(folder / f"thumb_{i}.jpg", quality=72, optimize=True)
 
-        # Level 3 rather than zlib's default 6. A page is mostly paper grain,
-        # which is close to random and barely compresses, so the extra effort
-        # buys about 5% of file size for well over twice the time.
-        page.save(folder / f"page_{i}.png", compress_level=3)
-
-    # Each page writes its own three files and shares nothing with the others.
-    # Pillow drops the GIL while encoding, so these overlap properly.
+    # Each page writes its own files and shares nothing with the others. Pillow
+    # drops the GIL while encoding, so these overlap properly.
     with ThreadPoolExecutor(max_workers=t2h._workers()) as pool:
-        list(pool.map(write, enumerate(pages, 1)))
-    pages[0].save(folder / "handwriting.pdf", save_all=True, append_images=pages[1:])
+        list(pool.map(write_preview, enumerate(pages, 1)))
+
+    pending = _Artefacts()
+    with _artefacts_lock:
+        _artefacts[rid] = pending
+
+    def write_full():
+        """The files only Export needs: full-size PNGs and the combined PDF."""
+        try:
+            def one(item):
+                i, page = item
+                # Level 3 rather than zlib's default 6. A page is mostly paper
+                # grain, which is close to random and barely compresses, so the
+                # extra effort buys about 5% of file size for twice the time.
+                page.save(folder / f"page_{i}.png", compress_level=3)
+
+            with ThreadPoolExecutor(max_workers=t2h._workers()) as pool:
+                list(pool.map(one, enumerate(pages, 1)))
+            pages[0].save(folder / "handwriting.pdf", save_all=True,
+                          append_images=pages[1:])
+        except Exception as exc:                    # surfaced by _await_artefacts
+            pending.error = str(exc)
+        finally:
+            pending.done.set()
+
+    threading.Thread(target=write_full, daemon=True).start()
 
     if on_progress:
         on_progress("previews", len(pages))
@@ -350,6 +412,7 @@ def thumb(rid: str, n: int):
 @app.get("/download/<rid>/page_<int:n>.pdf")
 def download_page_pdf(rid: str, n: int):
     """Single page as a PDF, built on first request and then cached."""
+    _await_artefacts(rid)                 # it is built from the full-size PNG
     folder = _safe(rid)
     pdf = folder / f"page_{n}.pdf"
     if not pdf.exists():
@@ -364,6 +427,7 @@ def download_page_pdf(rid: str, n: int):
 @app.get("/download/<rid>/pages.zip")
 def download_zip(rid: str):
     """Every page PNG plus the combined PDF, zipped on first request."""
+    _await_artefacts(rid)
     folder = _safe(rid)
     zpath = folder / "pages.zip"
     if not zpath.exists():
@@ -381,15 +445,27 @@ def download_zip(rid: str):
 
 @app.get("/download/<rid>/handwriting.pdf")
 def download_pdf(rid: str):
-    path = _safe(rid) / "handwriting.pdf"
+    _await_artefacts(rid)
+    folder = _safe(rid)
+    path = folder / "handwriting.pdf"
     if not path.exists():
-        abort(404)
+        # The combined PDF is written last, after the page PNGs, so a process
+        # that stopped mid-write can leave the pages without it. Rebuilding
+        # from them costs a second and saves the render; only a render whose
+        # PNGs are missing too is genuinely unrecoverable.
+        pngs = sorted(folder.glob("page_*.png"),
+                      key=lambda p: int(p.stem.split("_")[1]))
+        if not pngs:
+            abort(404)
+        sheets = [Image.open(p).convert("RGB") for p in pngs]
+        sheets[0].save(path, save_all=True, append_images=sheets[1:])
     return send_file(path, mimetype="application/pdf",
                      as_attachment=True, download_name="handwriting.pdf")
 
 
 @app.get("/download/<rid>/page_<int:n>.png")
 def download_page(rid: str, n: int):
+    _await_artefacts(rid)
     path = _safe(rid) / f"page_{n}.png"
     if not path.exists():
         abort(404)
