@@ -497,6 +497,7 @@ class Sheet:
         self.missing: list[str] = []          # characters with no glyph
         self.scale = 1.0                      # block-level glyph size
         self._last = ""                       # last character written, for quote direction
+        self._in_quote = False                # inside a quotation, for quote direction
         self._new_page()
 
     def _new_page(self) -> None:
@@ -778,8 +779,11 @@ class Sheet:
 
         advance = int(vs[0].width * scale)        # rhythm set by the un-jittered width
         chosen = random.choice(vs)
-        if ch in MIRRORED_OPENING and self._opening():
-            chosen = chosen.transpose(Image.FLIP_LEFT_RIGHT)
+        if ch in MIRRORED_OPENING:
+            if self._opening():
+                chosen = chosen.transpose(Image.FLIP_LEFT_RIGHT)
+            if ch == '"':
+                self._in_quote = not self._in_quote
         g = jittered(chosen, scale, boost)
 
         sway = max(1, int(BASELINE_WOBBLE * boost))
@@ -799,11 +803,20 @@ class Sheet:
     def _opening(self) -> bool:
         """Whether a quote written here opens rather than closes a quotation.
 
-        Judged from what was written immediately before it, which is what a
-        person reading the line has to go on too. At the start of a line there
-        is nothing before it, so it opens.
+        Judged first from what was written immediately before it, which is what
+        a person reading the line has to go on too: after a letter or a full
+        stop, a quote closes.
+
+        A space before it does not settle the question on its own. Extracted
+        Markdown pads an inline code span, so a quoted snippet arrives as
+        " `move = <move>` " with a space inside both quotes, and reading the
+        space alone made every quote on the line an opening one. Where the
+        character before is that ambiguous, whether a quotation is already open
+        decides it.
         """
-        return self._last == "" or self._last in OPENS_AFTER
+        if self._last != "" and self._last not in OPENS_AFTER:
+            return False
+        return not self._in_quote
 
 
 def _drop_below_line(ch: str, height: int) -> int:
@@ -931,6 +944,9 @@ def render_markdown(md_text: str) -> Sheet:
     index = 0
     while index < len(blocks):
         block = blocks[index]
+        # Quotations do not run across blocks, so a stray one cannot flip the
+        # direction of every quote in the rest of the document.
+        sheet._in_quote = False
 
         # Consecutive table rows belong to one grid, so gather them up first.
         if block.kind == "table" and TABLES_RULED:
