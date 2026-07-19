@@ -67,7 +67,7 @@ SPACE_WIDTH: int | None = None          # width of a space character
 # deriving it from the glyphs instead.
 PAGE_WIDTH_MM = 210.0                   # what the sheet is taken to be, A4 wide
 X_HEIGHT_MM: float | None = 3.0         # height of a c e m n o
-LINE_HEIGHT_MM: float | None = 9.0      # baseline to baseline
+LINE_HEIGHT_MM: float | None = 8.4      # baseline to baseline; 33 lines on A4
 WORD_GAP_MM: float | None = 4.0         # space between words
 
 GLYPH_SCALE = 1.0                       # set from X_HEIGHT_MM when metrics derive
