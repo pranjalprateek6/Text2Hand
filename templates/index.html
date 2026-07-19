@@ -25,6 +25,15 @@
       <textarea id="text" spellcheck="false"
                 placeholder="Type or paste anything here. Or drop a PDF."></textarea>
 
+      <!-- only while the box is empty: the quickest way to see the point -->
+      <div class="tries" id="tries">
+        <span class="tries__label">Try</span>
+        <button class="try" data-sample="pangram">a pangram</button>
+        <button class="try" data-sample="punctuation">punctuation</button>
+        <button class="try" data-sample="symbols">symbols</button>
+        <button class="try" data-sample="markdown">markdown</button>
+      </div>
+
       <div class="box__foot">
         <div class="toggles">
           <button class="tog" id="tMarkdown" aria-pressed="false">Markdown</button>

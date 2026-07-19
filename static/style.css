@@ -128,6 +128,37 @@ button, input, select, textarea { font: inherit; color: inherit; }
 #text:focus { outline: none; }
 #text::placeholder { color: var(--faint); }
 
+/* The samples sit in the empty box and leave once there is anything in it, so
+   they teach on arrival without becoming furniture. */
+.tries {
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: 4px 5px;
+  padding: 6px 18px 0;
+  animation: rise 460ms var(--ease) both;
+}
+.tries__label { font-size: 12.5px; color: var(--faint); margin-right: 2px; }
+.try {
+  appearance: none;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 12.5px; font-weight: 500;
+  cursor: pointer;
+  border-bottom: 1px solid var(--line-2);
+  transition: color 180ms var(--ease), border-color 180ms var(--ease),
+              transform 240ms var(--spring);
+}
+.try:hover { color: var(--ink); border-color: var(--ink); }
+.try:active { transform: scale(0.94); }
+/* a middot between them, not after the last */
+.try:not(:last-child)::after {
+  content: "·";
+  margin-left: 5px;
+  color: var(--line-2);
+  border: 0;
+}
+
 .box__foot {
   display: flex; align-items: center; gap: 10px;
   padding: 10px 12px 11px 14px;

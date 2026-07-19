@@ -14,6 +14,45 @@ const PAGE_SIZE = window.PAGE_SIZE || 1200;
 
 const state = { id: null, pages: 0, page: 1, file: null };
 
+/* ------------------------------------------------------------------ samples */
+
+const SAMPLES = {
+  pangram:
+    "The quick brown fox jumps over the lazy dog.\n" +
+    "Pack my box with five dozen liquor jugs.",
+  punctuation:
+    "Punctuation works now: colons, semicolons; and \"quotation marks\" all render.\n\n" +
+    "It's got apostrophes too, so contractions like don't and can't look right.",
+  symbols:
+    "Technical symbols work too: a/b, x = y + 1, 50% off, c & d, and user@host.\n\n" +
+    "Brackets and braces: (a) [b] {c}, a pipe x|y, and under_score.",
+  markdown:
+    "# Deep Learning Notes\n\n" +
+    "An introduction to the topic, written as ordinary prose so the wrapping\n" +
+    "can be checked.\n\n" +
+    "## Key Ideas\n\n" +
+    "- Neural networks learn from data\n" +
+    "- Layers stack to form depth\n" +
+    "    - Each layer extracts features\n" +
+    "- Training adjusts the weights\n\n" +
+    "1. Collect the data\n" +
+    "2. Train the model\n\n" +
+    "> Deep learning is a subset of machine learning.\n\n" +
+    "---\n\n" +
+    "![Figure 1 accuracy over time](chart.png)\n",
+};
+
+document.querySelectorAll(".try").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const which = btn.dataset.sample;
+    $("text").value = SAMPLES[which] || "";
+    // the Markdown sample needs that mode on, the plain ones need it off
+    if (OPTIONS.markdown !== (which === "markdown")) $("tMarkdown").click();
+    count();
+    $("text").focus();
+  });
+});
+
 /* ------------------------------------------------------------------ toggles */
 
 // Each toggle is a button that remembers its own state, so there is no form to
@@ -41,6 +80,7 @@ function count() {
   const pages = Math.max(1, Math.ceil(n / PAGE_SIZE));
   $("count").textContent = n ? `${n.toLocaleString()} · ~${pages}p` : "0";
   $("count").classList.toggle("is-over", n > MAX_CHARS);
+  $("tries").hidden = n > 0;
 }
 $("text").addEventListener("input", count);
 
