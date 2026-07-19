@@ -11,11 +11,16 @@ body { overflow: hidden; height: 100vh; }
 /* --------------------------------------------------------------------- bar */
 .bar {
   flex: none;
+  position: relative;
+  /* above the panes, or the Export popover paints underneath them: the old
+     backdrop-filter made the bar its own stacking context, which trapped the
+     popover's z-index inside and let the later-DOM panes cover it. Nothing
+     scrolls beneath this bar, so the blur bought nothing but that bug. */
+  z-index: 70;
   height: 64px;
   display: flex; align-items: center; gap: 18px;
   padding: 0 20px;
-  background: color-mix(in oklch, var(--background) 85%, transparent);
-  backdrop-filter: blur(12px);
+  background: var(--background);
   border-bottom: 1px solid var(--border);
 }
 

@@ -204,7 +204,6 @@ async function render() {
 
     const done = await poll(started.job, (m) => {
       $("loadingText").textContent = m;
-      $("renderLabel").textContent = m;
       $("status").textContent = m + "…";
     });
     setBusy(false);
@@ -249,9 +248,6 @@ function show(n) {
   $("prev").disabled = state.page === 1;
   $("next").disabled = state.page === state.pages;
   $("pager").hidden = state.pages < 2;
-  // keep the numbered form the pane labels use: "02 / 3 PAGES"
-  $("previewLabel").textContent =
-    "02 / " + (state.pages === 1 ? "1 page" : `${state.pages} pages`);
   $("dlPdf").href = `/download/${state.id}/handwriting.pdf`;
   $("dlZip").href = `/download/${state.id}/pages.zip`;
   $("dlPagePng").href = `/download/${state.id}/page_${state.page}.png`;
