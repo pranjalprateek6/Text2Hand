@@ -56,6 +56,8 @@ HEIGHT = {
     956: 1.55,   # mu, x body + tail
     960: 1.10,   # pi
     963: 1.10,   # sigma
+    966: 1.70,   # phi, stem above and below the body
+    968: 1.70,   # psi
     8712: 0.95,  # element of
     8721: 1.50,  # n-ary summation
     8706: 1.40,  # partial derivative
@@ -246,6 +248,14 @@ def main():
     ring(d, [4, 12, 30, 38])
     stroke(d, [(27, 13), (41, 7)], j=0.8); save(im, 963)
 
+    im, d = new(42, 86)                                                       # phi
+    ring(d, [7, 27, 35, 63])
+    stroke(d, [(21, 6), (21, 82)], j=0.8); save(im, 966)
+
+    im, d = new(46, 86)                                                       # psi
+    stroke(d, arc_pts(23, 27, 15, 21, 180, 0, n=22), j=0.6)
+    stroke(d, [(23, 6), (23, 82)], j=0.8); save(im, 968)
+
     # --- maths --------------------------------------------------------------
     im, d = new(38, 42)                                                       # element of
     stroke(d, arc_pts(21, 21, 15, 17, 60, 300), j=0.6)
@@ -279,7 +289,7 @@ def main():
 
     # The console may not be UTF-8 (cp1252 on Windows), so never print the
     # characters themselves.
-    print("wrote 21 ascii symbols and 16 greek/maths glyphs")
+    print("wrote 21 ascii symbols and 18 greek/maths glyphs")
 
 
 if __name__ == "__main__":

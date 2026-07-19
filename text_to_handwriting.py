@@ -91,7 +91,7 @@ DESCENDERS = set("gjpqyγμ")
 # so the body rule would bury it. It keeps the fractional drop. Left out of both
 # sets it was aligned like an x-height letter, which sat its tail on the rule
 # and made every f read as a t.
-TAILED_ASCENDERS = set("fβ")           # beta rises past the x-height and hangs a tail
+TAILED_ASCENDERS = set("fβφψ")         # rise past the x-height and hang a tail
 # Marks whose tail crosses the writing line rather than resting on it. Without
 # this a comma sits entirely above the rule and reads as a 9.
 HANGING = set(",;")
