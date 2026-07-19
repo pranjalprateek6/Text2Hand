@@ -88,12 +88,19 @@ section { position: relative; }
 .hero__acts { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
 .hero__note { width: 100%; font-family: var(--font-mono); font-size: 12px; color: var(--muted-foreground); }
 
-/* stats marquee pinned to the hero's foot */
+/* stats pinned to the hero's foot: one static row, each number bound to its
+   own cell so a viewport edge can never split a pair */
 .hero__stats {
-  position: absolute; left: 0; right: 0; bottom: 40px;
-  overflow: hidden;
+  position: absolute; left: 0; right: 0; bottom: 32px;
 }
-.stat { display: flex; align-items: baseline; gap: 16px; margin-right: 64px; white-space: nowrap; }
+.hero__stats-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 20px 40px;
+  border-top: 1px solid var(--border);
+  padding-top: 24px;
+}
+.stat { display: flex; align-items: baseline; gap: 14px; }
 .stat b { font-family: var(--font-display); font-weight: 400; font-size: clamp(30px, 3.4vw, 44px); }
 .stat span { font-size: 14px; color: var(--muted-foreground); }
 .stat span i { display: block; font-style: normal; font-family: var(--font-mono); font-size: 11px; margin-top: 2px; }
@@ -219,7 +226,8 @@ section { position: relative; }
 .footer__gap { flex: 1; }
 
 @media (max-width: 700px) {
-  .hero__in { padding: 140px 0 220px; }
+  .hero__in { padding: 140px 0 40px; }
+  .hero__stats { position: static; margin-top: 8px; padding-bottom: 40px; }
   .hero__art { opacity: 0.2; }
   .codecard { position: static; }
 }

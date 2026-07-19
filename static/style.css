@@ -133,9 +133,6 @@ img { max-width: 100%; height: auto; display: block; }
    Template utilities
    -------------------------------------------------------------------------- */
 
-.marquee { display: flex; width: max-content; animation: marquee 30s linear infinite; }
-@keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
-
 .hover-lift { transition: transform 400ms var(--spring), box-shadow 400ms var(--ease); }
 .hover-lift:hover { transform: translateY(-4px); }
 
@@ -159,7 +156,6 @@ img { max-width: 100%; height: auto; display: block; }
   html { scroll-behavior: auto; }
   .rv { opacity: 1 !important; transform: none !important; transition: none; }
   .char-in { animation: none; opacity: 1; filter: none; transform: none; }
-  .marquee { animation: none; }
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;

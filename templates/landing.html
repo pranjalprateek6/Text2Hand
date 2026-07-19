@@ -29,7 +29,6 @@
     <div class="nav__cta">
       <a class="linkish" href="https://github.com/pranjalprateek6/Text2Hand"
          target="_blank" rel="noreferrer noopener">GitHub</a>
-      <a class="linkish growline" href="{{ url_for('studio') }}">Studio</a>
     </div>
   </div>
 </header>
@@ -74,17 +73,15 @@
     </div>
 
     <div class="hero__stats" aria-label="Numbers from the renderer">
-      <div class="marquee">
-        {% for _ in range(2) %}
+      <div class="wrap hero__stats-row">
         <div class="stat"><b>1,287</b><span>characters to a page<i>A4 · 33 RULED LINES</i></span></div>
         <div class="stat"><b>112</b><span>glyphs, one hand<i>MYFONT</i></span></div>
         <div class="stat"><b>70</b><span>words in one stroke<i>WORDFONT</i></span></div>
         <div class="stat"><b>18</b><span>maths glyphs drawn<i>GREEK + OPERATORS</i></span></div>
         <div class="stat"><b>80</b><span>pages a run<i>RENDERER</i></span></div>
-        {% endfor %}
       </div>
     </div>
-  </section>
+</section>
 
   <!-- ----------------------------------------------------------- features -->
   <section class="features" id="features">
