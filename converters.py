@@ -14,8 +14,15 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import threading
 import unicodedata
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+
+
+def _workers() -> int:
+    """Threads for reading pages, capped so one upload cannot own the machine."""
+    return max(1, min(8, (os.cpu_count() or 2)))
 
 MAX_PAGES = 50          # a 400-page report would render for hours; cap it
 SCAN_PROBE_PAGES = 3    # how many pages to check when guessing "scanned"
@@ -319,7 +326,7 @@ def _equation_regions(page) -> list:
     return kept, prose_rows, tags
 
 
-def _excise_equations(doc, number: int, assets_dir: str, counter: list[int]) -> dict[str, str]:
+def _excise_equations(doc, number: int, assets_dir: str) -> dict[str, str]:
     """Crop each display equation to a file and stamp a token where it was.
 
     The token is drawn into the page by a redaction, so the Markdown extractor
@@ -336,9 +343,12 @@ def _excise_equations(doc, number: int, assets_dir: str, counter: list[int]) -> 
 
     os.makedirs(assets_dir, exist_ok=True)
     replacements: dict[str, str] = {}
-    for rect in regions:
-        counter[0] += 1
-        k = counter[0]
+    for idx, rect in enumerate(regions):
+        # Numbered from the page it came off rather than from a running count,
+        # so a crop's name does not depend on which pages happen to be read
+        # first. Pages are converted in parallel and a shared counter would
+        # hand out different numbers run to run.
+        k = number * 1000 + idx
         pad = pymupdf.Rect(rect.x0 - _EQ_PAD, rect.y0 - _EQ_PAD,
                            rect.x1 + _EQ_PAD, rect.y1 + _EQ_PAD) & page.rect
         # padding must not reach into the prose above or below, or the crop
@@ -350,7 +360,8 @@ def _excise_equations(doc, number: int, assets_dir: str, counter: list[int]) -> 
                 pad.y1 = row.y0 - 0.5
         # forward slashes even on Windows: they read better in the editor, and
         # a backslash path inside a regex replacement is an escape sequence
-        crop = os.path.join(assets_dir, f"eq{k}.png").replace("\\", "/")
+        crop = os.path.join(assets_dir,
+                            f"eq{number + 1}_{idx + 1}.png").replace("\\", "/")
         page.get_pixmap(clip=pad, dpi=EQ_DPI).save(crop)
 
         # the paper's own tags make a better caption than "equation", and the
@@ -379,7 +390,7 @@ def _page_pymupdf(doc, number: int, ctx: dict | None = None) -> str:
 
     replacements = {}
     if ctx and ctx.get("assets_dir"):
-        replacements = _excise_equations(doc, number, ctx["assets_dir"], ctx["counter"])
+        replacements = _excise_equations(doc, number, ctx["assets_dir"])
 
     md = pymupdf4llm.to_markdown(doc, pages=[number], show_progress=False)
     for token, image in replacements.items():
@@ -478,24 +489,62 @@ def _convert_by_page(path: str, pages: list[int], converter: str,
     chunks: list[str] = []
     used = 0
     converted = 0
-    ctx = {"assets_dir": assets_dir, "counter": [0]} if assets_dir else None
+    ctx = {"assets_dir": assets_dir} if assets_dir else None
 
-    with pymupdf.open(path) as doc:
-        for done, number in enumerate(pages, 1):
-            if progress:
-                progress(f"Reading page {done} of {len(pages)}")
-            text = normalize(read(doc, number, ctx)).strip()
-            if not text:
-                converted = done
-                continue
-            # keep at least one page, otherwise a single huge page yields nothing
-            if budget and chunks and used + len(text) > budget:
-                return "\n\n".join(chunks), converted, True
-            chunks.append(text)
-            used += len(text)
-            converted = done
+    # A page costs about a second, nearly all of it inside the extractor's own
+    # C and ONNX code, which lets other threads run. Pages do not depend on
+    # each other, so they are read several at a time.
+    #
+    # Each thread opens the file for itself. A pymupdf document is not safe to
+    # share between threads, and excising equations is not even read-only: it
+    # stamps redactions into the page it is reading. Private handles keep that
+    # scribbling to the thread doing it.
+    handles: list = []
+    handles_lock = threading.Lock()
+    local = threading.local()
 
-    return "\n\n".join(chunks), converted, False
+    def doc_for_this_thread():
+        doc = getattr(local, "doc", None)
+        if doc is None:
+            doc = local.doc = pymupdf.open(path)
+            with handles_lock:
+                handles.append(doc)
+        return doc
+
+    def one(item: tuple[int, int]) -> tuple[int, str]:
+        position, number = item
+        return position, normalize(read(doc_for_this_thread(), number, ctx)).strip()
+
+    todo = list(enumerate(pages, 1))
+    width = max(1, min(_workers(), len(todo)))
+    stopped = False
+    try:
+        with ThreadPoolExecutor(max_workers=width) as pool:
+            # A batch at a time rather than all at once: the budget can stop the
+            # conversion early, and work started past that point is wasted. A
+            # batch bounds the waste to one round instead of the whole document.
+            for start in range(0, len(todo), width):
+                batch = todo[start:start + width]
+                if progress:
+                    progress(f"Reading page {batch[0][0]} of {len(todo)}")
+                for position, text in sorted(pool.map(one, batch)):
+                    if not text:
+                        converted = position
+                        continue
+                    # keep at least one page, or a single huge page yields nothing
+                    if budget and chunks and used + len(text) > budget:
+                        stopped = True
+                        break
+                    chunks.append(text)
+                    used += len(text)
+                    converted = position
+                if stopped:
+                    break
+    finally:
+        for doc in handles:
+            doc.close()
+
+    return "\n\n".join(chunks), converted, stopped
 
 
 def to_markdown(path: str, converter: str = "pymupdf", page_spec: str = "",
