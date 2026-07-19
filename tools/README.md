@@ -35,6 +35,19 @@ sample of joined handwriting found only 43% of words separable into letters,
 while words themselves separated 42 times out of 42. So whole words come from
 ordinary prose and single letters come from boxes.
 
+## Salvage
+
+```
+python tools/salvage_letters.py
+```
+
+Recovers a letter that never made it onto the letter sheet by cutting it out of
+a word that contains it. Only safe where the word splits into exactly as many
+shapes as it has letters, so the position is unambiguous, and the result should
+still be looked at. `v` and `w` came from `we`, `was`, `will`, `woman`, `have`
+and `given` this way, which is why they have more variants than any letter that
+was written once in a box.
+
 ## Drawn symbols
 
 ```
