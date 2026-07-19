@@ -14,244 +14,238 @@
 <body>
 <div class="app">
 
-  <header class="topbar">
-    <div class="brand">
-      <span class="brand__mark" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+  <!-- ------------------------------------------------------------------ -->
+  <!-- Chrome. Deliberately thin: the page is the interface, not this.     -->
+  <!-- ------------------------------------------------------------------ -->
+  <header class="bar">
+    <span class="brand">
+      <span class="brand__nib" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
              stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/>
         </svg>
       </span>
       <span class="brand__name">Text2Hand</span>
-      <span class="brand__sep" aria-hidden="true">/</span>
-      <span class="brand__tag">Type it, get it in your own hand</span>
+    </span>
+
+    <span class="bar__spacer"></span>
+
+    <span class="zoomer" id="zoomer" hidden>
+      <button class="tool tool--icon" id="zoomOut" aria-label="Zoom out">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round"><path d="M5 12h14"/></svg>
+      </button>
+      <button class="tool tool--flat" id="zoomLevel" aria-label="Reset zoom">Fit</button>
+      <button class="tool tool--icon" id="zoomIn" aria-label="Zoom in">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+      </button>
+    </span>
+
+    <div class="menu">
+      <button class="tool" id="paperBtn" aria-haspopup="true" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 4h16v16H4z"/><path d="M4 9h16"/><path d="M4 14h16"/>
+        </svg>
+        Paper
+      </button>
+      <div class="pop" id="paperPop" hidden role="menu" aria-label="Paper settings">
+        <label class="opt">
+          <input type="checkbox" id="ruled" checked />
+          <span class="opt__box" aria-hidden="true"></span>
+          <span class="opt__text"><b>Ruled lines</b><i>33 rules and a red margin</i></span>
+        </label>
+        <label class="opt">
+          <input type="checkbox" id="texture" checked />
+          <span class="opt__box" aria-hidden="true"></span>
+          <span class="opt__text"><b>Paper texture</b><i>Warm tint and grain</i></span>
+        </label>
+        <label class="opt">
+          <input type="checkbox" id="skew" checked />
+          <span class="opt__box" aria-hidden="true"></span>
+          <span class="opt__text"><b>Scan tilt</b><i>As if it came off a scanner</i></span>
+        </label>
+        <p class="pop__note" id="paperNote">Changes redraw the pages.</p>
+      </div>
     </div>
-    <div class="topbar__spacer"></div>
-    <a class="btn btn--sm btn--ghost" href="https://github.com/pranjalprateek6/Text2Hand"
-       target="_blank" rel="noreferrer noopener">
-      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-        <path d="M12 .5a12 12 0 0 0-3.79 23.4c.6.11.82-.26.82-.58v-2.2c-3.34.72-4.04-1.42-4.04-1.42-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.2.08 1.84 1.24 1.84 1.24 1.07 1.84 2.8 1.3 3.49 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.34-5.47-5.96 0-1.32.47-2.39 1.24-3.23-.13-.3-.54-1.53.11-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6.01 0c2.29-1.55 3.3-1.23 3.3-1.23.65 1.65.24 2.88.12 3.18.77.84 1.23 1.91 1.23 3.23 0 4.63-2.8 5.65-5.48 5.95.43.37.81 1.1.81 2.22v3.29c0 .32.22.7.83.58A12 12 0 0 0 12 .5Z"/>
-      </svg>
-      GitHub
-    </a>
+
+    <div class="menu">
+      <button class="tool tool--ink" id="exportBtn" aria-haspopup="true" aria-expanded="false" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>
+        </svg>
+        Export
+      </button>
+      <div class="pop pop--right" id="exportPop" hidden role="menu" aria-label="Export">
+        <a class="item" id="dlPdf" download>
+          <b>Whole document</b><i>PDF, every page</i>
+        </a>
+        <a class="item" id="dlZip" download>
+          <b>All pages</b><i>ZIP of PNGs</i>
+        </a>
+        <div class="pop__rule"></div>
+        <a class="item" id="dlPagePng" download>
+          <b>This page</b><i>PNG at full size</i>
+        </a>
+        <a class="item" id="dlPagePdf" download>
+          <b>This page</b><i>PDF</i>
+        </a>
+      </div>
+    </div>
   </header>
 
-  <main class="main">
+  <!-- ------------------------------------------------------------------ -->
+  <!-- The canvas. A sheet of paper is always on it, even before there is  -->
+  <!-- anything written, so the app never shows an empty box.              -->
+  <!-- ------------------------------------------------------------------ -->
+  <main class="canvas" id="canvas">
+    <div class="sheet" id="sheet">
+      <img class="sheet__img" id="pageImg" alt="" hidden />
 
-    <!-- ---------------------------------------------------------------- -->
-    <!-- Left: source and settings                                        -->
-    <!-- ---------------------------------------------------------------- -->
-    <div>
+      <div class="sheet__face" id="blank">
+        <p class="face__line">Nothing written yet.</p>
+        <button class="btn btn--ink" id="startBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
+          </svg>
+          Start writing
+        </button>
+        <p class="face__hint">or drop a PDF anywhere on this page</p>
+      </div>
 
-      <section class="card">
-        <div class="card__head">
-          <span class="step step--on">1</span>
-          <h2 class="card__title">Source</h2>
-          <div class="card__spacer"></div>
-          <div class="seg" role="tablist" aria-label="Where the text comes from">
-            <button class="seg__btn" id="tabText" role="tab" aria-selected="true"
-                    aria-controls="paneText">Text</button>
-            <button class="seg__btn" id="tabPdf" role="tab" aria-selected="false"
-                    aria-controls="panePdf">PDF</button>
-          </div>
-        </div>
+      <div class="sheet__face" id="busy" hidden>
+        <span class="nib" aria-hidden="true"></span>
+        <p class="face__line" id="busyText">Writing</p>
+      </div>
+    </div>
+  </main>
 
-        <div class="card__body">
-          <!-- PDF pane -->
-          <div id="panePdf" role="tabpanel" aria-labelledby="tabPdf" hidden>
-            <label class="drop" id="drop" for="pdfFile">
-              <input type="file" id="pdfFile" accept="application/pdf,.pdf"
-                     aria-label="Choose a PDF file" />
-              <span class="drop__icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-                     stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5-5 5 5"/><path d="M12 5v12"/>
-                </svg>
-              </span>
-              <span class="drop__title">Drop a PDF here, or browse</span>
-              <span class="drop__sub">Text is extracted to Markdown you can correct</span>
-            </label>
+  <!-- drag a PDF anywhere -->
+  <div class="dropveil" id="dropveil" hidden>
+    <div class="dropveil__inner">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5-5 5 5"/><path d="M12 5v12"/>
+      </svg>
+      <p>Drop the PDF to read it</p>
+    </div>
+  </div>
 
-            <div class="file" id="fileCard" hidden style="margin-top:10px">
-              <span class="file__icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-                     stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>
-                </svg>
-              </span>
-              <span class="file__name" id="fileName">document.pdf</span>
-              <span class="file__size" id="fileSize"></span>
-              <button class="btn btn--sm btn--ghost btn--icon" id="fileClear" aria-label="Remove file">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                     stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
-              </button>
-            </div>
+  <!-- ------------------------------------------------------------------ -->
+  <!-- Dock. Paging on the left of it, the way back into the text on the   -->
+  <!-- right. Everything else lives in the bar.                            -->
+  <!-- ------------------------------------------------------------------ -->
+  <div class="dock" id="dock">
+    <button class="dock__btn" id="prev" aria-label="Previous page" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+    </button>
+    <div class="dots" id="dots" role="tablist" aria-label="Pages"></div>
+    <span class="dock__count" id="count" hidden>1 / 1</span>
+    <button class="dock__btn" id="next" aria-label="Next page" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+    </button>
+    <span class="dock__rule"></span>
+    <button class="dock__edit" id="edit">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+      </svg>
+      Edit text
+      <kbd>E</kbd>
+    </button>
+  </div>
 
-            <div class="row row--wrap" style="margin-top:10px">
-              <select id="converter" class="field grow" aria-label="Extraction method">
-                {% for c in converters %}
-                <option value="{{ c.name }}" {% if not c.ready %}disabled{% endif %}>
-                  {{ c.label }}{% if not c.ready %} - {{ c.reason }}{% endif %}
-                </option>
-                {% endfor %}
-              </select>
-              <input type="text" id="pageRange" class="field field--narrow"
-                     placeholder="Pages, all" aria-label="Page range, for example 1-10" />
-            </div>
+  <!-- ------------------------------------------------------------------ -->
+  <!-- Composer. Slides up over the canvas, then gets out of the way.      -->
+  <!-- ------------------------------------------------------------------ -->
+  <div class="scrim" id="scrim" hidden></div>
 
-            <button class="btn btn--primary" id="convert" style="width:100%;margin-top:10px">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
-              </svg>
-              Extract text
-            </button>
-            <p class="hint">Cloud extractors upload the file to that provider. The local ones do not.</p>
-          </div>
+  <aside class="composer" id="composer" hidden aria-label="Text to write out">
+    <div class="composer__grip" aria-hidden="true"></div>
 
-          <!-- Text pane -->
-          <div id="paneText" role="tabpanel" aria-labelledby="tabText">
-            <label class="label" for="text">Your text</label>
-            <textarea id="text" class="editor" spellcheck="false"
-                      placeholder="Type or paste what you want written out by hand."></textarea>
-            <div class="meta">
-              <span id="counter">0 characters</span>
-              <span id="estimate"></span>
-            </div>
-
-            <div class="chips" style="margin-top:12px">
-              <button class="chip" data-sample="pangram">Pangram</button>
-              <button class="chip" data-sample="punctuation">Punctuation</button>
-              <button class="chip" data-sample="symbols">Symbols</button>
-              <button class="chip" data-sample="markdown">Markdown</button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="card">
-        <div class="card__head">
-          <span class="step">2</span>
-          <h2 class="card__title">Paper</h2>
-        </div>
-        <div class="card__body">
-          <div class="switches">
-            <label class="switch">
-              <input type="checkbox" id="markdown" />
-              <span class="switch__track"></span>
-              <span class="switch__text">
-                <span class="switch__name">Read as Markdown</span>
-                <span class="switch__note">Headings, lists and tables become layout</span>
-              </span>
-            </label>
-            <label class="switch">
-              <input type="checkbox" id="ruled" checked />
-              <span class="switch__track"></span>
-              <span class="switch__text">
-                <span class="switch__name">Ruled paper</span>
-                <span class="switch__note">33 lines with a margin rule</span>
-              </span>
-            </label>
-            <label class="switch">
-              <input type="checkbox" id="texture" checked />
-              <span class="switch__track"></span>
-              <span class="switch__text">
-                <span class="switch__name">Paper texture</span>
-                <span class="switch__note">Warm tint and grain</span>
-              </span>
-            </label>
-            <label class="switch">
-              <input type="checkbox" id="skew" checked />
-              <span class="switch__track"></span>
-              <span class="switch__text">
-                <span class="switch__name">Scan skew</span>
-                <span class="switch__note">Slight tilt, as if scanned</span>
-              </span>
-            </label>
-          </div>
-        </div>
-        <div class="actions">
-          <button class="btn btn--ghost" id="clear">Clear</button>
-          <div class="card__spacer"></div>
-          <button class="btn btn--primary" id="generate">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
-            </svg>
-            <span id="generateLabel">Write it out</span>
-          </button>
-        </div>
-      </section>
+    <div class="composer__head">
+      <div class="tabs" role="tablist">
+        <button class="tab" id="tabType" role="tab" aria-selected="true">Type</button>
+        <button class="tab" id="tabPdf" role="tab" aria-selected="false">From a PDF</button>
+      </div>
+      <span class="bar__spacer"></span>
+      <button class="tool tool--icon" id="closeComposer" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
     </div>
 
-    <!-- ---------------------------------------------------------------- -->
-    <!-- Right: result                                                    -->
-    <!-- ---------------------------------------------------------------- -->
-    <section class="card viewer">
-      <div class="card__head">
-        <span class="step" id="stepOut">3</span>
-        <h2 class="card__title" id="outputLabel">Pages</h2>
-        <div class="card__spacer"></div>
-
-        <div class="pager" id="pager" hidden>
-          <button class="btn btn--sm btn--ghost btn--icon" id="prevPage" aria-label="Previous page">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                 stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-          </button>
-          <span class="pager__count" id="pageCounter">1 / 1</span>
-          <button class="btn btn--sm btn--ghost btn--icon" id="nextPage" aria-label="Next page">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                 stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
-          </button>
-        </div>
-
-        <div class="row" id="outActions" hidden>
-          <button class="btn btn--sm" id="zoom" aria-pressed="false">Actual size</button>
-          <a class="btn btn--sm" id="dlPagePng" download>Page</a>
-          <a class="btn btn--sm btn--primary" id="downloadPdf" download>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>
-            </svg>
-            PDF
-          </a>
-          <a class="btn btn--sm" id="dlZip" download>ZIP</a>
+    <div class="composer__body">
+      <div id="paneType">
+        <textarea id="text" class="paper-input" spellcheck="false"
+                  placeholder="Type or paste what you want written out by hand."></textarea>
+        <div class="samples">
+          <span class="samples__label">Try</span>
+          <button class="pill" data-sample="pangram">a pangram</button>
+          <button class="pill" data-sample="punctuation">punctuation</button>
+          <button class="pill" data-sample="symbols">symbols</button>
+          <button class="pill" data-sample="markdown">markdown</button>
         </div>
       </div>
 
-      <div class="card__body" id="alertWrap" hidden style="padding-bottom:0">
-        <div id="alert" class="alert"></div>
-      </div>
-
-      <!-- empty -->
-      <div class="state" id="empty">
-        <span class="state__art" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
-               stroke-linecap="round" stroke-linejoin="round">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>
-            <path d="M8 13h8"/><path d="M8 17h5"/>
+      <div id="panePdf" hidden>
+        <label class="drop" id="drop" for="pdfFile">
+          <input type="file" id="pdfFile" accept="application/pdf,.pdf" aria-label="Choose a PDF" />
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5-5 5 5"/><path d="M12 5v12"/>
           </svg>
-        </span>
-        <p class="state__title">No pages yet</p>
-        <p class="state__sub">Add some text, or extract it from a PDF, then write it out.</p>
+          <span class="drop__title">Drop a PDF, or choose one</span>
+          <span class="drop__sub">The text comes back here to correct before it is written</span>
+        </label>
+
+        <div class="chosen" id="chosen" hidden>
+          <span class="chosen__name" id="fileName"></span>
+          <span class="chosen__size" id="fileSize"></span>
+          <button class="tool tool--icon" id="fileClear" aria-label="Remove">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        <div class="pdfrow">
+          <select id="converter" class="input" aria-label="How to read it">
+            {% for c in converters %}
+            <option value="{{ c.name }}" {% if not c.ready %}disabled{% endif %}>
+              {{ c.label }}{% if not c.ready %} - {{ c.reason }}{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+          <input type="text" id="pageRange" class="input input--slim"
+                 placeholder="Pages, all" aria-label="Page range, for example 1-10" />
+          <button class="btn" id="convert">Read it</button>
+        </div>
+        <p class="fineprint">Cloud readers upload the file to that provider. The local ones do not.</p>
       </div>
 
-      <!-- working -->
-      <div class="state" id="busy" hidden>
-        <span class="state__art" aria-hidden="true"><span class="spinner"></span></span>
-        <p class="state__title" id="busyTitle">Working</p>
-        <p class="state__sub" id="busyNote">This runs on the machine serving the page.</p>
-        <div class="progress"><div class="progress__bar"></div></div>
-      </div>
+      <div class="alert" id="alert" hidden></div>
+    </div>
 
-      <!-- result -->
-      <div class="viewer__stage" id="stage" hidden>
-        <img class="page-img page-img--fit" id="mainPage" alt="Page 1" />
-      </div>
-      <div class="thumbs" id="thumbs" hidden></div>
-    </section>
+    <div class="composer__foot">
+      <label class="opt opt--inline">
+        <input type="checkbox" id="markdown" />
+        <span class="opt__box" aria-hidden="true"></span>
+        <span class="opt__text"><b>Read as Markdown</b></span>
+      </label>
+      <span class="bar__spacer"></span>
+      <span class="tally" id="tally">0 characters</span>
+      <button class="btn btn--ink" id="write">
+        Write it out
+        <kbd>&#8984;&crarr;</kbd>
+      </button>
+    </div>
+  </aside>
 
-  </main>
 </div>
 
 <script>
