@@ -254,6 +254,14 @@ function show(n) {
   $("dlZip").href = `/download/${state.id}/pages.zip`;
   $("dlPagePng").href = `/download/${state.id}/page_${state.page}.png`;
   $("dlPagePdf").href = `/download/${state.id}/page_${state.page}.pdf`;
+
+  // On a one-page render the whole document and this page are the same file,
+  // and the zip is that one PNG in a wrapper. Offer the two artefacts that
+  // actually differ rather than four entries where two are duplicates.
+  const many = state.pages > 1;
+  $("dlZip").hidden = !many;
+  $("dlPagePdf").hidden = !many;
+  document.querySelector("#exportPop .pop__rule").hidden = !many;
 }
 
 $("render").addEventListener("click", render);
