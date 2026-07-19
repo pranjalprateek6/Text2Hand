@@ -96,6 +96,15 @@ HANGING = set(",;")
 DESCENDER_DROP = 0.25                   # fraction of glyph height pushed down
 HANG_FRAC = 0.62                        # same, for HANGING marks
 RAISED = set("\"'*^`")                  # marks that hang high (quotes, apostrophe, * ^ `)
+# Quotes were written once, in the closing shape: thick at the top, tapering
+# down to the left. That is right for the mark that ends a quotation and wrong
+# for the one that opens it, and using the one glyph for both had every
+# quotation leaning the same way at both ends. An opening quote is the same
+# stroke mirrored, so it is flipped rather than captured again.
+MIRRORED_OPENING = set("\"'")
+# What can stand before an opening quote: nothing, a space, or a bracket. After
+# a letter or a full stop, a quote is closing.
+OPENS_AFTER = set(" \t([{-—")
 RAISE_FRAC = 0.20                       # how far up, as a fraction of the line height
 CENTERED = set("+=<>~-")                # centred on the x-height axis; a hyphen
                                         # left on the baseline reads as _
@@ -487,6 +496,7 @@ class Sheet:
         self.pages: list[Image.Image] = []
         self.missing: list[str] = []          # characters with no glyph
         self.scale = 1.0                      # block-level glyph size
+        self._last = ""                       # last character written, for quote direction
         self._new_page()
 
     def _new_page(self) -> None:
@@ -525,6 +535,7 @@ class Sheet:
         self.x = (MARGIN_L if left is None else left) + random.randint(0, MARGIN_JITTER)
         self.baseline += LINE_HEIGHT * max(1, round(advance))
         self._drift_phase = 0.0
+        self._last = ""                       # a new line opens a quote, like a space
         if self.baseline + LINE_HEIGHT > self.height - MARGIN_B:
             self._new_page()
 
@@ -641,6 +652,7 @@ class Sheet:
         y = self.baseline - base + random.randint(-sway, sway) + self._drift()
         self.page.paste(image, (int(self.x), int(y)), image)
         self.x += image.width + random.randint(*KERN_JITTER)
+        self._last = core[-1]                 # a whole word skips put(), so record it here
 
         for ch in tail:                       # comma, full stop, closing bracket
             self.put(ch)
@@ -656,6 +668,7 @@ class Sheet:
                 self.put(ch)
             if i < len(words) - 1:
                 self.x += space
+                self._last = " "
         self.scale = 1.0
 
     def draw_table(self, grid: list[list[str]], widths: list[int]) -> None:
@@ -723,11 +736,13 @@ class Sheet:
                         self.put(ch)
                     self.strike(mark, self.x)
                     self.x += space // 2
+                    self._last = " "
             if not self.put_word(word, scale):
                 for ch in word:
                     self.put(ch)
             if i < len(words) - 1:
                 self.x += space
+                self._last = " "
         if underline:
             self.underline(start, self.x)
         self.scale = 1.0
@@ -762,7 +777,10 @@ class Sheet:
         scale = self.scale * (1 + FATIGUE_GROWTH * tired)
 
         advance = int(vs[0].width * scale)        # rhythm set by the un-jittered width
-        g = jittered(random.choice(vs), scale, boost)
+        chosen = random.choice(vs)
+        if ch in MIRRORED_OPENING and self._opening():
+            chosen = chosen.transpose(Image.FLIP_LEFT_RIGHT)
+        g = jittered(chosen, scale, boost)
 
         sway = max(1, int(BASELINE_WOBBLE * boost))
         wobble = random.randint(-sway, sway) + self._drift()
@@ -776,6 +794,16 @@ class Sheet:
 
         self.page.paste(g, (x, y), g)
         self.x += advance + random.randint(*KERN_JITTER)
+        self._last = ch
+
+    def _opening(self) -> bool:
+        """Whether a quote written here opens rather than closes a quotation.
+
+        Judged from what was written immediately before it, which is what a
+        person reading the line has to go on too. At the start of a line there
+        is nothing before it, so it opens.
+        """
+        return self._last == "" or self._last in OPENS_AFTER
 
 
 def _drop_below_line(ch: str, height: int) -> int:
