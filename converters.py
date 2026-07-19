@@ -32,7 +32,13 @@ OCR_LANG = "eng"
 _TYPOGRAPHY = {
     "‘": "'", "’": "'", "‚": "'", "‛": "'",     # single quotes
     "“": '"', "”": '"', "„": '"', "‟": '"',     # double quotes
+    # Angle quotes and primes are quotation marks too, and decomposition leaves
+    # them alone, so without these they survive as non-ASCII and are skipped at
+    # render time. A prime is what a PDF uses for feet, minutes and derivatives.
+    "«": '"', "»": '"', "‹": "'", "›": "'",     # angle quotes
+    "′": "'", "″": '"', "‴": '"',               # primes
     "–": "-", "—": "-", "―": "-", "−": "-",     # dashes, minus
+    "‐": "-", "‑": "-", "‒": "-", "⁄": "/",     # unicode hyphens, fraction slash
     "…": "...", " ": " ", " ": " ", " ": " ",   # ellipsis, spaces
     "•": "-", "·": "-", "●": "-", "▪": "-",     # bullets
     "×": "x", "™": "(TM)", "®": "(R)", "©": "(C)",

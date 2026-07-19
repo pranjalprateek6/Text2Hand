@@ -24,6 +24,40 @@ FONT = Path(__file__).resolve().parent.parent / "myfont"
 SEED = 7                   # fixed so re-running reproduces the same glyphs
 SW = 5                     # stroke width, tuned to the letter weight
 
+# Height of each drawn symbol as a fraction of the captured letters' x-height.
+#
+# The shapes below are laid out on their own grid, where 64 was meant to be a
+# full-height character. That grid no longer matches the hand these sit beside:
+# once real handwriting replaced the borrowed font, brackets were coming out at
+# 0.90 of the x-height where the captured parentheses are 1.33 and 1.56, and
+# "<" at 0.41, small enough that "<move>" read as "move>" on the page.
+#
+# The fractions are taken from the captured punctuation, which is the only
+# honest reference for how large this hand writes a mark: ( is 1.33, ) is 1.56,
+# : is 1.35, ! is 1.70, and a full stop is 0.38.
+HEIGHT = {
+    47: 1.50, 92: 1.50, 124: 1.50,                    # / \ |
+    91: 1.45, 93: 1.45, 123: 1.45, 125: 1.45,         # [ ] { }
+    35: 1.20, 36: 1.30, 37: 1.10, 38: 1.10, 64: 1.05,  # # $ % & @
+    60: 0.85, 62: 0.85, 43: 0.85,                     # < > +
+    42: 0.60, 61: 0.50, 94: 0.40, 96: 0.30,           # * = ^ `
+    126: 0.30, 95: 0.10,                              # ~ _
+}
+
+
+def x_height() -> int:
+    """The captured letters' x-height, in stored glyph pixels.
+
+    Read from the letter glyphs rather than fixed here, so the drawn symbols
+    follow the hand if it is ever recaptured at another size.
+    """
+    import sys
+
+    sys.path.insert(0, str(FONT.parent))
+    import text_to_handwriting as t2h
+
+    return t2h._raw_x_height()
+
 
 def new(w, h):
     im = Image.new("RGB", (w, h), (255, 255, 255))
@@ -49,6 +83,19 @@ def ring(d, box, w=SW):
 
 
 def save(im, code):
+    """Scale the drawn shape onto the captured hand's scale, then write it.
+
+    Resizing here rather than drawing at final size keeps the coordinates above
+    readable as a design. Upscaling costs little sharpness, because the renderer
+    scales every glyph file down again to reach its target x-height.
+    """
+    target = HEIGHT.get(code)
+    if target:
+        box = im.convert("L").point(lambda p: 0 if p >= 150 else 255).getbbox()
+        if box:
+            ratio = (target * x_height()) / (box[3] - box[1])
+            im = im.resize((max(1, round(im.width * ratio)),
+                            max(1, round(im.height * ratio))), Image.LANCZOS)
     im.save(FONT / f"{code}.png")
 
 
