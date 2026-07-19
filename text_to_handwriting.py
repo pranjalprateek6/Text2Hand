@@ -39,6 +39,7 @@ import math
 import os
 import random
 import sys
+from concurrent.futures import ThreadPoolExecutor
 
 from PIL import Image, ImageChops, ImageDraw
 
@@ -368,8 +369,164 @@ def char_advance(ch: str) -> int:
 # --------------------------------------------------------------------------- #
 # Per-glyph jitter
 # --------------------------------------------------------------------------- #
-def jittered(im: Image.Image, scale: float = 1.0, boost: float = 1.0) -> Image.Image:
-    """Return a fresh, randomly perturbed copy of a glyph image.
+JITTER_POOL = 4                         # pre-jittered copies kept per glyph bucket
+JITTER_POOL_MAX = 6000                  # total pooled images before the pool resets
+_SCALE_STEP = 0.025                     # scale bucket width for the pool key
+_TIRED_AT = 1.35                        # boost above this counts as the tired bucket
+
+_jitter_pool: dict[tuple, list[Image.Image]] = {}
+_jitter_pooled = 0                      # images currently held, to bound memory
+
+
+def reset_glyph_caches() -> None:
+    """Drop every cached glyph, the prepared words, and the jitter pool.
+
+    The pool holds glyphs that were already tinted with the current ink, so
+    anything changing how a glyph is prepared, a new pen colour or a new glyph
+    scale, has to clear the pool too. Clearing only the glyph cache would leave
+    the pool handing out the old ink for as long as the process lived.
+    """
+    global _words, _jitter_pooled
+    _cache.clear()
+    _jitter_pool.clear()
+    _word_pool.clear()
+    _jitter_pooled = 0
+    _words = None
+
+
+def pool_key(ch: str, variant: int, flipped: bool,
+             scale: float, boost: float) -> tuple:
+    """Bucket a glyph's jitter inputs so repeated letters can share their work.
+
+    Fatigue moves scale and rotation continuously down the page, so no two
+    calls ever asked for exactly the same thing and every glyph was resampled
+    and rotated from scratch. The movement is what matters, not its precision:
+    the angle inside the range is random anyway, so rounding the range itself
+    to a few steps cannot be seen. Bucketing turns a unique request per glyph
+    into a handful per character, which is what makes a pool possible at all.
+    """
+    return (ch, variant, flipped,
+            round(scale / _SCALE_STEP), boost >= _TIRED_AT)
+
+
+def jittered(im: Image.Image, scale: float = 1.0, boost: float = 1.0,
+             key: tuple | None = None) -> Image.Image:
+    """Return a randomly perturbed copy of a glyph image.
+
+    With a `key`, the first few perturbations for that bucket are kept and
+    reused instead of recomputed. A letter is drawn thousands of times in a
+    document but only ever looks like a few of itself: keeping four, on top of
+    the several photographs of each letter already on file, gives a dozen or
+    more distinct renderings per character. Real handwriting repeats itself
+    more than that.
+    """
+    global _jitter_pooled
+    if key is None:
+        return _jitter(im, scale, boost)
+
+    pool = _jitter_pool.get(key)
+    if pool is None:
+        if _jitter_pooled >= JITTER_POOL_MAX:      # bounded, so a long document
+            _jitter_pool.clear()                   # cannot grow the pools forever
+            _word_pool.clear()
+            _jitter_pooled = 0
+        pool = _jitter_pool[key] = []
+    if len(pool) < JITTER_POOL:
+        g = _jitter(im, scale, boost)
+        pool.append(g)
+        _jitter_pooled += 1
+        return g
+    return random.choice(pool)
+
+
+def _skew_matrix(w: int, h: int, angle: float) -> list[float]:
+    """Pillow's own rotate-about-centre matrix, mapping output back to input."""
+    rad = -math.radians(angle % 360.0)
+    cos, sin = round(math.cos(rad), 15), round(math.sin(rad), 15)
+    cx, cy = w / 2.0, h / 2.0
+    m = [cos, sin, 0.0, -sin, cos, 0.0]
+    m[2] = cos * -cx + sin * -cy + cx
+    m[5] = -sin * -cx + cos * -cy + cy
+    return m
+
+
+def _skew_bands(page: Image.Image, angle: float, fill, bands: int) -> list:
+    """Split a page rotation into independent horizontal band jobs.
+
+    A rotation does not have to be done in one piece: every output pixel is a
+    function of the same matrix, so a band can be computed on its own provided
+    it still samples the whole source and carries its own origin in the
+    matrix's constant terms. Splitting lets a short document put every core on
+    one page instead of leaving all but one idle.
+    """
+    w, h = page.size
+    a, b, c, d, e, f = _skew_matrix(w, h, angle)
+    step = -(-h // bands)                      # ceiling, so the last band is short
+
+    def make(y0: int):
+        bh = min(step, h - y0)
+        m = (a, b, c + b * y0, d, e, f + e * y0)
+        return lambda: page.transform((w, bh), Image.AFFINE, m,
+                                      Image.BICUBIC, fillcolor=fill)
+
+    return [(y0, make(y0)) for y0 in range(0, h, step)]
+
+
+def _workers() -> int:
+    """Threads to use for the page-sized image work.
+
+    Capped rather than taken from the core count alone: the server renders
+    several documents at once, and a machine-wide pool per request would have
+    them fighting each other for the same cores.
+    """
+    return max(1, min(8, (os.cpu_count() or 2)))
+
+
+WORD_POOL = 6                           # pre-jittered copies kept per word bucket
+_word_pool: dict[tuple, list[tuple[Image.Image, int]]] = {}
+
+
+def _jitter_word(im: Image.Image, base: int, size: float, boost: float,
+                 key: tuple) -> tuple[Image.Image, int]:
+    """Resize, rotate and ink a whole captured word, reusing earlier copies.
+
+    A word image is far larger than a glyph, so rotating one costs perhaps
+    thirty times as much, and with glyph jitter pooled this became the single
+    most expensive thing in the render. Prose leans hard on a small set of
+    words, so keeping a few jittered copies of each pays off immediately. The
+    baseline offset travels with the image because rotation grows the canvas
+    and moves where the word sits on the line.
+    """
+    global _jitter_pooled
+    pool = _word_pool.get(key)
+    if pool is None:
+        pool = _word_pool[key] = []
+    if len(pool) >= WORD_POOL:
+        return random.choice(pool)
+
+    if abs(size - 1.0) > 0.01:
+        im = im.resize((max(1, round(im.width * size)),
+                        max(1, round(im.height * size))), Image.LANCZOS)
+        base = int(base * size)
+    # The same jitter a single glyph gets, applied to the word as one piece.
+    if ROT_JITTER:
+        angle = random.uniform(-ROT_JITTER, ROT_JITTER) * 0.6 * boost
+        grown = im.rotate(angle, resample=Image.BICUBIC, expand=True)
+        base += (grown.height - im.height) // 2
+        im = grown
+    if INK_MIN < 1.0:
+        factor = random.uniform(INK_MIN, INK_MAX)
+        if factor < 1.0:
+            im = im.copy()
+            im.putalpha(im.getchannel("A").point(lambda v: int(v * factor)))
+
+    pool.append((im, base))
+    _jitter_pooled += 1
+    return im, base
+
+
+def _jitter(im: Image.Image, scale: float = 1.0, boost: float = 1.0) -> Image.Image:
+    """Perturb a glyph once.
 
     `scale` is the block-level size (headings draw larger). It is folded into
     the random size jitter so the glyph is only resampled once.
@@ -392,19 +549,83 @@ def jittered(im: Image.Image, scale: float = 1.0, boost: float = 1.0) -> Image.I
     return g
 
 
-def add_paper_texture(page: Image.Image) -> Image.Image:
+_NOISE_PAD = 48                         # slack in a cached field, for offset cuts
+_TEXTURE_POOL = 4                       # pre-mixed grain layers kept per page size
+_noise_fields: dict[tuple, Image.Image] = {}
+_tint_layers: dict[tuple, Image.Image] = {}
+_texture_layers: dict[tuple, list[Image.Image]] = {}
+
+
+def _noise_window(w: int, h: int, sigma: int, rgb: bool, rng) -> Image.Image:
+    """A noise patch of (w, h), cut at a random offset from one cached field.
+
+    effect_noise fills a whole page with gaussian noise on every call, which
+    made paper texture a third of the render. The field is generated once per
+    size, a little larger than the page, and each page cuts its own window
+    from a random offset. Every page still gets grain of its own; only the
+    generating is shared.
+    """
+    key = (w, h, sigma, rgb)
+    field = _noise_fields.get(key)
+    if field is None:
+        field = Image.effect_noise((w + _NOISE_PAD, h + _NOISE_PAD), sigma)
+        if rgb:                           # converted once, not once per page
+            field = field.convert("RGB")
+        _noise_fields[key] = field
+    ox = rng.randint(0, _NOISE_PAD)
+    oy = rng.randint(0, _NOISE_PAD)
+    return field.crop((ox, oy, ox + w, oy + h))
+
+
+def _texture_layer(w: int, h: int, rng) -> tuple[Image.Image, float]:
+    """One pre-mixed grain-and-mottle layer, and the weight to blend it at.
+
+    Applying grain and then mottle means two passes over a 30 MB page. Mixing
+    the two by their own weights first gives a single layer and a single
+    blend, and the arithmetic works out to exactly the same picture: either
+    way the result is (1-a)(1-b) of the page, a(1-b) of the grain and b of the
+    mottle. The mixed layers are kept and reused, since only their grain
+    offset ever differed.
+    """
+    a, b = PAPER_GRAIN_ALPHA, PAPER_MOTTLE_ALPHA
+    gw, mw = a * (1 - b), b
+    total = gw + mw
+    if not total:
+        return None, 0.0
+
+    key = (w, h, PAPER_NOISE, a, b)
+    pool = _texture_layers.setdefault(key, [])
+    if len(pool) >= _TEXTURE_POOL:
+        return rng.choice(pool), total
+
+    grain = (_noise_window(w, h, PAPER_NOISE, True, rng) if a
+             else Image.new("RGB", (w, h), (128, 128, 128)))
+    if b:
+        sw, sh = max(1, w // 12), max(1, h // 12)
+        mottle = _noise_window(sw, sh, PAPER_NOISE, False, rng)
+        mottle = mottle.resize((w, h), Image.BILINEAR).convert("RGB")
+        layer = Image.blend(grain, mottle, mw / total)
+    else:
+        layer = grain
+    pool.append(layer)
+    return layer, total
+
+
+def add_paper_texture(page: Image.Image, rng=random) -> Image.Image:
     """Give the flat page a faint off-white tint plus grain and soft mottle."""
     w, h = page.size
     if PAPER_TINT:
-        page = ImageChops.multiply(page, Image.new("RGB", (w, h), PAPER_TINT))
-    if PAPER_GRAIN_ALPHA:                 # fine per-pixel grain
-        grain = Image.effect_noise((w, h), PAPER_NOISE).convert("RGB")
-        page = Image.blend(page, grain, PAPER_GRAIN_ALPHA)
-    if PAPER_MOTTLE_ALPHA:                # soft, cloudy large-scale variation
-        sw, sh = max(1, w // 12), max(1, h // 12)
-        mottle = Image.effect_noise((sw, sh), PAPER_NOISE)
-        mottle = mottle.resize((w, h), Image.BILINEAR).convert("RGB")
-        page = Image.blend(page, mottle, PAPER_MOTTLE_ALPHA)
+        # Multiplying a flat colour over the same template gives the same
+        # picture every time, so the tinted sheet is built once and copied.
+        key = (w, h, PAPER_TINT, page.tobytes()[:64])
+        base = _tint_layers.get(key)
+        if base is None:
+            flat = Image.new("RGB", (w, h), PAPER_TINT)
+            base = _tint_layers[key] = ImageChops.multiply(page, flat)
+        page = base.copy()
+    layer, weight = _texture_layer(w, h, rng)
+    if layer is not None:
+        page = Image.blend(page, layer, weight)
     return page
 
 
@@ -441,7 +662,7 @@ def derive_metrics() -> None:
         wanted = GLYPH_SCALE
         GLYPH_SCALE = (X_HEIGHT_MM * px_per_mm()) / _raw_x_height()
         if abs(wanted - GLYPH_SCALE) > 1e-6:
-            _cache.clear()
+            reset_glyph_caches()
 
     heights, widths = [], []
     for code in range(33, 127):
@@ -500,6 +721,8 @@ def derive_metrics() -> None:
 class Sheet:
     """A stack of pages you can write glyphs onto; starts a new page on demand."""
 
+    PAGE_POOL = 6                             # textured blank sheets kept to copy
+
     def __init__(self) -> None:
         self.template = Image.open(BG_PATH).convert("RGB")
         self.width, self.height = self.template.size
@@ -508,14 +731,31 @@ class Sheet:
         self.scale = 1.0                      # block-level glyph size
         self._last = ""                       # last character written, for quote direction
         self._in_quote = False                # inside a quotation, for quote direction
+        self._blanks: list[Image.Image] = []   # prepared sheets, copied per page
         self._new_page()
 
+    def close(self) -> None:
+        self._blanks.clear()
+
     def _new_page(self) -> None:
-        page = self.template.copy()
-        if PAPER_TEXTURE:
-            page = add_paper_texture(page)
-        if RULED:
-            self._draw_ruling(page)
+        # A page is 30 MB, and texturing one means a multiply and two blends
+        # across every pixel of it. That, not the writing, is the bulk of a
+        # render, and threads cannot fix it because the limit is memory
+        # bandwidth rather than arithmetic. The recipe is identical for every
+        # page and only the grain offset differs, so a few sheets are prepared
+        # and the rest are copies of those. Copying 30 MB costs a fraction of
+        # retexturing it, and grain that repeats every sixth sheet is not
+        # something a reader can find.
+        if len(self._blanks) < self.PAGE_POOL:
+            blank = self.template.copy()
+            if PAPER_TEXTURE:
+                blank = add_paper_texture(blank)
+            if RULED:
+                self._draw_ruling(blank)
+            self._blanks.append(blank)
+        else:
+            blank = random.choice(self._blanks)
+        page = blank.copy()                    # the sheet is kept clean to reuse
         self.page = page
         self.pages.append(page)
         _report("page", len(self.pages))
@@ -689,22 +929,10 @@ class Sheet:
         image, base = hit
         tired = self._fatigue()
         size = WORD_SCALE * scale * (1 + FATIGUE_GROWTH * tired)
-        if abs(size - 1.0) > 0.01:
-            image = image.resize((max(1, round(image.width * size)),
-                                  max(1, round(image.height * size))), Image.LANCZOS)
-            base = int(base * size)
-
-        # The same jitter a single glyph gets, applied to the word as one piece.
-        if ROT_JITTER:
-            angle = random.uniform(-ROT_JITTER, ROT_JITTER) * 0.6 * (1 + FATIGUE_JITTER * tired)
-            grown = image.rotate(angle, resample=Image.BICUBIC, expand=True)
-            base += (grown.height - image.height) // 2
-            image = grown
-        if INK_MIN < 1.0:
-            factor = random.uniform(INK_MIN, INK_MAX)
-            if factor < 1.0:
-                image = image.copy()
-                image.putalpha(image.getchannel("A").point(lambda v: int(v * factor)))
+        boost = 1 + FATIGUE_JITTER * tired
+        image, base = _jitter_word(image, base, size, boost,
+                                   (core, round(size / _SCALE_STEP),
+                                    boost >= _TIRED_AT))
 
         sway = max(1, int(BASELINE_WOBBLE * (1 + FATIGUE_JITTER * tired)))
         y = self.baseline - base + random.randint(-sway, sway) + self._drift()
@@ -835,13 +1063,17 @@ class Sheet:
         scale = self.scale * (1 + FATIGUE_GROWTH * tired)
 
         advance = int(vs[0].width * scale)        # rhythm set by the un-jittered width
-        chosen = random.choice(vs)
+        vi = random.randrange(len(vs))
+        chosen = vs[vi]
+        flipped = False
         if ch in MIRRORED_OPENING:
             if self._opening():
                 chosen = chosen.transpose(Image.FLIP_LEFT_RIGHT)
+                flipped = True
             if ch == '"':
                 self._in_quote = not self._in_quote
-        g = jittered(chosen, scale, boost)
+        g = jittered(chosen, scale, boost,
+                     pool_key(ch, vi, flipped, scale, boost))
 
         sway = max(1, int(BASELINE_WOBBLE * boost))
         wobble = random.randint(-sway, sway) + self._drift()
@@ -1118,19 +1350,46 @@ def render_pages(text: str, as_markdown: bool = False,
         sheet = render_markdown(text) if as_markdown else render(text)
     finally:
         _progress = None
+    sheet.close()
 
     _report_finish = on_progress
     if _report_finish:
         _report_finish("skew", len(sheet.pages))
 
-    finals = []
-    for page in sheet.pages:
-        if SCAN_SKEW:
-            fill = PAPER_FILL if PAPER_TEXTURE else (255, 255, 255)
-            page = page.rotate(random.uniform(-SCAN_SKEW, SCAN_SKEW),
-                               resample=Image.BICUBIC, expand=False,
-                               fillcolor=fill)
-        finals.append(page)
+    finals = list(sheet.pages)
+    if SCAN_SKEW and finals:
+        fill = PAPER_FILL if PAPER_TEXTURE else (255, 255, 255)
+        # Angles are drawn here, on one thread, rather than inside the workers.
+        # random is one shared generator and thread scheduling is not
+        # deterministic, so drawing from it inside the pool would make the draw
+        # order vary run to run. That is a source of nondeterminism threading
+        # would otherwise have added, and it costs nothing to avoid.
+        angles = [random.uniform(-SCAN_SKEW, SCAN_SKEW) for _ in finals]
+        threads = _workers()
+        # Pillow drops the GIL inside these C routines, so this really does run
+        # at once. How to divide it depends on how much there is: with pages to
+        # spare, a thread takes a whole page, because banding costs an extra
+        # copy of the page to stitch the strips back together. Below that there
+        # are not enough pages to go round, so pages are split into bands until
+        # there is a job per thread. A one-page render used to leave every core
+        # but one idle through the slowest step in the pipeline.
+        with ThreadPoolExecutor(max_workers=threads) as pool:
+            if len(finals) >= threads:
+                def whole(i: int) -> tuple[int, Image.Image]:
+                    return i, finals[i].rotate(angles[i], resample=Image.BICUBIC,
+                                               expand=False, fillcolor=fill)
+                for i, page in pool.map(whole, range(len(finals))):
+                    finals[i] = page
+            else:
+                bands = max(1, -(-threads // len(finals)))
+                jobs = [(i, y0, fn)
+                        for i, (p, ang) in enumerate(zip(finals, angles))
+                        for y0, fn in _skew_bands(p, ang, fill, bands)]
+                out = [Image.new(p.mode, p.size) for p in finals]
+                futures = [pool.submit(fn) for _, _, fn in jobs]
+                for (i, y0, _), fut in zip(jobs, futures):
+                    out[i].paste(fut.result(), (0, y0))
+                finals = out
     return finals, sheet.missing
 
 

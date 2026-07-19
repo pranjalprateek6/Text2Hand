@@ -21,6 +21,7 @@ import tempfile
 import threading
 import uuid
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from flask import Flask, abort, jsonify, render_template, request, send_file
@@ -104,11 +105,10 @@ def _render(text: str, ruled: bool, texture: bool, skew: bool, as_markdown: bool
         colour = INKS.get(ink, INKS["blue-black"])
         if colour != t2h.INK_COLOR:
             # Glyphs and word images are tinted as they load and then cached,
-            # so a new pen colour has to flush both or it silently keeps the
-            # old ink.
+            # and the jitter pool holds tinted copies too, so a new pen colour
+            # has to flush all of them or it silently keeps the old ink.
             t2h.INK_COLOR = colour
-            t2h._cache.clear()
-            t2h._words = None
+            t2h.reset_glyph_caches()
         pages, missing = t2h.render_pages(text, as_markdown=as_markdown,
                                           on_progress=on_progress)
 
@@ -116,7 +116,8 @@ def _render(text: str, ruled: bool, texture: bool, skew: bool, as_markdown: bool
     folder = RENDER_ROOT / rid
     folder.mkdir(parents=True, exist_ok=True)
 
-    for i, page in enumerate(pages, 1):
+    def write(item):
+        i, page = item
         # JPEG for the preview: the paper grain makes PNG very inefficient here
         # (roughly 5x larger) and this copy is only ever shown on screen.
         preview = page.copy()
@@ -127,7 +128,15 @@ def _render(text: str, ruled: bool, texture: bool, skew: bool, as_markdown: bool
         thumb.thumbnail((THUMB_WIDTH, THUMB_WIDTH * 4), Image.LANCZOS)
         thumb.save(folder / f"thumb_{i}.jpg", quality=72, optimize=True)
 
-        page.save(folder / f"page_{i}.png")
+        # Level 3 rather than zlib's default 6. A page is mostly paper grain,
+        # which is close to random and barely compresses, so the extra effort
+        # buys about 5% of file size for well over twice the time.
+        page.save(folder / f"page_{i}.png", compress_level=3)
+
+    # Each page writes its own three files and shares nothing with the others.
+    # Pillow drops the GIL while encoding, so these overlap properly.
+    with ThreadPoolExecutor(max_workers=t2h._workers()) as pool:
+        list(pool.map(write, enumerate(pages, 1)))
     pages[0].save(folder / "handwriting.pdf", save_all=True, append_images=pages[1:])
 
     if on_progress:
