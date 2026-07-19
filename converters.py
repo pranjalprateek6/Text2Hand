@@ -342,10 +342,14 @@ def to_markdown(path: str, converter: str = "pymupdf", page_spec: str = "",
             f"Stopped after {converted} of {len(pages)} pages, because more "
             f"would be over the {max_chars:,} character limit that rendering accepts."
         )
-    # Anything still outside ASCII is a script the handwriting has no glyphs
-    # for (Cyrillic, Arabic, CJK and so on). It cannot be transliterated, so
-    # say so here rather than letting it vanish silently at render time.
-    foreign = {ch for ch in md if ord(ch) > 126}
+    # Anything still outside ASCII either has a glyph of its own (the Greek
+    # letters and maths symbols do now) or is a script the handwriting cannot
+    # draw (Cyrillic, Arabic, CJK and so on). Only the second kind is worth a
+    # warning, so check the font before naming a character as missing.
+    def _has_glyph(ch: str) -> bool:
+        return os.path.exists(os.path.join("myfont", f"{ord(ch)}.png"))
+
+    foreign = {ch for ch in md if ord(ch) > 126 and not _has_glyph(ch)}
     if foreign:
         # Only a letter's Unicode name starts with its script. A symbol's name
         # starts with whatever it is called ("ASTERISK OPERATOR", "FOR ALL"),

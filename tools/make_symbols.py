@@ -42,6 +42,26 @@ HEIGHT = {
     60: 0.85, 62: 0.85, 43: 0.85,                     # < > +
     42: 0.60, 61: 0.50, 94: 0.40, 96: 0.30,           # * = ^ `
     126: 0.30, 95: 0.10,                              # ~ _
+
+    # Greek and maths, drawn because converted papers use them constantly and
+    # a skipped character is a hole in an equation. Proportions follow the
+    # letters: x-height bodies at 1.0-1.1, ascenders ~1.5, tails add ~0.5.
+    945: 1.05,   # alpha
+    946: 1.90,   # beta, ascender and tail
+    947: 1.60,   # gamma, x body + tail
+    948: 1.45,   # delta
+    949: 1.00,   # epsilon
+    952: 1.50,   # theta
+    955: 1.50,   # lambda
+    956: 1.55,   # mu, x body + tail
+    960: 1.10,   # pi
+    963: 1.10,   # sigma
+    8712: 0.95,  # element of
+    8721: 1.50,  # n-ary summation
+    8706: 1.40,  # partial derivative
+    8727: 0.60,  # asterisk operator
+    8730: 1.60,  # square root
+    8734: 0.55,  # infinity
 }
 
 
@@ -80,6 +100,14 @@ def stroke(d, pts, w=SW, j=1.3, cap=True):
 
 def ring(d, box, w=SW):
     d.ellipse(box, outline=(0, 0, 0), width=w)
+
+
+def arc_pts(cx, cy, rx, ry, a0, a1, n=26):
+    """Sample an elliptical arc as points for stroke(). Degrees, y down."""
+    import math
+    return [(cx + rx * math.cos(math.radians(a0 + (a1 - a0) * i / (n - 1))),
+             cy + ry * math.sin(math.radians(a0 + (a1 - a0) * i / (n - 1))))
+            for i in range(n)]
 
 
 def save(im, code):
@@ -168,7 +196,90 @@ def main():
     # --- underscore (sits at the writing line) ---------------------------- #
     im, d = new(40, 14); stroke(d, [(4, 8), (36, 8)]); save(im, 95)            # _
 
-    print("wrote 21 symbols: # $ % & * + / < = > @ [ \\ ] ^ _ ` { | } ~")
+    # --- Greek --------------------------------------------------------------
+    # Curves are sampled arcs jittered lightly, so they wobble like the pen
+    # rather than like noise.
+    im, d = new(54, 48)                                                       # alpha
+    stroke(d, arc_pts(20, 24, 15, 19, 20, 340), j=0.6)
+    stroke(d, [(37, 7), (38, 19), (40, 33), (46, 42)], j=0.8); save(im, 945)
+
+    im, d = new(38, 88)                                                       # beta
+    stroke(d, [(9, 84), (10, 50), (11, 18), (15, 7)], j=0.8)
+    stroke(d, arc_pts(12, 22, 13, 14, -90, 90), j=0.6)
+    stroke(d, arc_pts(11, 52, 16, 17, -90, 90), j=0.6); save(im, 946)
+
+    im, d = new(34, 82)                                                       # gamma
+    stroke(d, [(4, 6), (10, 18), (16, 30)], j=0.8)
+    stroke(d, [(30, 5), (24, 16), (18, 28), (16, 44), (15, 62), (11, 78)], j=0.7)
+    save(im, 947)
+
+    im, d = new(38, 76)                                                       # delta
+    ring(d, [4, 36, 32, 72])
+    stroke(d, [(30, 8), (17, 4), (10, 9), (16, 21), (24, 36)], j=0.7); save(im, 948)
+
+    im, d = new(32, 50)                                                       # epsilon
+    stroke(d, arc_pts(17, 14, 11, 10, 60, 300), j=0.6)
+    stroke(d, arc_pts(16, 36, 12, 12, 60, 300), j=0.6); save(im, 949)
+
+    im, d = new(40, 86)                                                       # theta
+    stroke(d, arc_pts(20, 43, 14, 37, 0, 360, n=40), j=0.6)
+    stroke(d, [(10, 44), (30, 42)], j=0.8); save(im, 952)
+
+    im, d = new(42, 86)                                                       # lambda
+    stroke(d, [(6, 6), (14, 26), (24, 52), (33, 80)], j=0.8)
+    stroke(d, [(20, 42), (12, 60), (5, 80)], j=0.8); save(im, 955)
+
+    im, d = new(44, 88)                                                       # mu
+    stroke(d, [(9, 6), (9, 52)], j=0.8)
+    stroke(d, [(9, 52), (7, 68), (4, 84)], j=0.8)
+    # the bowl hangs under the stems like a u: angles 180 -> 0 pass through 90,
+    # which is the bottom with y pointing down
+    stroke(d, arc_pts(21, 38, 12, 15, 180, 0, n=20), j=0.6)
+    stroke(d, [(33, 6), (33, 46), (38, 53)], j=0.8); save(im, 956)
+
+    im, d = new(48, 42)                                                       # pi
+    stroke(d, [(3, 10), (15, 6), (30, 8), (45, 5)], j=0.8)
+    stroke(d, [(14, 9), (13, 23), (12, 38)], j=0.8)
+    stroke(d, [(33, 9), (33, 24), (36, 38), (41, 38)], j=0.8); save(im, 960)
+
+    im, d = new(44, 42)                                                       # sigma
+    ring(d, [4, 12, 30, 38])
+    stroke(d, [(27, 13), (41, 7)], j=0.8); save(im, 963)
+
+    # --- maths --------------------------------------------------------------
+    im, d = new(38, 42)                                                       # element of
+    stroke(d, arc_pts(21, 21, 15, 17, 60, 300), j=0.6)
+    stroke(d, [(10, 21), (31, 21)], j=0.8); save(im, 8712)
+
+    im, d = new(44, 80)                                                       # summation
+    stroke(d, [(40, 9), (8, 5), (22, 39), (7, 74), (41, 76)], j=1.0); save(im, 8721)
+
+    im, d = new(40, 68)                                                       # partial
+    ring(d, [6, 32, 32, 64])
+    stroke(d, [(10, 12), (19, 5), (28, 9), (31, 20), (31, 38)], j=0.7); save(im, 8706)
+
+    im, d = new(32, 32)                                                       # asterisk operator
+    stroke(d, [(16, 4), (16, 28)]); stroke(d, [(6, 10), (26, 22)])
+    stroke(d, [(26, 10), (6, 22)]); save(im, 8727)
+
+    im, d = new(50, 82)                                                       # square root
+    stroke(d, [(4, 48), (11, 70), (16, 76), (28, 40), (40, 8), (47, 6)], j=0.8)
+    save(im, 8730)
+
+    # Drawn large so the loops stay open around the stroke width; the HEIGHT
+    # map scales it back down. At 26px tall the loops closed into a blob.
+    im, d = new(96, 46)
+    import math as _m
+    pts = []
+    for i in range(56):
+        t = 2 * _m.pi * i / 55
+        k = 1 + _m.sin(t) ** 2
+        pts.append((48 + 42 * _m.cos(t) / k, 23 + 21 * _m.sin(t) * _m.cos(t) / k))
+    stroke(d, pts, j=0.5); save(im, 8734)                                     # infinity
+
+    # The console may not be UTF-8 (cp1252 on Windows), so never print the
+    # characters themselves.
+    print("wrote 21 ascii symbols and 16 greek/maths glyphs")
 
 
 if __name__ == "__main__":

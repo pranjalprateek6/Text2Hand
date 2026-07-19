@@ -148,7 +148,7 @@ python tools/make_symbols.py
 
 `make_punctuation.py` **composes** `"` `'` `:` `;` out of marks that already exist in the sample. A colon is two periods, a semicolon is a period above a comma, a double quote is two commas, and an apostrophe is a single comma. Because they reuse real strokes, they match the rest of the handwriting exactly.
 
-`make_symbols.py` **draws** the 21 technical symbols with no natural building block, such as `# $ % & @ / \ { }`. These are approximations in a hand style, so they read as neat rather than personal.
+`make_symbols.py` **draws** the 21 technical symbols with no natural building block, such as `# $ % & @ / \ { }`, plus 16 Greek letters and maths symbols (alpha through sigma, element-of, summation, partial, square root, infinity) so converted papers keep their equations. These are approximations in a hand style, so they read as neat rather than personal.
 
 To replace any generated glyph with a real one, photograph the character and save it as `myfont/<ascii-code>.png`. See [tools/README.md](tools/README.md) for what each script owns.
 
@@ -200,7 +200,7 @@ Text To Handwriting.py    the original minimal version, kept for reference
 - **OCR quality is OCR quality.** Tesseract reads scanned pages well but picks up page furniture (navigation, headers) and mangles footnote markers. That is what the review step is for.
 - **Cloud converters are untested.** The adapters are written and the UI disables them with a reason, but they have not been run against a live key.
 - **Running headers and footers leak in.** A repeated "Company Confidential" becomes body text. This is what the review step is for.
-- **Drawn symbols are not your handwriting.** The 21 technical symbols are approximations, unlike the composed punctuation.
+- **Drawn symbols are not your handwriting.** The technical symbols and the Greek/maths set are approximations, unlike the composed punctuation.
 - **Full-res pages are large.** Roughly 9 MB each, so a ZIP of a long document gets big. The PDF is far smaller.
 
 ## Notes

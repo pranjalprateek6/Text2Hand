@@ -75,9 +75,14 @@ python tools/make_symbols.py
 ```
 
 Draws the 21 technical symbols that no handwriting sample covers:
-`# $ % & * + / < = > @ [ \ ] ^ _ ` { | } ~`. These are approximations in a hand
-style rather than real handwriting, so they read as neat rather than personal.
-Photograph the character and save it as `myfont/<ascii-code>.png` to replace one.
+`# $ % & * + / < = > @ [ \ ] ^ _ ` { | } ~`, and 16 Greek letters and maths
+symbols (alpha, beta, gamma, delta, epsilon, theta, lambda, mu, pi, sigma,
+element-of, summation, partial, asterisk operator, square root, infinity) so
+equations in converted papers stop being skipped. Glyph files are named by
+codepoint, so non-ASCII works exactly like ASCII: alpha is `myfont/945.png`.
+These are approximations in a hand style rather than real handwriting, so they
+read as neat rather than personal. Photograph the character and save it as
+`myfont/<codepoint>.png` to replace one.
 
 There used to be a `make_punctuation.py` here that composed `"` `'` `:` `;` out
 of the period and comma, for a font that lacked them. The current set has all

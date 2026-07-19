@@ -83,13 +83,15 @@ MARGIN_JITTER = 6                        # ragged left margin, px of random inde
 INK_MIN, INK_MAX = 0.78, 1.0            # per-glyph opacity (pen-pressure) range
 
 # Letters with an x-height body and a tail under it. These are placed by the
-# body, not by a fraction of their height: see _drop_below_line.
-DESCENDERS = set("gjpqy")
+# body, not by a fraction of their height: see _drop_below_line. The Greek
+# letters follow the same anatomy: gamma and mu carry their bodies on the line
+# with the tail below, exactly like g and p.
+DESCENDERS = set("gjpqyγμ")
 # f belongs with them in spirit, but its body reaches well above the x-height,
 # so the body rule would bury it. It keeps the fractional drop. Left out of both
 # sets it was aligned like an x-height letter, which sat its tail on the rule
 # and made every f read as a t.
-TAILED_ASCENDERS = set("f")
+TAILED_ASCENDERS = set("fβ")           # beta rises past the x-height and hangs a tail
 # Marks whose tail crosses the writing line rather than resting on it. Without
 # this a comma sits entirely above the rule and reads as a 9.
 HANGING = set(",;")
@@ -106,7 +108,7 @@ MIRRORED_OPENING = set("\"'")
 # a letter or a full stop, a quote is closing.
 OPENS_AFTER = set(" \t([{-—")
 RAISE_FRAC = 0.20                       # how far up, as a fraction of the line height
-CENTERED = set("+=<>~-")                # centred on the x-height axis; a hyphen
+CENTERED = set("+=<>~-∈∗∞")             # centred on the x-height axis; a hyphen
                                         # left on the baseline reads as _
 X_HEIGHT = 0                            # derived from the glyphs at runtime
 
