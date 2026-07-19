@@ -34,7 +34,8 @@ const alertBox = $("alert");
 const empty = $("empty");
 const output = $("output");
 
-const MAX_CHARS = 60000;
+// the server derives this from how large the handwriting is
+const MAX_CHARS = window.MAX_CHARS || 60000;
 
 // current render: which id, how many pages, which one is on screen
 const view = { id: null, pages: 0, current: 1 };

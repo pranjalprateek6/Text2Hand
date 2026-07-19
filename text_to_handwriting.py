@@ -763,6 +763,33 @@ def table_layout(rows: list[list[str]], available: int) -> tuple[list[list[str]]
     return grid, [max(1, n) for n in natural]
 
 
+def chars_per_page() -> int:
+    """Roughly how many characters fill one page with the current glyphs.
+
+    Callers use this to estimate output length before committing to a render.
+    It has to be derived rather than fixed, because it depends entirely on how
+    large the handwriting is: swapping in a bigger hand halved it.
+    """
+    derive_metrics()
+    with Image.open(BG_PATH) as page:
+        width, height = page.size
+
+    lines = max(1, (height - MARGIN_T - MARGIN_B) // LINE_HEIGHT)
+    widths = [v[0].width for v in (glyph_variants(chr(c)) for c in range(33, 127)) if v]
+    if not widths:
+        return lines * 40
+    widths.sort()
+    typical = widths[len(widths) // 2] + sum(KERN_JITTER) / 2
+    # about one space every six characters in ordinary prose
+    per_char = typical * (6 / 7) + SPACE_WIDTH * (1 / 7)
+    packed = lines * max(1, (width - MARGIN_L - MARGIN_R) // per_char)
+
+    # That is the ceiling, with every line full to the margin. Real prose wraps
+    # raggedly and leaves blank lines between blocks, so it never gets there.
+    # Measured on two long documents: 0.62 and 0.69 of the ceiling.
+    return int(packed * 0.65)
+
+
 def render_markdown(md_text: str) -> Sheet:
     """Render Markdown, expressing its structure in handwriting conventions.
 

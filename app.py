@@ -40,11 +40,20 @@ RENDER_ROOT = Path(tempfile.gettempdir()) / "text2hand_web"
 KEEP_RENDERS = 5
 PREVIEW_WIDTH = 900        # downscaled width for the in-page preview
 THUMB_WIDTH = 200          # downscaled width for the page-strip thumbnails
-# Rendering runs on a worker thread with progress, so a long document no
-# longer risks hanging a request. This cap only exists to stop a runaway job
-# filling the disk: roughly CHARS_PER_PAGE of text becomes one ~9 MB page.
-MAX_CHARS = 60_000
-CHARS_PER_PAGE = 850       # rough, measured from real renders
+# Rendering runs on a worker thread with progress, so a long document no longer
+# risks hanging a request. The cap exists to stop a runaway job filling the disk,
+# and is expressed in pages because that is the real cost: each page is a ~9 MB
+# image and a second or so of work. How much text fits on a page depends on how
+# large the handwriting is, so it is asked of the renderer rather than assumed.
+MAX_OUTPUT_PAGES = 80
+
+
+def page_size() -> int:
+    return max(1, t2h.chars_per_page())
+
+
+def render_limit() -> int:
+    return MAX_OUTPUT_PAGES * page_size()
 
 # The renderer keeps its settings in module globals, so only one render at a
 # time may touch them.
@@ -154,7 +163,8 @@ def _safe(rid: str) -> Path:
 
 @app.get("/")
 def index():
-    return render_template("index.html", converters=converters.available())
+    return render_template("index.html", converters=converters.available(),
+                           max_chars=render_limit())
 
 
 @app.post("/api/convert")
@@ -186,7 +196,7 @@ def api_convert():
             # produce more text than Generate would accept.
             result = converters.to_markdown(str(path), converter=converter,
                                             page_spec=page_spec, progress=progress,
-                                            max_chars=MAX_CHARS)
+                                            max_chars=render_limit())
         finally:
             shutil.rmtree(folder, ignore_errors=True)
 
@@ -194,12 +204,12 @@ def api_convert():
         # fail after the user has already reviewed it.
         notes = list(result.notes)
         size = len(result.markdown)
-        estimate = size // CHARS_PER_PAGE
-        if size > MAX_CHARS:
+        estimate = size // page_size()
+        if size > render_limit():
             notes.append(
                 f"This is {size:,} characters, about {estimate} handwritten pages, "
-                f"over the {MAX_CHARS:,} limit. Convert a smaller page range, "
-                "or cut it down before generating."
+                f"over the {MAX_OUTPUT_PAGES}-page limit. Convert a smaller page "
+                "range, or cut it down before generating."
             )
         elif estimate >= 20:
             notes.append(f"That is roughly {estimate} handwritten pages, "
@@ -210,7 +220,7 @@ def api_convert():
                 "total_pages": result.total_pages, "scanned": result.scanned,
                 "truncated": result.truncated, "notes": notes,
                 "chars": size, "estimated_pages": estimate,
-                "over_limit": size > MAX_CHARS}
+                "over_limit": size > render_limit()}
 
     jid = _job_start("Opening the PDF")
     _job_spawn(jid, work, "Could not convert")
@@ -228,12 +238,13 @@ def api_render():
     text = (data.get("text") or "").strip()
     if not text:
         return jsonify(error="Write some text first."), 400
-    if len(text) > MAX_CHARS:
+    limit = render_limit()
+    if len(text) > limit:
         over = len(text)
         return jsonify(error=(
-            f"That is {over:,} characters, over the {MAX_CHARS:,} limit "
-            f"(roughly {over // CHARS_PER_PAGE} handwritten pages). "
-            "Convert a page range such as 1-15, or trim the text."
+            f"That is {over:,} characters, roughly {over // page_size()} handwritten "
+            f"pages, over the {MAX_OUTPUT_PAGES}-page limit. "
+            "Convert a smaller page range, or trim the text."
         )), 400
 
     opts = {
