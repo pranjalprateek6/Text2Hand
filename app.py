@@ -73,14 +73,33 @@ def _prune() -> None:
         shutil.rmtree(old, ignore_errors=True)
 
 
+# The engine has always supported any pen colour; the app just never passed one
+# through. Kept to a small set of real pens rather than a colour wheel, because
+# an arbitrary hex is how you get handwriting in #00ff00.
+INKS = {
+    "blue-black": (20, 26, 66),
+    "black": (26, 26, 29),
+    "blue": (21, 60, 152),
+    "red": (150, 28, 24),
+}
+
+
 def _render(text: str, ruled: bool, texture: bool, skew: bool, as_markdown: bool,
-            on_progress=None):
+            ink: str = "blue-black", on_progress=None):
     """Render text to a fresh folder and return (render_id, page_count, missing)."""
     with _render_lock:
         t2h.RULED = ruled
         t2h.MARGIN_RULE = ruled
         t2h.PAPER_TEXTURE = texture
         t2h.SCAN_SKEW = 0.7 if skew else 0
+        colour = INKS.get(ink, INKS["blue-black"])
+        if colour != t2h.INK_COLOR:
+            # Glyphs and word images are tinted as they load and then cached,
+            # so a new pen colour has to flush both or it silently keeps the
+            # old ink.
+            t2h.INK_COLOR = colour
+            t2h._cache.clear()
+            t2h._words = None
         pages, missing = t2h.render_pages(text, as_markdown=as_markdown,
                                           on_progress=on_progress)
 
@@ -254,6 +273,7 @@ def api_render():
         "texture": bool(data.get("texture", True)),
         "skew": bool(data.get("skew", True)),
         "as_markdown": bool(data.get("markdown", False)),
+        "ink": str(data.get("ink", "blue-black")),
     }
     def work(progress):
         def on_stage(stage: str, count: int) -> None:
