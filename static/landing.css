@@ -15,28 +15,39 @@
 .layer { position: relative; z-index: 10; }
 
 .pad { padding-left: 24px; padding-right: 24px; }
-@media (min-width: 768px) { .pad { padding-left: 112px; padding-right: 48px; } }
+@media (min-width: 768px) { .pad { padding-left: 48px; padding-right: 48px; } }
 
-.mobilebar { display: none; align-items: center; gap: 12px; }
-.mobilebar svg { width: 16px; height: 16px; }
-.mobilebar__name { font-family: var(--font-display); font-size: 20px; letter-spacing: 0.04em; text-transform: uppercase; }
-.mobilebar__gap { flex: 1; }
+/* one bar at every width; replaces the fixed rail, which covered the copy on
+   phones and doubled the navigation on desktop */
+.topbar {
+  position: sticky; top: 0; z-index: 60;
+  display: flex; align-items: center; gap: 20px;
+  height: 60px; padding: 0 24px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in oklch, var(--background) 92%, transparent);
+  backdrop-filter: blur(6px);
+}
+@media (min-width: 768px) { .topbar { padding: 0 48px; } }
+.topbar__brand { display: flex; align-items: center; gap: 10px; }
+.topbar__brand svg { width: 16px; height: 16px; }
+.topbar__name { font-family: var(--font-display); font-size: 20px; letter-spacing: 0.04em; text-transform: uppercase; }
+.topbar__nav { display: none; gap: 22px; margin-left: 10px; }
+@media (min-width: 900px) { .topbar__nav { display: flex; } }
+.topbar__nav a {
+  font-family: var(--font-mono); font-size: 10px;
+  text-transform: uppercase; letter-spacing: 0.2em;
+  color: var(--muted-foreground);
+  transition: color 200ms var(--ease);
+}
+.topbar__nav a:hover { color: var(--accent); }
+.topbar__gap { flex: 1; }
+.topbar__gh { color: var(--muted-foreground); display: grid; place-items: center; transition: color 200ms var(--ease); }
+.topbar__gh:hover { color: var(--accent); }
+.topbar__gh svg { width: 16px; height: 16px; }
 
-/* The rail is fixed and 80px wide, so below the breakpoint where content is
-   inset past it there is nothing to sit beside: it would cover the copy.
-   The reference hides its side nav on mobile for the same reason. */
+/* a 60px sideways reveal on a full-width element pushes past a phone
+   viewport mid-animation; drop to a vertical rise there */
 @media (max-width: 767px) {
-  .rail { display: none; }
-  .mobilebar {
-    display: flex;
-    position: sticky; top: 0; z-index: 60;
-    height: 56px; padding: 0 24px;
-    border-bottom: 1px solid var(--border);
-    background: color-mix(in oklch, var(--background) 92%, transparent);
-    backdrop-filter: blur(6px);
-  }
-  /* a 60px sideways reveal on a full-width element pushes past a phone
-     viewport mid-animation; drop to a vertical rise there */
   .rv--l, .rv--r { transform: translateY(24px); }
 }
 
@@ -50,8 +61,7 @@ section { position: relative; padding-top: 128px; padding-bottom: 128px; }
 
 /* --------------------------------------------------------------------- hero */
 .hero { min-height: 100vh; display: flex; align-items: center; padding-top: 96px; padding-bottom: 96px; }
-.hero__in { flex: 1; width: 100%; display: grid; grid-template-columns: minmax(0, 1fr); gap: 56px; align-items: center; }
-@media (min-width: 1080px) { .hero__in { grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr); } }
+.hero__in { flex: 1; width: 100%; }
 
 .hero__side {
   position: absolute; left: 16px; top: 50%;
@@ -75,50 +85,6 @@ section { position: relative; padding-top: 128px; padding-bottom: 128px; }
 }
 @media (min-width: 768px) { .hero__tag { right: 48px; bottom: 48px; } }
 
-/* the page that tears itself apart and back together */
-.tear { position: relative; width: min(100%, 340px); margin: 0 auto; aspect-ratio: 2632 / 3722; }
-.tear__frame { position: absolute; inset: -12px; border: 1px solid var(--border); pointer-events: none; }
-.tear__cnr { position: absolute; width: 10px; height: 10px; border: 0; }
-.tear__cnr::before, .tear__cnr::after { content: ""; position: absolute; background: var(--accent); }
-.tear__cnr::before { width: 100%; height: 1px; top: 0; }
-.tear__cnr::after { width: 1px; height: 100%; left: 0; }
-.tear__cnr--tl { top: -12px; left: -12px; }
-.tear__cnr--br { bottom: -12px; right: -12px; transform: rotate(180deg); }
-
-.pc {
-  position: absolute; inset: 0;
-  background: #fff center / cover no-repeat;
-  animation-duration: 7s;
-  animation-timing-function: ease-in-out;
-  animation-iteration-count: infinite;
-  animation-direction: alternate;
-  will-change: transform, opacity;
-}
-.pc1 { clip-path: polygon(0.0% 0.0%, 25.0% 0.0%, 25.6% 16.7%, 22.9% 33.3%, 16.7% 33.5%, 0.0% 33.3%, 0.0% 0.0%); animation-name: tear1; }
-.pc2 { clip-path: polygon(50.0% 0.0%, 47.2% 16.7%, 48.7% 33.3%, 50.0% 33.3%, 33.3% 34.3%, 22.9% 33.3%, 25.6% 16.7%, 25.0% 0.0%); animation-name: tear2; }
-.pc3 { clip-path: polygon(75.0% 0.0%, 71.9% 16.7%, 78.3% 33.3%, 66.7% 34.4%, 50.0% 33.3%, 48.7% 33.3%, 47.2% 16.7%, 50.0% 0.0%); animation-name: tear3; }
-.pc4 { clip-path: polygon(100.0% 0.0%, 100.0% 0.0%, 100.0% 33.3%, 83.3% 33.0%, 78.3% 33.3%, 71.9% 16.7%, 75.0% 0.0%); animation-name: tear4; }
-.pc5 { clip-path: polygon(0.0% 33.3%, 16.7% 33.5%, 22.9% 33.3%, 25.1% 50.0%, 25.9% 66.7%, 16.7% 65.2%, 0.0% 66.7%); animation-name: tear5; }
-.pc6 { clip-path: polygon(33.3% 34.3%, 50.0% 33.3%, 48.7% 33.3%, 47.2% 50.0%, 52.1% 66.7%, 50.0% 70.0%, 33.3% 70.1%, 25.9% 66.7%, 25.1% 50.0%, 22.9% 33.3%); animation-name: tear6; }
-.pc7 { clip-path: polygon(50.0% 33.3%, 66.7% 34.4%, 78.3% 33.3%, 78.2% 50.0%, 76.0% 66.7%, 66.7% 69.0%, 50.0% 70.0%, 52.1% 66.7%, 47.2% 50.0%, 48.7% 33.3%); animation-name: tear7; }
-.pc8 { clip-path: polygon(83.3% 33.0%, 100.0% 33.3%, 100.0% 66.7%, 83.3% 68.1%, 76.0% 66.7%, 78.2% 50.0%, 78.3% 33.3%); animation-name: tear8; }
-.pc9 { clip-path: polygon(0.0% 66.7%, 16.7% 65.2%, 25.9% 66.7%, 27.0% 83.3%, 25.0% 100.0%, 0.0% 100.0%, 0.0% 100.0%); animation-name: tear9; }
-.pc10 { clip-path: polygon(33.3% 70.1%, 50.0% 70.0%, 52.1% 66.7%, 51.3% 83.3%, 50.0% 100.0%, 25.0% 100.0%, 27.0% 83.3%, 25.9% 66.7%); animation-name: tear10; }
-.pc11 { clip-path: polygon(50.0% 70.0%, 66.7% 69.0%, 76.0% 66.7%, 75.8% 83.3%, 75.0% 100.0%, 50.0% 100.0%, 51.3% 83.3%, 52.1% 66.7%); animation-name: tear11; }
-.pc12 { clip-path: polygon(83.3% 68.1%, 100.0% 66.7%, 100.0% 100.0%, 100.0% 100.0%, 75.0% 100.0%, 75.8% 83.3%, 76.0% 66.7%); animation-name: tear12; }
-@keyframes tear1 { 0%, 22% { transform: none; opacity: 1; } 78%, 100% { transform: translate(-89%, -89%) rotate(26deg); opacity: 0; } }
-@keyframes tear2 { 0%, 38% { transform: none; opacity: 1; } 78%, 100% { transform: translate(-37%, -122%) rotate(37deg); opacity: 0; } }
-@keyframes tear3 { 0%, 16% { transform: none; opacity: 1; } 78%, 100% { transform: translate(20%, -103%) rotate(-17deg); opacity: 0; } }
-@keyframes tear4 { 0%, 32% { transform: none; opacity: 1; } 78%, 100% { transform: translate(81%, -117%) rotate(-29deg); opacity: 0; } }
-@keyframes tear5 { 0%, 9% { transform: none; opacity: 1; } 78%, 100% { transform: translate(-106%, -11%) rotate(-24deg); opacity: 0; } }
-@keyframes tear6 { 0%, 25% { transform: none; opacity: 1; } 78%, 100% { transform: translate(-38%, -12%) rotate(-28deg); opacity: 0; } }
-@keyframes tear7 { 0%, 41% { transform: none; opacity: 1; } 78%, 100% { transform: translate(25%, -25%) rotate(-17deg); opacity: 0; } }
-@keyframes tear8 { 0%, 19% { transform: none; opacity: 1; } 78%, 100% { transform: translate(136%, -9%) rotate(-22deg); opacity: 0; } }
-@keyframes tear9 { 0%, 35% { transform: none; opacity: 1; } 78%, 100% { transform: translate(-89%, 65%) rotate(37deg); opacity: 0; } }
-@keyframes tear10 { 0%, 12% { transform: none; opacity: 1; } 78%, 100% { transform: translate(-38%, 75%) rotate(-15deg); opacity: 0; } }
-@keyframes tear11 { 0%, 28% { transform: none; opacity: 1; } 78%, 100% { transform: translate(15%, 66%) rotate(8deg); opacity: 0; } }
-@keyframes tear12 { 0%, 6% { transform: none; opacity: 1; } 78%, 100% { transform: translate(98%, 87%) rotate(6deg); opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .pc { animation: none !important; } }
 
 /* ------------------------------------------------------------------ signals */
 .strip { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
@@ -191,10 +157,7 @@ section { position: relative; padding-top: 128px; padding-bottom: 128px; }
 .proof__row b { display: block; font-family: var(--font-display); font-size: 22px; text-transform: uppercase; letter-spacing: 0.02em; font-weight: 400; }
 .proof__row span { display: block; margin-top: 4px; font-family: var(--font-mono); font-size: 11.5px; line-height: 1.7; color: var(--muted-foreground); }
 
-.eqframe { border: 1px solid var(--border); padding: 16px; background: oklch(0.1 0 0); }
-[data-theme="light"] .eqframe { background: oklch(0.99 0 0); }
-.eqframe img { filter: invert(1) hue-rotate(180deg); opacity: 0.92; }
-[data-theme="light"] .eqframe img { filter: none; }
+.eqframe { border: 1px solid var(--border); padding: 16px; }
 .eqcap { margin-top: 12px; font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.2em; color: var(--muted-foreground); }
 
 /* ---------------------------------------------------------------- colophon */

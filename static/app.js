@@ -22,14 +22,6 @@ const state = {
   queued: false,      // a change arrived while a render was running
 };
 
-/* -------------------------------------------------------------------- theme */
-
-$("themeBtn").addEventListener("click", () => {
-  const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
-  document.documentElement.dataset.theme = next;
-  localStorage.setItem("t2h.theme", next);
-});
-
 /* -------------------------------------------------------------------- views */
 
 function showView(which) {

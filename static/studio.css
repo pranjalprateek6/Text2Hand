@@ -6,10 +6,39 @@ body { overflow: hidden; height: 100vh; }
 
 .app { height: 100vh; display: flex; }
 
-/* the rail from style.css, minus the full-height nav centring */
-.rail--studio .rail__nav { flex: 1; justify-content: flex-start; padding-top: 28px; gap: 20px; }
-
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+.bar__home {
+  display: grid; place-items: center;
+  width: 32px; height: 32px;
+  color: var(--muted-foreground);
+  transition: color 200ms var(--ease);
+}
+.bar__home:hover { color: var(--accent); }
+.bar__home svg { width: 16px; height: 16px; }
+
+.bar__tabs { display: flex; border: 1px solid var(--border); }
+.tab {
+  appearance: none; border: 0; background: none;
+  padding: 8px 16px;
+  font-family: var(--font-mono); font-size: 10px;
+  text-transform: uppercase; letter-spacing: 0.18em;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: color 200ms var(--ease), background 200ms var(--ease);
+}
+.tab + .tab { border-left: 1px solid var(--border); }
+.tab:hover { color: var(--foreground); }
+.tab.is-on { color: var(--accent); background: color-mix(in oklch, var(--accent) 10%, transparent); }
+
+.bar__gh {
+  display: grid; place-items: center;
+  width: 32px; height: 32px;
+  color: var(--muted-foreground);
+  transition: color 200ms var(--ease);
+}
+.bar__gh:hover { color: var(--accent); }
+.bar__gh svg { width: 15px; height: 15px; }
 
 /* --------------------------------------------------------------------- bar */
 .bar {
@@ -302,17 +331,9 @@ select.mini { max-width: 190px; cursor: pointer; }
 /* -------------------------------------------------------------- mobile */
 @media (max-width: 1024px) {
   body { overflow: auto; height: auto; }
-  .app { height: auto; min-height: 100vh; flex-direction: column; }
-  .rail {
-    position: static; width: 100%; height: auto;
-    flex-direction: row; align-items: center;
-    border-right: 0; border-bottom: 1px solid var(--border);
-  }
-  .rail--studio .rail__nav { flex-direction: row; padding: 0 12px; gap: 22px; justify-content: flex-start; }
-  .rail__mark { width: 64px; height: 56px; border-bottom: 0; border-right: 1px solid color-mix(in oklch, var(--border) 40%, transparent); }
-  .rail__label { display: none; }
-  .rail__foot { flex-direction: row; padding: 0 12px; }
+  .app { height: auto; min-height: 100vh; }
   .bar { height: auto; flex-wrap: wrap; padding: 12px 16px; gap: 12px; }
+  .bar__doc { order: 5; width: 100%; }
   .bar__acts { width: 100%; }
   .split { grid-template-columns: minmax(0, 1fr); }
   .pane + .pane { border-left: 0; border-top: 1px solid var(--border); }

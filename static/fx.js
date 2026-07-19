@@ -67,7 +67,9 @@ function scrambleOnHover(el) {
   const final = el.textContent;
   let raf = null;
 
-  el.addEventListener("mouseenter", () => {
+  // hover starts at the button's edge, not when the pointer reaches the text
+  const trigger = el.closest("a, button") || el;
+  trigger.addEventListener("mouseenter", () => {
     if (raf) cancelAnimationFrame(raf);
     const t0 = performance.now();
     const dur = 600;
@@ -155,33 +157,6 @@ function reveals() {
   els.forEach((el) => io.observe(el));
 }
 
-/* ------------------------------------------------------------------- rail */
-
-function rail() {
-  const items = [...document.querySelectorAll(".rail__item[data-goto]")];
-  if (!items.length) return;
-
-  items.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const target = document.getElementById(btn.dataset.goto);
-      if (target) target.scrollIntoView({ behavior: REDUCED ? "auto" : "smooth" });
-    });
-  });
-
-  const sections = items
-    .map((b) => document.getElementById(b.dataset.goto))
-    .filter(Boolean);
-  if (!sections.length) return;
-
-  const io = new IntersectionObserver((entries) => {
-    entries.forEach((e) => {
-      if (!e.isIntersecting) return;
-      items.forEach((b) => b.classList.toggle("is-on", b.dataset.goto === e.target.id));
-    });
-  }, { threshold: 0.3 });
-  sections.forEach((s) => io.observe(s));
-}
-
 /* ------------------------------------------------------------------- boot */
 
 function boot() {
@@ -189,7 +164,6 @@ function boot() {
   document.querySelectorAll("[data-scramble]").forEach(scrambleOnHover);
   document.querySelectorAll(".fx-noise").forEach(animatedNoise);
   reveals();
-  rail();
 }
 
 if (document.readyState === "loading") {

@@ -40,27 +40,12 @@
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* The reference ships dark only. The studio keeps a light mode because a tool
-   gets stared at for an hour, but it is the same system inverted: still zero
-   radius, still orange, still mono labels. */
-[data-theme="light"] {
-  --background: oklch(0.97 0 0);
-  --foreground: oklch(0.15 0 0);
-  --card: oklch(1 0 0);
-  --popover: oklch(1 0 0);
-  --secondary: oklch(0.93 0 0);
-  --muted: oklch(0.88 0 0);
-  --muted-foreground: oklch(0.48 0 0);
-  --accent: oklch(0.62 0.2 45);
-  --accent-foreground: oklch(1 0 0);
-  --border: oklch(0.85 0 0);
-  --input: oklch(0.9 0 0);
-}
 
 *, *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
 
 html {
+  scroll-behavior: smooth;
   overflow-x: hidden;
   max-width: 100vw;
   scrollbar-width: thin;
@@ -111,11 +96,6 @@ img { max-width: 100%; height: auto; display: block; }
     linear-gradient(to bottom, oklch(0.2 0 0) 1px, transparent 1px);
   background-size: 60px 60px;
 }
-[data-theme="light"] .grid-bg {
-  background-image:
-    linear-gradient(to right, oklch(0.9 0 0) 1px, transparent 1px),
-    linear-gradient(to bottom, oklch(0.9 0 0) 1px, transparent 1px);
-}
 
 /* canvas noise, painted per frame in fx.js */
 .fx-noise {
@@ -146,67 +126,6 @@ img { max-width: 100%; height: auto; display: block; }
 .mono { font-family: var(--font-mono); }
 .dim { color: var(--muted-foreground); }
 
-/* --------------------------------------------------------------------------
-   Side navigation rail (both pages)
-   -------------------------------------------------------------------------- */
-.rail {
-  position: fixed; left: 0; top: 0;
-  z-index: 50;
-  height: 100vh;
-  width: 80px;
-  display: flex; flex-direction: column; align-items: center;
-  border-right: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
-  background: color-mix(in oklch, var(--background) 85%, transparent);
-  backdrop-filter: blur(6px);
-}
-.rail__mark {
-  height: 80px; width: 100%;
-  display: grid; place-items: center;
-  border-bottom: 1px solid color-mix(in oklch, var(--border) 40%, transparent);
-  color: var(--foreground);
-}
-.rail__mark svg { width: 18px; height: 18px; }
-.rail__nav { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 24px; width: 100%; padding: 0 16px; }
-.rail__item {
-  appearance: none; border: 0; background: none; padding: 0;
-  position: relative;
-  display: flex; align-items: center; gap: 12px;
-  cursor: pointer;
-}
-.rail__dot {
-  width: 6px; height: 6px; flex: none;
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--muted-foreground) 40%, transparent);
-  transition: background 300ms var(--ease), transform 300ms var(--ease);
-}
-.rail__item:hover .rail__dot { background: color-mix(in oklch, var(--foreground) 60%, transparent); }
-.rail__item.is-on .rail__dot { background: var(--accent); transform: scale(1.25); }
-.rail__label {
-  position: absolute; left: 24px;
-  font-family: var(--font-mono);
-  font-size: 10px; text-transform: uppercase; letter-spacing: 0.2em;
-  white-space: nowrap;
-  color: var(--muted-foreground);
-  opacity: 0;
-  transition: opacity 200ms var(--ease), left 200ms var(--ease);
-  pointer-events: none;
-}
-.rail__item:hover .rail__label { opacity: 1; left: 32px; }
-.rail__item.is-on .rail__label { color: var(--accent); }
-.rail__foot { padding: 16px 0; display: flex; flex-direction: column; gap: 4px; align-items: center; }
-
-.railbtn {
-  appearance: none;
-  width: 36px; height: 36px;
-  display: grid; place-items: center;
-  border: 1px solid transparent;
-  background: none;
-  color: var(--muted-foreground);
-  cursor: pointer;
-  transition: color 200ms var(--ease), border-color 200ms var(--ease);
-}
-.railbtn svg { width: 16px; height: 16px; }
-.railbtn:hover { color: var(--accent); border-color: color-mix(in oklch, var(--accent) 60%, transparent); }
 
 /* --------------------------------------------------------------------------
    Buttons: bordered, mono, uppercase. No fills except the one CTA.
@@ -257,7 +176,6 @@ img { max-width: 100%; height: auto; display: block; }
   line-height: 1;
   transition: background 120ms linear, color 120ms linear, border-color 120ms linear;
 }
-[data-theme="light"] .flap__c { background: oklch(0.15 0 0); color: oklch(0.98 0 0); }
 .flap__c.is-flipping {
   background: color-mix(in oklch, var(--accent) 20%, transparent);
   color: var(--accent);
@@ -274,6 +192,7 @@ img { max-width: 100%; height: auto; display: block; }
 .rv.on { opacity: 1; transform: none; }
 
 @media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
   .rv { opacity: 1 !important; transform: none !important; transition: none; }
   .fx-noise { display: none; }
   *, *::before, *::after {
