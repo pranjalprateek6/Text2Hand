@@ -4,81 +4,74 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="Turn typed text or a PDF into pages in a real hand" />
-  <meta name="color-scheme" content="light dark" />
-  <title>Text2Hand</title>
+  <meta name="color-scheme" content="dark light" />
+  <title>TEXT2HAND — Studio</title>
   <script>
-    // Theme before first paint, so there is no flash of the wrong one.
-    // Light is the site's default; a stored choice from the toggle wins.
+    // Theme before first paint. The site is dark by default, like the design
+    // it comes from; a stored choice from the rail toggle wins.
     (function () {
-      var saved = localStorage.getItem("t2h.theme");
-      document.documentElement.dataset.theme = saved === "dark" ? "dark" : "light";
+      document.documentElement.dataset.theme =
+        localStorage.getItem("t2h.theme") === "light" ? "light" : "dark";
     })();
   </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" />
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='studio.css') }}" />
 </head>
 <body>
+<div class="noise-overlay" aria-hidden="true"></div>
 
-<div class="mesh" aria-hidden="true"></div>
+<div class="app">
 
-<div class="shell">
-
-  <!-- ---------------------------------------------------------------- -->
-  <!-- Rail                                                             -->
-  <!-- ---------------------------------------------------------------- -->
-  <aside class="rail glass">
-    <div class="rail__logo" aria-hidden="true">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
-           stroke-linecap="round" stroke-linejoin="round">
+  <!-- ------------------------------------------------------------- rail -->
+  <nav class="rail rail--studio" aria-label="Studio">
+    <a class="rail__mark" href="/" title="Back to the front" aria-label="Home">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/>
       </svg>
+    </a>
+
+    <div class="rail__nav">
+      <button class="rail__item is-on" id="navWrite" aria-label="Compose">
+        <span class="rail__dot"></span><span class="rail__label">Compose</span>
+      </button>
+      <button class="rail__item" id="navLibrary" aria-label="Library">
+        <span class="rail__dot"></span><span class="rail__label">Library</span>
+      </button>
     </div>
 
-    <nav class="rail__nav" aria-label="Views">
-      <button class="rail__btn is-on" id="navWrite" title="Write" aria-label="Write">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-             stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>
-        </svg>
-      </button>
-      <button class="rail__btn" id="navLibrary" title="Library" aria-label="Library">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-             stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-        </svg>
-      </button>
-    </nav>
-
     <div class="rail__foot">
-      <button class="rail__btn" id="themeBtn" title="Theme" aria-label="Switch theme">
-        <svg class="only-light" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <button class="railbtn" id="themeBtn" aria-label="Switch theme" title="Theme">
+        <svg class="only-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+             stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>
         </svg>
-        <svg class="only-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <svg class="only-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+             stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/>
         </svg>
       </button>
-      <a class="rail__btn" href="https://github.com/pranjalprateek6/Text2Hand" target="_blank"
-         rel="noreferrer noopener" title="GitHub" aria-label="GitHub">
-        <svg viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 .5a12 12 0 0 0-3.79 23.4c.6.11.82-.26.82-.58v-2.2c-3.34.72-4.04-1.42-4.04-1.42-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.2.08 1.84 1.24 1.84 1.24 1.07 1.84 2.8 1.3 3.49 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.34-5.47-5.96 0-1.32.47-2.39 1.24-3.23-.13-.3-.54-1.53.11-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6.01 0c2.29-1.55 3.3-1.23 3.3-1.23.65 1.65.24 2.88.12 3.18.77.84 1.23 1.91 1.23 3.23 0 4.63-2.8 5.65-5.48 5.95.43.37.81 1.1.81 2.22v3.29c0 .32.22.7.83.58A12 12 0 0 0 12 .5Z"/>
-        </svg>
+      <a class="railbtn" href="https://github.com/pranjalprateek6/Text2Hand" target="_blank"
+         rel="noreferrer noopener" aria-label="GitHub" title="Source">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a12 12 0 0 0-3.79 23.4c.6.11.82-.26.82-.58v-2.2c-3.34.72-4.04-1.42-4.04-1.42-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.2.08 1.84 1.24 1.84 1.24 1.07 1.84 2.8 1.3 3.49 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.34-5.47-5.96 0-1.32.47-2.39 1.24-3.23-.13-.3-.54-1.53.11-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6.01 0c2.29-1.55 3.3-1.23 3.3-1.23.65 1.65.24 2.88.12 3.18.77.84 1.23 1.91 1.23 3.23 0 4.63-2.8 5.65-5.48 5.95.43.37.81 1.1.81 2.22v3.29c0 .32.22.7.83.58A12 12 0 0 0 12 .5Z"/></svg>
       </a>
     </div>
-  </aside>
+  </nav>
 
-  <!-- ---------------------------------------------------------------- -->
-  <!-- Workspace                                                        -->
-  <!-- ---------------------------------------------------------------- -->
-  <div class="work">
+  <div class="main">
 
-    <header class="top glass">
-      <div class="top__doc">
-        <span class="top__title" id="docTitle">Untitled</span>
-        <span class="chip" id="status">Ready</span>
+    <!-- --------------------------------------------------------- top bar -->
+    <header class="bar">
+      <div class="bar__doc">
+        <span class="bar__title" id="docTitle">Untitled</span>
+        <span class="bar__status" id="status">Ready</span>
       </div>
-      <div class="top__actions">
+      <span class="bar__gap"></span>
+
+      <div class="bar__acts">
         <label class="auto" title="Render again on its own when you stop typing">
           <input type="checkbox" id="auto" />
           <span class="auto__track" aria-hidden="true"></span>
@@ -86,14 +79,10 @@
         </label>
 
         <div class="menu">
-          <button class="btn" id="exportBtn" aria-haspopup="true" aria-expanded="false" disabled>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/>
-            </svg>
+          <button class="btn btn--sm" id="exportBtn" aria-haspopup="true" aria-expanded="false" disabled>
             Export
           </button>
-          <div class="pop glass-strong" id="exportPop" hidden role="menu" aria-label="Export">
+          <div class="pop" id="exportPop" hidden role="menu" aria-label="Export">
             <a class="pop__item" id="dlPdf" download><b>Whole document</b><i>PDF, every page</i></a>
             <a class="pop__item" id="dlZip" download><b>All pages</b><i>ZIP of full-size PNGs</i></a>
             <div class="pop__rule"></div>
@@ -102,28 +91,23 @@
           </div>
         </div>
 
-        <button class="btn btn--cta" id="render">
-          <span class="btn__spin" aria-hidden="true"></span>
+        <button class="btn btn--sm btn--solid" id="render">
           <span id="renderLabel">Render</span>
-          <kbd>&#8984;&crarr;</kbd>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
         </button>
       </div>
     </header>
 
-    <!-- Write view -->
-    <section class="split" id="viewWrite">
+    <!-- ----------------------------------------------------- compose view -->
+    <div class="split" id="viewWrite">
 
-      <div class="pane glass">
+      <!-- source -->
+      <section class="pane">
         <div class="pane__bar">
-          <span class="pane__label">Source</span>
+          <span class="pane__label">01 / Source</span>
           <span class="pane__gap"></span>
-          <button class="btn btn--sm" id="pdfBtn">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>
-            </svg>
-            From a PDF
-          </button>
+          <button class="btn btn--sm" id="pdfBtn">From a PDF</button>
         </div>
 
         <div class="pdfstrip" id="pdf" hidden>
@@ -137,9 +121,9 @@
           </select>
           <input type="text" id="pageRange" class="mini mini--slim" placeholder="all"
                  aria-label="Page range, for example 1-10" />
-          <button class="btn btn--sm btn--cta" id="read">Read it</button>
+          <button class="btn btn--sm btn--solid" id="read">Read it</button>
           <button class="iconbtn" id="pdfClear" aria-label="Remove file">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                  stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
           </button>
         </div>
@@ -149,10 +133,10 @@
 
         <div class="tries" id="tries">
           <span class="tries__label">Try</span>
-          <button class="try" data-sample="pangram">a pangram</button>
-          <button class="try" data-sample="punctuation">punctuation</button>
-          <button class="try" data-sample="symbols">symbols</button>
-          <button class="try" data-sample="markdown">markdown</button>
+          <button class="try" data-sample="pangram">Pangram</button>
+          <button class="try" data-sample="punctuation">Punctuation</button>
+          <button class="try" data-sample="symbols">Symbols</button>
+          <button class="try" data-sample="markdown">Markdown</button>
         </div>
 
         <div class="pane__foot">
@@ -163,31 +147,28 @@
             <button class="opt is-on" id="oSkew" aria-pressed="true">Tilt</button>
           </div>
           <div class="inks" role="radiogroup" aria-label="Pen">
-            <button class="ink is-on" id="inkBlueblack" data-ink="blue-black" title="Blue-black"
-                    style="--c:#141a42" role="radio" aria-checked="true"></button>
-            <button class="ink" id="inkBlack" data-ink="black" title="Black"
-                    style="--c:#1a1a1d" role="radio" aria-checked="false"></button>
-            <button class="ink" id="inkBlue" data-ink="blue" title="Blue"
-                    style="--c:#153c98" role="radio" aria-checked="false"></button>
-            <button class="ink" id="inkRed" data-ink="red" title="Red"
-                    style="--c:#961c18" role="radio" aria-checked="false"></button>
+            <button class="ink is-on" data-ink="blue-black" title="Blue-black" style="--c:#141a42" role="radio" aria-checked="true"></button>
+            <button class="ink" data-ink="black" title="Black" style="--c:#1a1a1d" role="radio" aria-checked="false"></button>
+            <button class="ink" data-ink="blue" title="Blue" style="--c:#153c98" role="radio" aria-checked="false"></button>
+            <button class="ink" data-ink="red" title="Red" style="--c:#961c18" role="radio" aria-checked="false"></button>
           </div>
           <span class="count" id="count">0</span>
         </div>
-      </div>
+      </section>
 
-      <div class="pane glass">
+      <!-- output -->
+      <section class="pane">
         <div class="pane__bar">
-          <span class="pane__label" id="previewLabel">Preview</span>
+          <span class="pane__label" id="previewLabel">02 / Output</span>
           <span class="pane__gap"></span>
           <div class="pager" id="pager" hidden>
             <button class="iconbtn" id="prev" aria-label="Previous page">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                    stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
             </button>
             <span class="pager__n" id="n">1 / 1</span>
             <button class="iconbtn" id="next" aria-label="Next page">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                    stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
             </button>
           </div>
@@ -195,12 +176,12 @@
 
         <div class="pages" id="pages">
           <div class="hollow" id="empty">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"
                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
               <path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/>
             </svg>
-            <p class="hollow__title">Nothing rendered yet</p>
+            <p class="hollow__title">Nothing rendered</p>
             <p class="hollow__sub">Write something and press Render, or pick a sample.</p>
           </div>
 
@@ -212,33 +193,34 @@
           <div class="notecard" id="note" hidden></div>
           <img class="page" id="page" alt="" hidden />
         </div>
-      </div>
-    </section>
+      </section>
+    </div>
 
-    <!-- Library view -->
-    <section class="library" id="viewLibrary" hidden>
-      <header class="library__head">
+    <!-- ----------------------------------------------------- library view -->
+    <div class="library" id="viewLibrary" hidden>
+      <div class="library__head">
+        <span class="label label--accent">Archive</span>
         <h2>Library</h2>
-        <p>Everything rendered from this browser. Open one to load its text and settings back into the editor.</p>
-      </header>
+        <p>Everything rendered from this browser. Open one to load its text and
+          settings back into the editor.</p>
+      </div>
       <div class="grid" id="grid"></div>
       <div class="hollow" id="libEmpty">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"
              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
         </svg>
-        <p class="hollow__title">Nothing here yet</p>
-        <p class="hollow__sub">Rendered documents will collect here on their own.</p>
+        <p class="hollow__title">Empty</p>
+        <p class="hollow__sub">Rendered documents collect here on their own.</p>
       </div>
-    </section>
+    </div>
 
   </div>
 </div>
 
-<!-- drop a PDF anywhere -->
 <div class="veil" id="veil" hidden>
-  <div class="veil__card glass-strong">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+  <div class="veil__card">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5-5 5 5"/><path d="M12 5v12"/>
     </svg>

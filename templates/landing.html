@@ -1,523 +1,315 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="Typed text in, pages in a real hand out. Paste text or drop a PDF; get ruled pages written in a captured human hand." />
-  <meta name="color-scheme" content="light" />
-  <title>Text2Hand - typed text, in a real hand</title>
-  <style>
-    /* Light editorial, after the second reference: warm white, near-black
-       type at one weight, hairline rules, mono kickers, pill CTAs, and one
-       section inverted to black. The hero animation is ours, not theirs: a
-       written page tears itself to pieces and mends again, on a loop. The
-       pieces are twelve clip-path fragments of one image, animated on
-       transform and opacity only, so the whole thing stays on the
-       compositor. No webfonts, no libraries, two JPEGs. */
-    :root {
-      --bg: #f9f8f4;
-      --bg-tint: #f1efe8;
-      --ink: #0a0908;
-      --dim: #6d6960;
-      --faint: #a19c91;
-      --line: rgba(10, 9, 8, 0.14);
-      --line-soft: rgba(10, 9, 8, 0.08);
-      --font: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-              "Helvetica Neue", Arial, sans-serif;
-      --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-      --ease: cubic-bezier(0.22, 1, 0.36, 1);
-    }
-    *, *::before, *::after { box-sizing: border-box; }
-    html { scroll-behavior: smooth; }
-    body {
-      margin: 0;
-      background: var(--bg);
-      color: var(--ink);
-      font-family: var(--font);
-      font-size: 16px;
-      font-weight: 400;
-      line-height: 1.6;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-    }
-    h1, h2, h3, p { margin: 0; font-weight: 400; }
-    a { color: inherit; text-decoration: none; }
-    img { max-width: 100%; height: auto; display: block; }
-
-    .wrap { max-width: 1240px; margin: 0 auto; padding: 0 24px; }
-
-    .display {
-      font-size: clamp(42px, 7.8vw, 108px);
-      line-height: 0.96;
-      letter-spacing: -0.028em;
-    }
-    .kicker {
-      display: flex; align-items: center; gap: 10px;
-      font-family: var(--mono);
-      font-size: 11.5px;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: var(--dim);
-    }
-    .kicker::before { content: ""; width: 26px; height: 1px; background: var(--ink); opacity: 0.5; }
-    .lede { font-size: clamp(16px, 1.6vw, 19px); color: var(--dim); max-width: 52ch; }
-    .num { font-variant-numeric: tabular-nums; }
-
-    .rv { opacity: 0; transform: translateY(20px); transition: opacity 650ms var(--ease), transform 650ms var(--ease); }
-    .rv.on { opacity: 1; transform: none; }
-    @media (prefers-reduced-motion: reduce) {
-      html { scroll-behavior: auto; }
-      .rv { opacity: 1; transform: none; transition: none; }
-    }
-
-    /* ------------------------------------------------------------ nav */
-    .nav { position: sticky; top: 0; z-index: 40; background: var(--bg); border-bottom: 1px solid var(--line-soft); }
-    .nav__in { display: flex; align-items: center; gap: 26px; height: 62px; }
-    .brand { display: flex; align-items: center; gap: 9px; font-size: 15.5px; letter-spacing: -0.01em; }
-    .brand svg { width: 16px; height: 16px; }
-    .nav__links { display: flex; gap: 24px; margin-left: 14px; }
-    .nav__links a { font-size: 14px; color: var(--dim); transition: color 160ms; }
-    .nav__links a:hover { color: var(--ink); }
-    .nav__gap { flex: 1; }
-
-    .pill {
-      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-      height: 40px; padding: 0 20px;
-      border-radius: 999px;
-      background: var(--ink); color: var(--bg);
-      font-size: 14px; font-weight: 500;
-      transition: transform 200ms var(--ease), opacity 200ms;
-    }
-    .pill:hover { transform: translateY(-1px); opacity: 0.92; }
-    .pill--ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
-    .pill--ghost:hover { opacity: 1; background: var(--bg-tint); }
-    .pill--big { height: 52px; padding: 0 28px; font-size: 15px; }
-
-    /* ------------------------------------------------------------ hero */
-    .hero { padding: clamp(56px, 9vh, 110px) 0 clamp(40px, 6vh, 70px); overflow: hidden; }
-    .hero__grid {
-      display: grid;
-      grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
-      gap: clamp(28px, 5vw, 70px);
-      align-items: center;
-    }
-    .hero .kicker { margin-bottom: 26px; }
-    .hero p.lede { margin: 28px 0 36px; }
-    .hero__cta { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
-    .hero__note { font-family: var(--mono); font-size: 12px; color: var(--faint); }
-
-    /* the tear loop */
-    .tear {
-      position: relative;
-      width: min(100%, 380px);
-      margin: 0 auto;
-      aspect-ratio: 2632 / 3722;
-    }
-    .tear__shadow {
-      position: absolute; inset: 4% 6% -2% 6%;
-      border-radius: 8px;
-      box-shadow: 0 34px 70px rgba(35, 28, 12, 0.22), 0 8px 20px rgba(35, 28, 12, 0.12);
-      animation: shadowfade 7s ease-in-out infinite alternate;
-    }
-    .pc {
-      position: absolute; inset: 0;
-      background: #fff url("{{ url_for('static', filename='sample_page.jpg') }}") center / cover no-repeat;
-      animation-duration: 7s;
-      animation-timing-function: ease-in-out;
-      animation-iteration-count: infinite;
-      animation-direction: alternate;
-      will-change: transform, opacity;
-    }
-    @keyframes shadowfade { 0%, 30% { opacity: 1; } 70%, 100% { opacity: 0; } }
-    /* pieces: jagged shared boundaries, generated deterministically */
-    .pc1 { clip-path: polygon(0.0% 0.0%, 25.0% 0.0%, 25.6% 16.7%, 22.9% 33.3%, 16.7% 33.5%, 0.0% 33.3%, 0.0% 0.0%); }
-    .pc2 { clip-path: polygon(50.0% 0.0%, 47.2% 16.7%, 48.7% 33.3%, 50.0% 33.3%, 33.3% 34.3%, 22.9% 33.3%, 25.6% 16.7%, 25.0% 0.0%); }
-    .pc3 { clip-path: polygon(75.0% 0.0%, 71.9% 16.7%, 78.3% 33.3%, 66.7% 34.4%, 50.0% 33.3%, 48.7% 33.3%, 47.2% 16.7%, 50.0% 0.0%); }
-    .pc4 { clip-path: polygon(100.0% 0.0%, 100.0% 0.0%, 100.0% 33.3%, 83.3% 33.0%, 78.3% 33.3%, 71.9% 16.7%, 75.0% 0.0%); }
-    .pc5 { clip-path: polygon(0.0% 33.3%, 16.7% 33.5%, 22.9% 33.3%, 25.1% 50.0%, 25.9% 66.7%, 16.7% 65.2%, 0.0% 66.7%); }
-    .pc6 { clip-path: polygon(33.3% 34.3%, 50.0% 33.3%, 48.7% 33.3%, 47.2% 50.0%, 52.1% 66.7%, 50.0% 70.0%, 33.3% 70.1%, 25.9% 66.7%, 25.1% 50.0%, 22.9% 33.3%); }
-    .pc7 { clip-path: polygon(50.0% 33.3%, 66.7% 34.4%, 78.3% 33.3%, 78.2% 50.0%, 76.0% 66.7%, 66.7% 69.0%, 50.0% 70.0%, 52.1% 66.7%, 47.2% 50.0%, 48.7% 33.3%); }
-    .pc8 { clip-path: polygon(83.3% 33.0%, 100.0% 33.3%, 100.0% 66.7%, 83.3% 68.1%, 76.0% 66.7%, 78.2% 50.0%, 78.3% 33.3%); }
-    .pc9 { clip-path: polygon(0.0% 66.7%, 16.7% 65.2%, 25.9% 66.7%, 27.0% 83.3%, 25.0% 100.0%, 0.0% 100.0%, 0.0% 100.0%); }
-    .pc10 { clip-path: polygon(33.3% 70.1%, 50.0% 70.0%, 52.1% 66.7%, 51.3% 83.3%, 50.0% 100.0%, 25.0% 100.0%, 27.0% 83.3%, 25.9% 66.7%); }
-    .pc11 { clip-path: polygon(50.0% 70.0%, 66.7% 69.0%, 76.0% 66.7%, 75.8% 83.3%, 75.0% 100.0%, 50.0% 100.0%, 51.3% 83.3%, 52.1% 66.7%); }
-    .pc12 { clip-path: polygon(83.3% 68.1%, 100.0% 66.7%, 100.0% 100.0%, 100.0% 100.0%, 75.0% 100.0%, 75.8% 83.3%, 76.0% 66.7%); }
-    @keyframes tear1 { 0%, 22% { transform: none; opacity: 1; } 78%, 100% { transform: translate(-89%, -89%) rotate(26deg); opacity: 0; } }
-    .pc1 { animation-name: tear1; }
-    @keyframes tear2 { 0%, 38% { transform: none; opacity: 1; } 78%, 100% { transform: translate(-37%, -122%) rotate(37deg); opacity: 0; } }
-    .pc2 { animation-name: tear2; }
-    @keyframes tear3 { 0%, 16% { transform: none; opacity: 1; } 78%, 100% { transform: translate(20%, -103%) rotate(-17deg); opacity: 0; } }
-    .pc3 { animation-name: tear3; }
-    @keyframes tear4 { 0%, 32% { transform: none; opacity: 1; } 78%, 100% { transform: translate(81%, -117%) rotate(-29deg); opacity: 0; } }
-    .pc4 { animation-name: tear4; }
-    @keyframes tear5 { 0%, 9% { transform: none; opacity: 1; } 78%, 100% { transform: translate(-106%, -11%) rotate(-24deg); opacity: 0; } }
-    .pc5 { animation-name: tear5; }
-    @keyframes tear6 { 0%, 25% { transform: none; opacity: 1; } 78%, 100% { transform: translate(-38%, -12%) rotate(-28deg); opacity: 0; } }
-    .pc6 { animation-name: tear6; }
-    @keyframes tear7 { 0%, 41% { transform: none; opacity: 1; } 78%, 100% { transform: translate(25%, -25%) rotate(-17deg); opacity: 0; } }
-    .pc7 { animation-name: tear7; }
-    @keyframes tear8 { 0%, 19% { transform: none; opacity: 1; } 78%, 100% { transform: translate(136%, -9%) rotate(-22deg); opacity: 0; } }
-    .pc8 { animation-name: tear8; }
-    @keyframes tear9 { 0%, 35% { transform: none; opacity: 1; } 78%, 100% { transform: translate(-89%, 65%) rotate(37deg); opacity: 0; } }
-    .pc9 { animation-name: tear9; }
-    @keyframes tear10 { 0%, 12% { transform: none; opacity: 1; } 78%, 100% { transform: translate(-38%, 75%) rotate(-15deg); opacity: 0; } }
-    .pc10 { animation-name: tear10; }
-    @keyframes tear11 { 0%, 28% { transform: none; opacity: 1; } 78%, 100% { transform: translate(15%, 66%) rotate(8deg); opacity: 0; } }
-    .pc11 { animation-name: tear11; }
-    @keyframes tear12 { 0%, 6% { transform: none; opacity: 1; } 78%, 100% { transform: translate(98%, 87%) rotate(6deg); opacity: 0; } }
-    .pc12 { animation-name: tear12; }
-    @media (prefers-reduced-motion: reduce) {
-      .pc, .tear__shadow { animation: none !important; }
-    }
-
-    /* ------------------------------------------------------------ marquee */
-    .ribbon {
-      border-top: 1px solid var(--line);
-      border-bottom: 1px solid var(--line);
-      overflow: hidden;
-      padding: 22px 0;
-    }
-    .ribbon__track {
-      display: flex; gap: 64px;
-      width: max-content;
-      animation: slide 36s linear infinite;
-    }
-    @keyframes slide { to { transform: translateX(-50%); } }
-    @media (prefers-reduced-motion: reduce) { .ribbon__track { animation: none; } }
-    .fact { display: flex; align-items: baseline; gap: 12px; white-space: nowrap; }
-    .fact b { font-size: 34px; font-weight: 400; letter-spacing: -0.02em; }
-    .fact span { font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); }
-
-    /* ------------------------------------------------------------ sections */
-    section { padding: clamp(76px, 13vh, 140px) 0; }
-    section + section { border-top: 1px solid var(--line-soft); }
-    .sec-head { margin-bottom: clamp(34px, 6vh, 64px); }
-    .sec-head .kicker { margin-bottom: 18px; }
-    .sec-head .lede { margin-top: 22px; }
-
-    .rows { border-top: 1px solid var(--line); }
-    .row {
-      display: grid;
-      grid-template-columns: 72px minmax(0, 1.05fr) minmax(0, 1.4fr);
-      gap: 26px;
-      padding: 32px 0;
-      border-bottom: 1px solid var(--line-soft);
-      align-items: baseline;
-    }
-    .row__n { font-family: var(--mono); font-size: 13px; color: var(--faint); }
-    .row__t { font-size: clamp(21px, 2.6vw, 30px); letter-spacing: -0.02em; line-height: 1.15; }
-    .row__d { color: var(--dim); font-size: 15px; max-width: 58ch; }
-
-    .trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--line-soft); border: 1px solid var(--line-soft); }
-    .step { background: var(--bg); padding: 36px 28px 42px; min-height: 240px; display: flex; flex-direction: column; }
-    .step__n { font-family: var(--mono); font-size: 12px; color: var(--faint); margin-bottom: 38px; }
-    .step__t { font-size: clamp(22px, 2.4vw, 30px); letter-spacing: -0.02em; line-height: 1.12; margin-bottom: 14px; }
-    .step__d { color: var(--dim); font-size: 14.5px; margin-top: auto; }
-
-    /* paper section stays light, framed */
-    .paper { background: var(--bg-tint); }
-    .paper__grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: clamp(28px, 5vw, 72px); align-items: start; }
-    .paper__sticky { position: sticky; top: 92px; }
-    .sheet { border-radius: 4px; box-shadow: 0 28px 70px rgba(35, 28, 12, 0.2), 0 6px 16px rgba(35, 28, 12, 0.1); transform: rotate(0.4deg); }
-    .ticks { border-top: 1px solid var(--line); margin-top: 34px; }
-    .tick { display: grid; grid-template-columns: 26px 1fr; gap: 14px; padding: 15px 0; border-bottom: 1px solid var(--line-soft); }
-    .tick svg { width: 15px; height: 15px; margin-top: 5px; }
-    .tick b { font-weight: 500; font-size: 15px; display: block; }
-    .tick span { font-size: 13.5px; color: var(--dim); }
-
-    /* the single inverted section */
-    .dark { background: #0a0908; color: #eceae3; }
-    .dark .kicker { color: #98948a; }
-    .dark .kicker::before { background: #eceae3; }
-    .dark .lede { color: #98948a; }
-    .eqcard { border: 1px solid rgba(236, 234, 227, 0.16); padding: 18px; }
-    .eqcard img { border-radius: 3px; }
-    .eqcap { font-family: var(--mono); font-size: 11.5px; color: #77736a; margin-top: 12px; }
-
-    .own { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: clamp(28px, 5vw, 80px); align-items: end; }
-    .own__list { border-top: 1px solid var(--line); }
-    .own__item { display: grid; grid-template-columns: 30px 1fr; gap: 12px; padding: 16px 0; border-bottom: 1px solid var(--line-soft); font-size: 14.5px; color: var(--dim); }
-    .own__item i { font-family: var(--mono); font-style: normal; font-size: 12px; color: var(--faint); }
-
-    /* ------------------------------------------------------------ footer */
-    .fin { padding: clamp(84px, 15vh, 160px) 0 56px; border-top: 1px solid var(--line-soft); }
-    .fin .display { margin-bottom: 38px; }
-    .fin__row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-    .foot {
-      display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
-      margin-top: clamp(64px, 9vh, 110px);
-      padding-top: 24px;
-      border-top: 1px solid var(--line-soft);
-      font-size: 12.5px; color: var(--faint);
-    }
-    .foot a:hover { color: var(--ink); }
-    .foot__gap { flex: 1; }
-
-    @media (max-width: 880px) {
-      .nav__links { display: none; }
-      .hero__grid { grid-template-columns: 1fr; }
-      .tear { width: min(72vw, 300px); }
-      .row { grid-template-columns: 44px 1fr; }
-      .row__d { grid-column: 2; }
-      .trio { grid-template-columns: 1fr; }
-      .paper__grid, .own { grid-template-columns: 1fr; }
-      .paper__sticky { position: static; }
-    }
-  </style>
+  <meta name="color-scheme" content="dark" />
+  <title>TEXT2HAND — Writing, Rendered</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='landing.css') }}" />
 </head>
 <body>
+<div class="noise-overlay" aria-hidden="true"></div>
 
-<header class="nav">
-  <div class="wrap nav__in">
-    <a class="brand" href="/">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+<main class="page">
+
+  <!-- ------------------------------------------------------------- rail -->
+  <nav class="rail" aria-label="Sections">
+    <a class="rail__mark" href="/" aria-label="Text2Hand">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/>
       </svg>
-      Text2Hand
     </a>
-    <nav class="nav__links" aria-label="Sections">
-      <a href="#what">What it does</a>
-      <a href="#how">How it works</a>
-      <a href="#paper">The hand</a>
-      <a href="#own">Your hand</a>
-    </nav>
-    <span class="nav__gap"></span>
-    <a class="pill" href="{{ url_for('studio') }}">Open the studio</a>
-  </div>
-</header>
-
-<main>
-
-  <!-- ---------------------------------------------------------- hero -->
-  <div class="hero">
-    <div class="wrap hero__grid">
-      <div>
-        <p class="kicker rv">Typed text to real handwriting</p>
-        <h1 class="display rv">Type it.<br />Hand it in.</h1>
-        <p class="lede rv">Paste text or drop a PDF, and get back ruled A4 pages written in
-          a real, captured human hand. Ink, paper grain, crooked scan and all.</p>
-        <div class="hero__cta rv">
-          <a class="pill pill--big" href="{{ url_for('studio') }}">Open the studio</a>
-          <a class="pill pill--big pill--ghost" href="#paper">See a page</a>
-          <span class="hero__note">runs locally &middot; no account</span>
-        </div>
-      </div>
-      <div class="tear rv" role="img"
-           aria-label="A handwritten page tearing into pieces and reassembling, on a loop">
-        <div class="tear__shadow"></div>
-        <div class="pc pc1"></div><div class="pc pc2"></div><div class="pc pc3"></div>
-        <div class="pc pc4"></div><div class="pc pc5"></div><div class="pc pc6"></div>
-        <div class="pc pc7"></div><div class="pc pc8"></div><div class="pc pc9"></div>
-        <div class="pc pc10"></div><div class="pc pc11"></div><div class="pc pc12"></div>
-      </div>
+    <div class="rail__nav">
+      <button class="rail__item is-on" data-goto="hero"><span class="rail__dot"></span><span class="rail__label">Index</span></button>
+      <button class="rail__item" data-goto="capability"><span class="rail__dot"></span><span class="rail__label">Capability</span></button>
+      <button class="rail__item" data-goto="method"><span class="rail__dot"></span><span class="rail__label">Method</span></button>
+      <button class="rail__item" data-goto="evidence"><span class="rail__dot"></span><span class="rail__label">Evidence</span></button>
+      <button class="rail__item" data-goto="colophon"><span class="rail__dot"></span><span class="rail__label">Colophon</span></button>
     </div>
-  </div>
-
-  <!-- ---------------------------------------------------------- facts ribbon -->
-  <div class="ribbon" aria-label="Numbers from the renderer">
-    <div class="ribbon__track">
-      <!-- list twice, so the loop is seamless -->
-      <span class="fact"><b class="num">1,290</b><span>chars / A4 page</span></span>
-      <span class="fact"><b class="num">112</b><span>glyphs / one hand</span></span>
-      <span class="fact"><b class="num">70</b><span>words / one stroke</span></span>
-      <span class="fact"><b class="num">33</b><span>ruled lines</span></span>
-      <span class="fact"><b class="num">80</b><span>pages / run</span></span>
-      <span class="fact"><b class="num">4</b><span>real pens</span></span>
-      <span class="fact"><b class="num">1,290</b><span>chars / A4 page</span></span>
-      <span class="fact"><b class="num">112</b><span>glyphs / one hand</span></span>
-      <span class="fact"><b class="num">70</b><span>words / one stroke</span></span>
-      <span class="fact"><b class="num">33</b><span>ruled lines</span></span>
-      <span class="fact"><b class="num">80</b><span>pages / run</span></span>
-      <span class="fact"><b class="num">4</b><span>real pens</span></span>
+    <div class="rail__foot">
+      <a class="railbtn" href="https://github.com/pranjalprateek6/Text2Hand" target="_blank" rel="noreferrer noopener" aria-label="GitHub">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a12 12 0 0 0-3.79 23.4c.6.11.82-.26.82-.58v-2.2c-3.34.72-4.04-1.42-4.04-1.42-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.2.08 1.84 1.24 1.84 1.24 1.07 1.84 2.8 1.3 3.49 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.34-5.47-5.96 0-1.32.47-2.39 1.24-3.23-.13-.3-.54-1.53.11-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6.01 0c2.29-1.55 3.3-1.23 3.3-1.23.65 1.65.24 2.88.12 3.18.77.84 1.23 1.91 1.23 3.23 0 4.63-2.8 5.65-5.48 5.95.43.37.81 1.1.81 2.22v3.29c0 .32.22.7.83.58A12 12 0 0 0 12 .5Z"/></svg>
+      </a>
     </div>
-  </div>
+  </nav>
 
-  <!-- ---------------------------------------------------------- what -->
-  <section id="what">
-    <div class="wrap">
-      <div class="sec-head">
-        <p class="kicker rv">What it does</p>
-        <h2 class="display rv">A hand,<br />not a font.</h2>
-      </div>
-      <div class="rows">
-        <div class="row rv">
-          <span class="row__n">01</span>
-          <span class="row__t">Text becomes pages</span>
-          <span class="row__d">Plain text or Markdown in, page images and a PDF out. Headings
-            centred and underlined, lists indented, tables hand-ruled, and long
-            documents spill onto new pages up to 80 at a run.</span>
-        </div>
-        <div class="row rv">
-          <span class="row__n">02</span>
-          <span class="row__t">PDFs come along</span>
-          <span class="row__d">A PDF is read into Markdown you can correct before anything is
-            written, because extraction is never perfect and a wrong heading
-            should be a ten-second fix. Scanned PDFs go through local OCR.</span>
-        </div>
-        <div class="row rv">
-          <span class="row__n">03</span>
-          <span class="row__t">Equations survive</span>
-          <span class="row__d">Display maths is found by font signature, cropped from the page,
-            and traced back in as ink, fractions and product signs intact.
-            Inline symbols are drawn glyphs: &alpha; &beta; &psi; &phi; &Sigma; and friends.</span>
-        </div>
-        <div class="row rv">
-          <span class="row__n">04</span>
-          <span class="row__t">Four real pens</span>
-          <span class="row__d">Blue-black, black, blue and red, applied stroke by stroke with
-            per-glyph pressure, so a page never reads as one flat colour.</span>
-        </div>
-      </div>
-    </div>
-  </section>
+  <!-- below the breakpoint the rail is hidden, so the brand and CTA live here -->
+  <header class="mobilebar">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/>
+    </svg>
+    <span class="mobilebar__name">Text2Hand</span>
+    <span class="mobilebar__gap"></span>
+    <a class="btn btn--sm btn--solid" href="{{ url_for('studio') }}">Studio</a>
+  </header>
 
-  <!-- ---------------------------------------------------------- how -->
-  <section id="how">
-    <div class="wrap">
-      <div class="sec-head">
-        <p class="kicker rv">How it works</p>
-        <h2 class="display rv">Type.<br />Render.<br />Hand it in.</h2>
-      </div>
-      <div class="trio">
-        <div class="step rv">
-          <span class="step__n">01</span>
-          <span class="step__t">Type, paste,<br />or drop a PDF</span>
-          <span class="step__d">The studio takes anything: notes, an essay, a whole paper.
-            A PDF lands as reviewable Markdown first.</span>
-        </div>
-        <div class="step rv">
-          <span class="step__n">02</span>
-          <span class="step__t">Watch it<br />written out</span>
-          <span class="step__d">Pick paper, tilt and pen. Every render is different:
-            no two letters on the page are the same image.</span>
-        </div>
-        <div class="step rv">
-          <span class="step__n">03</span>
-          <span class="step__t">Download<br />and go</span>
-          <span class="step__d">Single pages as PNG or PDF, the whole document as one PDF,
-            or everything zipped.</span>
-        </div>
-      </div>
-    </div>
-  </section>
+  <div class="bg-grid grid-bg" aria-hidden="true"></div>
 
-  <!-- ---------------------------------------------------------- paper -->
-  <section class="paper" id="paper">
-    <div class="wrap">
-      <div class="paper__grid">
+  <div class="layer">
+
+    <!-- ----------------------------------------------------------- hero -->
+    <section class="hero pad" id="hero">
+      <canvas class="fx-noise" style="opacity:.03" aria-hidden="true"></canvas>
+
+      <div class="hero__side label">Text2Hand</div>
+
+      <div class="hero__in">
         <div>
-          <p class="kicker rv">The hand</p>
-          <h2 class="display rv">No two<br />letters<br />the same.</h2>
-          <p class="lede rv" style="margin-top: 24px">This page was rendered from Markdown.
-            Every mark on it comes from one real hand, captured from written
-            sheets and cut apart, letter by letter and word by word.</p>
-          <div class="ticks">
-            <div class="tick rv">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-              <div><b>Variants and jitter</b><span>Each glyph gets its own rotation, size, wobble and ink pressure. Repeats never match.</span></div>
-            </div>
-            <div class="tick rv">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-              <div><b>Whole words in one stroke</b><span>Common words are written as single captured strokes, keeping the joins a real hand makes.</span></div>
-            </div>
-            <div class="tick rv">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-              <div><b>A hand that tires</b><span>Writing grows and loosens toward the foot of each page. Optionally it crosses out a word and rewrites it.</span></div>
-            </div>
-            <div class="tick rv">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-              <div><b>Paper that was scanned</b><span>Ruled lines, a red margin, warm grain, and a slight tilt, as if it came off a scanner.</span></div>
-            </div>
+          <div class="flap" data-flap="HANDWRITING" data-flap-speed="70" role="img"></div>
+
+          <h2 class="hero__sub">Typed in. Written out.</h2>
+
+          <p class="hero__copy">
+            Paste text or drop a PDF and get ruled A4 pages written in a real,
+            captured human hand. Not a font. Every letter is a photograph of
+            one, and no two on the page are the same image.
+          </p>
+
+          <div class="hero__acts">
+            <a class="btn btn--solid" href="{{ url_for('studio') }}">
+              <span data-scramble>Open the studio</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            </a>
+            <a class="linkish" href="#evidence">See a page</a>
           </div>
         </div>
-        <div class="paper__sticky rv">
-          <img class="sheet" src="{{ url_for('static', filename='sample_page.jpg') }}"
+
+        <div class="tear" role="img" aria-label="A handwritten page tearing into pieces and reassembling, looping">
+          <div class="tear__frame"></div>
+          <span class="tear__cnr tear__cnr--tl"></span>
+          <span class="tear__cnr tear__cnr--br"></span>
+          {% for i in range(1, 13) %}
+          <div class="pc pc{{ i }}" style="background-image:url('{{ url_for('static', filename='sample_page.jpg') }}')"></div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="hero__tag">v.02 / Local Build</div>
+    </section>
+
+    <!-- --------------------------------------------------------- signals -->
+    <div class="strip">
+      <div class="strip__row">
+        <div class="stat rv"><b>112</b><span>Glyphs / one hand</span></div>
+        <div class="stat rv" data-delay="80"><b>70</b><span>Words / one stroke</span></div>
+        <div class="stat rv" data-delay="160"><b>1290</b><span>Chars / A4 page</span></div>
+        <div class="stat rv" data-delay="240"><b>33</b><span>Ruled lines</span></div>
+      </div>
+    </div>
+
+    <!-- ------------------------------------------------------ capability -->
+    <section class="pad" id="capability">
+      <div class="sec-head">
+        <div class="rv rv--l">
+          <span class="label label--accent">01 / Capability</span>
+          <h2 class="display">What it does</h2>
+        </div>
+        <p class="sec-head__note rv">
+          Text, Markdown or PDF in. Ruled pages and a PDF out, with the
+          document's structure intact.
+        </p>
+      </div>
+
+      <div class="bento">
+        <article class="cell sp-2x2 is-lit rv">
+          <div>
+            <span class="cell__k">Render</span>
+            <h3 class="cell__t">Text becomes pages</h3>
+          </div>
+          <p class="cell__d">Headings centred and underlined, lists indented, tables hand-ruled,
+            figures boxed. Long documents spill onto new pages, up to eighty at a run.</p>
+          <span class="cell__n">01</span>
+          <span class="cell__corner"></span>
+        </article>
+
+        <article class="cell sp-2x1 rv" data-delay="60">
+          <div>
+            <span class="cell__k">Extract</span>
+            <h3 class="cell__t">PDFs come along</h3>
+          </div>
+          <p class="cell__d">Read into Markdown you correct before anything is written.</p>
+          <span class="cell__n">02</span>
+          <span class="cell__corner"></span>
+        </article>
+
+        <article class="cell sp-1x1 rv" data-delay="120">
+          <div>
+            <span class="cell__k">Ink</span>
+            <h3 class="cell__t">Four pens</h3>
+          </div>
+          <p class="cell__d">Blue-black, black, blue, red.</p>
+          <span class="cell__n">03</span>
+          <span class="cell__corner"></span>
+        </article>
+
+        <article class="cell sp-1x1 rv" data-delay="180">
+          <div>
+            <span class="cell__k">Optical</span>
+            <h3 class="cell__t">Scanned too</h3>
+          </div>
+          <p class="cell__d">Local OCR, nothing uploaded.</p>
+          <span class="cell__n">04</span>
+          <span class="cell__corner"></span>
+        </article>
+
+        <article class="cell sp-2x1 rv" data-delay="240">
+          <div>
+            <span class="cell__k">Notation</span>
+            <h3 class="cell__t">Equations survive</h3>
+          </div>
+          <p class="cell__d">Display maths is cropped from the paper and traced back as ink.
+            Inline symbols are drawn glyphs.</p>
+          <span class="cell__n">05</span>
+          <span class="cell__corner"></span>
+        </article>
+
+        <article class="cell sp-2x1 rv" data-delay="300">
+          <div>
+            <span class="cell__k">Capture</span>
+            <h3 class="cell__t">Your own hand</h3>
+          </div>
+          <p class="cell__d">Print the sheets, write them out, photograph them. The extractors
+            cut your writing into a font of its own.</p>
+          <span class="cell__n">06</span>
+          <span class="cell__corner"></span>
+        </article>
+      </div>
+    </section>
+
+    <!-- ---------------------------------------------------------- method -->
+    <section class="pad" id="method">
+      <div class="sec-head">
+        <div class="rv rv--l">
+          <span class="label label--accent">02 / Method</span>
+          <h2 class="display">Why it convinces</h2>
+        </div>
+        <p class="sec-head__note rv">
+          A font pastes the same letter every time. A person never writes one
+          twice. Four things break that.
+        </p>
+      </div>
+
+      <div class="tenets">
+        <article class="tenet rv rv--l">
+          <span class="label">01 / Variance</span>
+          <h3>No two <span class="hl">the same</span></h3>
+          <p>Every glyph gets its own rotation, scale, baseline wobble, spacing and ink
+            pressure. Where several photographs of a letter exist, one is picked at random.</p>
+          <div class="tenet__rule"></div>
+        </article>
+
+        <article class="tenet tenet--r rv rv--r" data-delay="60">
+          <span class="label">02 / Ligature</span>
+          <h3>Whole words, <span class="hl">one stroke</span></h3>
+          <p>Common words are written as single captured strokes rather than assembled from
+            letters, keeping the joins a real hand makes. About a third of any page.</p>
+          <div class="tenet__rule"></div>
+        </article>
+
+        <article class="tenet rv rv--l" data-delay="60">
+          <span class="label">03 / Fatigue</span>
+          <h3>A hand that <span class="hl">tires</span></h3>
+          <p>Writing grows and loosens toward the foot of each page. Turn it on and the hand
+            will start a word wrong, cross it out, and write it again.</p>
+          <div class="tenet__rule"></div>
+        </article>
+
+        <article class="tenet tenet--r rv rv--r" data-delay="60">
+          <span class="label">04 / Artifact</span>
+          <h3>Paper that was <span class="hl">scanned</span></h3>
+          <p>Ruled lines and a red margin printed before a word is written, warm grain, and a
+            slight tilt. The rules skew with the writing, because they were on the page first.</p>
+          <div class="tenet__rule"></div>
+        </article>
+      </div>
+    </section>
+
+    <!-- -------------------------------------------------------- evidence -->
+    <section class="pad" id="evidence">
+      <div class="sec-head">
+        <div class="rv rv--l">
+          <span class="label label--accent">03 / Evidence</span>
+          <h2 class="display">A real page</h2>
+        </div>
+        <p class="sec-head__note rv">
+          Rendered from Markdown. Every mark on it comes from one hand,
+          captured from written sheets and cut apart.
+        </p>
+      </div>
+
+      <div class="proof">
+        <div>
+          <div class="proof__list">
+            <div class="proof__row rv"><i>01</i><div><b>Captured, not drawn</b><span>Every letter, digit and punctuation mark is a photograph of real writing. Only the technical symbols are drawn.</span></div></div>
+            <div class="proof__row rv" data-delay="60"><i>02</i><div><b>Placed by anatomy</b><span>Descenders hang, commas cross the line, quotes lean by whether they open or close.</span></div></div>
+            <div class="proof__row rv" data-delay="120"><i>03</i><div><b>Millimetre metrics</b><span>3mm x-height, 8.4mm ruling, 33 lines on true A4 geometry.</span></div></div>
+            <div class="proof__row rv" data-delay="180"><i>04</i><div><b>Runs on your machine</b><span>Rendering is local. Only the optional cloud extractors ever see a file.</span></div></div>
+          </div>
+
+          <div class="eqframe rv" style="margin-top:40px">
+            <img src="{{ url_for('static', filename='sample_eq.jpg') }}"
+                 alt="Display equations traced as handwriting ink on ruled paper"
+                 width="1100" height="329" loading="lazy" />
+            <p class="eqcap">Equations (5)–(7) / traced from a converted arXiv page</p>
+          </div>
+        </div>
+
+        <div class="proof__sheet rv rv--r">
+          <img src="{{ url_for('static', filename='sample_page.jpg') }}"
                alt="A full rendered page: handwritten headings, lists, a table and a figure on ruled paper"
                width="1100" height="1556" loading="lazy" />
         </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- ---------------------------------------------------------- equations (inverted) -->
-  <section class="dark" id="maths">
-    <div class="wrap">
+    <!-- -------------------------------------------------------- colophon -->
+    <section class="pad" id="colophon">
       <div class="sec-head">
-        <p class="kicker rv">From a real paper</p>
-        <h2 class="display rv">The maths<br />makes it.</h2>
-        <p class="lede rv">These equations were lifted out of a published PDF and written back
-          onto ruled paper, aligned group, product sign and all.</p>
-      </div>
-      <div class="eqcard rv">
-        <img src="{{ url_for('static', filename='sample_eq.jpg') }}"
-             alt="Display equations traced as handwriting ink on ruled paper"
-             width="1100" height="329" loading="lazy" />
-        <p class="eqcap">equations (5)-(7), traced at pen weight from a converted arXiv page</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- ---------------------------------------------------------- own hand -->
-  <section id="own">
-    <div class="wrap">
-      <div class="own">
-        <div>
-          <p class="kicker rv">Your hand</p>
-          <h2 class="display rv">Make it<br />yours.</h2>
-          <p class="lede rv" style="margin-top: 24px">The bundled hand is real, and yours can
-            replace it. Print the capture sheets, write them out, photograph
-            them, and the extraction tools cut your writing into a font of its
-            own.</p>
-        </div>
-        <div class="own__list">
-          <div class="own__item rv"><i>01</i><span>Print the letter and word capture sheets</span></div>
-          <div class="own__item rv"><i>02</i><span>Write them out in your everyday hand</span></div>
-          <div class="own__item rv"><i>03</i><span>Photograph and run the extractors</span></div>
-          <div class="own__item rv"><i>04</i><span>Every render is now written by you</span></div>
+        <div class="rv rv--l">
+          <span class="label label--accent">04 / Colophon</span>
+          <h2 class="display">Under the hood</h2>
         </div>
       </div>
-    </div>
-  </section>
 
-  <!-- ---------------------------------------------------------- fin -->
-  <div class="fin">
-    <div class="wrap">
-      <h2 class="display rv">Ready to stop<br />writing it out?</h2>
-      <div class="fin__row rv">
-        <a class="pill pill--big" href="{{ url_for('studio') }}">Open the studio</a>
-        <span class="hero__note">free while it lives on your machine</span>
+      <div class="colo">
+        <div class="colo__row rv"><span class="colo__k">Engine</span><span class="colo__v">Python · Pillow · per-glyph compositing</span></div>
+        <div class="colo__row rv"><span class="colo__k">Extraction</span><span class="colo__v">PyMuPDF · Tesseract OCR · Markdown as the contract</span></div>
+        <div class="colo__row rv"><span class="colo__k">Typeface</span><span class="colo__v">One human hand, captured on paper</span></div>
+        <div class="colo__row rv"><span class="colo__k">Page</span><span class="colo__v">A4 · 2632 × 3722 px · 33 ruled lines</span></div>
+        <div class="colo__row rv"><span class="colo__k">Source</span><span class="colo__v"><a href="https://github.com/pranjalprateek6/Text2Hand" target="_blank" rel="noreferrer noopener">github.com/pranjalprateek6/Text2Hand</a></span></div>
       </div>
-      <div class="foot">
-        <span>Text2Hand</span>
-        <span class="foot__gap"></span>
-        <a href="https://github.com/pranjalprateek6/Text2Hand" target="_blank" rel="noreferrer noopener">GitHub</a>
-        <a href="{{ url_for('studio') }}">Studio</a>
+
+      <div class="endcta">
+        <h2 class="rv">Stop writing<br />it out.</h2>
+        <div class="endcta__row rv">
+          <a class="btn btn--solid" href="{{ url_for('studio') }}">
+            <span data-scramble>Open the studio</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </a>
+          <span class="label">Free · Runs locally</span>
+        </div>
+
+        <div class="footline">
+          <span>Text2Hand</span>
+          <span class="footline__gap"></span>
+          <a href="{{ url_for('studio') }}">Studio</a>
+          <a href="https://github.com/pranjalprateek6/Text2Hand" target="_blank" rel="noreferrer noopener">GitHub</a>
+        </div>
       </div>
-    </div>
+    </section>
+
   </div>
-
 </main>
 
-<script>
-  // Reveal-on-scroll, an enhancement only: reduced motion shows everything,
-  // and if the observer never fires (a hidden tab runs no rendering frames)
-  // a fallback reveals the page rather than leaving it at opacity zero.
-  (function () {
-    var els = [].slice.call(document.querySelectorAll(".rv"));
-    var all = function () { els.forEach(function (el) { el.classList.add("on"); }); };
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches ||
-        !("IntersectionObserver" in window)) { all(); return; }
-    setTimeout(function () {
-      if (!document.querySelector(".rv.on")) all();
-    }, 2000);
-    var io = new IntersectionObserver(function (entries) {
-      entries.forEach(function (e) {
-        if (e.isIntersecting) { e.target.classList.add("on"); io.unobserve(e.target); }
-      });
-    }, { threshold: 0.16 });
-    els.forEach(function (el) { io.observe(el); });
-  })();
-</script>
+<script src="{{ url_for('static', filename='fx.js') }}"></script>
 </body>
 </html>
