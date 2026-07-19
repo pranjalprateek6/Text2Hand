@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Turn typed text or a PDF into pages in a real hand" />
+  <meta name="color-scheme" content="light dark" />
+  <title>Text2Hand</title>
+  <script>
+    (function () {
+      var saved = localStorage.getItem("t2h.theme");
+      var dark = saved ? saved === "dark"
+                       : matchMedia("(prefers-color-scheme: dark)").matches;
+      document.documentElement.dataset.theme = dark ? "dark" : "light";
+    })();
+  </script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  <style>
+    /* Placeholder landing. Everything here is expected to be replaced once
+       the real landing page is designed; it exists so /studio has a front
+       door in the meantime, and reuses the studio's tokens so the handoff
+       between the two does not jar. */
+    .landing {
+      position: relative; z-index: 1;
+      min-height: 100vh;
+      display: grid; place-content: center; justify-items: center;
+      gap: 18px;
+      text-align: center;
+      padding: 24px;
+    }
+    .landing h1 { font-size: 44px; font-weight: 650; letter-spacing: -0.035em; }
+    .landing p { font-size: 16px; color: var(--muted); max-width: 44ch; }
+    .landing .btn--cta { height: 46px; padding: 0 22px; font-size: 15px; }
+    .landing .fine { font-size: 12.5px; color: var(--faint); }
+  </style>
+</head>
+<body>
+  <div class="mesh" aria-hidden="true"></div>
+  <main class="landing">
+    <h1>Text2Hand</h1>
+    <p>Type it, or drop in a PDF, and get it back as pages written in a real hand
+       on ruled paper.</p>
+    <a class="btn btn--cta" href="{{ url_for('studio') }}">Open the studio</a>
+    <p class="fine">Landing page under construction. The studio is fully working.</p>
+  </main>
+</body>
+</html>

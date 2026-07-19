@@ -190,10 +190,17 @@ def _safe(rid: str) -> Path:
 
 
 @app.get("/")
-def index():
+def landing():
+    """The front door. A placeholder until the real landing page is designed;
+    the tool itself lives at /studio."""
+    return render_template("landing.html")
+
+
+@app.get("/studio")
+def studio():
     # page_size goes down too, so the editor can say how much paper the text is
     # before anyone waits for a render.
-    return render_template("index.html", converters=converters.available(),
+    return render_template("studio.html", converters=converters.available(),
                            max_chars=render_limit(), page_size=page_size())
 
 
