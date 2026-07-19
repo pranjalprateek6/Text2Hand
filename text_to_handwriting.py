@@ -82,11 +82,19 @@ KERN_JITTER = (-3, 4)                   # extra space between letters (min, max)
 MARGIN_JITTER = 6                        # ragged left margin, px of random indent
 INK_MIN, INK_MAX = 0.78, 1.0            # per-glyph opacity (pen-pressure) range
 
-# f is here because this hand writes it with a tail below the line. Left out, it
-# was aligned like an x-height letter, which sat the tail on the rule and made
-# every f read as a t.
-DESCENDERS = set("fgjpqy")              # tails that drop below the writing line
+# Letters with an x-height body and a tail under it. These are placed by the
+# body, not by a fraction of their height: see _drop_below_line.
+DESCENDERS = set("gjpqy")
+# f belongs with them in spirit, but its body reaches well above the x-height,
+# so the body rule would bury it. It keeps the fractional drop. Left out of both
+# sets it was aligned like an x-height letter, which sat its tail on the rule
+# and made every f read as a t.
+TAILED_ASCENDERS = set("f")
+# Marks whose tail crosses the writing line rather than resting on it. Without
+# this a comma sits entirely above the rule and reads as a 9.
+HANGING = set(",;")
 DESCENDER_DROP = 0.25                   # fraction of glyph height pushed down
+HANG_FRAC = 0.62                        # same, for HANGING marks
 RAISED = set("\"'*^`")                  # marks that hang high (quotes, apostrophe, * ^ `)
 RAISE_FRAC = 0.20                       # how far up, as a fraction of the line height
 CENTERED = set("+=<>~-")                # centred on the x-height axis; a hyphen
@@ -762,12 +770,31 @@ class Sheet:
         if ch in CENTERED:                        # math symbols float on the x-height axis
             y = self.baseline - X_HEIGHT // 2 - g.height // 2 + wobble
         else:
-            drop = int(DESCENDER_DROP * g.height) if ch in DESCENDERS else 0
+            drop = _drop_below_line(ch, g.height)
             lift = int(RAISE_FRAC * LINE_HEIGHT) if ch in RAISED else 0
             y = self.baseline - g.height + drop - lift + wobble
 
         self.page.paste(g, (x, y), g)
         self.x += advance + random.randint(*KERN_JITTER)
+
+
+def _drop_below_line(ch: str, height: int) -> int:
+    """How far a glyph hangs below the writing line.
+
+    One fraction of glyph height for every tailed character was wrong, because
+    a tail is not a fixed share of the letter it hangs off. Letters with a long
+    tail kept too much of themselves above the rule: p sat with its bowl above
+    the x-height band and read as a capital P. What is actually constant is the
+    body resting on the line, so for those the drop is whatever is left over
+    once the body is placed.
+    """
+    if ch in DESCENDERS:                  # x-height bowl, tail underneath it
+        return max(0, height - X_HEIGHT)
+    if ch in TAILED_ASCENDERS:            # body rises past the x-height as well
+        return int(DESCENDER_DROP * height)
+    if ch in HANGING:                     # tail crosses the line instead of sitting on it
+        return int(HANG_FRAC * height)
+    return 0
 
 
 def render(text: str) -> Sheet:
