@@ -348,7 +348,7 @@ def _excise_equations(doc, number: int, assets_dir: str) -> dict[str, str]:
         # so a crop's name does not depend on which pages happen to be read
         # first. Pages are converted in parallel and a shared counter would
         # hand out different numbers run to run.
-        k = number * 1000 + idx
+        k = number * 100 + idx
         pad = pymupdf.Rect(rect.x0 - _EQ_PAD, rect.y0 - _EQ_PAD,
                            rect.x1 + _EQ_PAD, rect.y1 + _EQ_PAD) & page.rect
         # padding must not reach into the prose above or below, or the crop
@@ -377,7 +377,11 @@ def _excise_equations(doc, number: int, assets_dir: str) -> dict[str, str]:
         for tag_rect, _ in mine:
             page.add_redact_annot(tag_rect)
 
-        token = f"T2HEQ{k}Z"
+        # Zero-padded to a fixed width. The token is drawn into the page, so its
+        # width is part of the layout the extractor reads: a token that grew a
+        # digit with the equation number moved table columns around, which made
+        # the parse depend on how many equations came before it.
+        token = f"T2HEQ{k:05d}Z"
         replacements[token] = f"\n\n![{alt}]({crop})\n\n"
         # shrink the redaction below the padded crop, or it eats neighbours
         page.add_redact_annot(rect, text=token, fontsize=7)
@@ -393,13 +397,51 @@ def _page_pymupdf(doc, number: int, ctx: dict | None = None) -> str:
         replacements = _excise_equations(doc, number, ctx["assets_dir"])
 
     md = pymupdf4llm.to_markdown(doc, pages=[number], show_progress=False)
+    return _restore_equations(md, replacements)
+
+
+# What is left of a token the extractor pulled apart. The T2H trigram does not
+# occur in prose, and a detached tail is a Q with the token's own digit count.
+_TOKEN_DEBRIS = re.compile(r"T2H[A-Z0-9]*|Q\d{5}Z")
+
+
+def _restore_equations(md: str, replacements: dict[str, str]) -> str:
+    """Put each equation's image back where its token landed.
+
+    The token is drawn into the page, which is what makes it land in reading
+    order, but it also means the extractor can pull it apart. Inside a table it
+    straddles a cell boundary and comes back as `T2HE|Q8000Z`, and a plain
+    replace then misses. That used to lose the equation outright: the image was
+    never placed, and the original had already been redacted away, so the page
+    was left with the wreckage of the token written across a table row.
+
+    So it is tried three ways: the token whole, then its characters in order
+    with cell borders or emphasis allowed between them, and failing both the
+    image goes at the end of the page, because a picture in the wrong place
+    beats an equation that is gone. Anything still recognisable as token debris
+    is then swept, so none of it can reach the renderer and be handwritten out
+    as nonsense.
+    """
+    if not replacements:
+        return md
+
     for token, image in replacements.items():
-        # the extractor may bold or italicise the token, so match around it;
         # the replacement goes in as a function so nothing in a file path is
         # ever read as a regex escape
-        md = re.sub(r"\*{0,2}_{0,2}" + token + r"_{0,2}\*{0,2}",
-                    lambda _m, image=image: image, md)
-    return md
+        put = lambda _m, image=image: image
+        whole = re.compile(r"\*{0,2}_{0,2}" + token + r"_{0,2}\*{0,2}")
+        if whole.search(md):
+            md = whole.sub(put, md)
+            continue
+        # Only borders, emphasis and whitespace may sit between the characters,
+        # never other text, so this cannot run away and match half the page.
+        split = re.compile(r"[|*_\s]*".join(re.escape(c) for c in token))
+        if split.search(md):
+            md = split.sub(put, md, count=1)
+            continue
+        md = md.rstrip() + "\n\n" + image
+
+    return _TOKEN_DEBRIS.sub("", md)
 
 
 def _unwrap(text: str) -> str:
