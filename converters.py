@@ -20,6 +20,37 @@ from dataclasses import dataclass, field
 MAX_PAGES = 50          # a 400-page report would render for hours; cap it
 SCAN_PROBE_PAGES = 3    # how many pages to check when guessing "scanned"
 
+
+def _cache_ocr_probe() -> None:
+    """Make pymupdf4llm work out what OCR is installed once, not per page.
+
+    Converting a page calls select_ocr_function, which asks pymupdf where
+    Tesseract keeps its language data. With TESSDATA_PREFIX unset that shells
+    out to `tesseract --list-langs` and then to `where tesseract`, and if
+    Tesseract is not installed both fail, the error is swallowed and the answer
+    is None. The answer cannot change while the process runs, but it was being
+    recomputed for every page: two subprocesses each time, and on a 29 page
+    paper roughly two thirds of the entire conversion spent rediscovering the
+    same thing.
+
+    Wrapped rather than replaced, so whatever the answer is on this machine is
+    still the answer. Guarded because it reaches into another package's
+    internals, and a version that renames this should lose the speed-up, not
+    break conversion.
+    """
+    try:
+        from functools import cache
+        from pymupdf4llm.helpers import document_layout as dl
+        if not getattr(dl.select_ocr_function, "_t2h_cached", False):
+            cached = cache(dl.select_ocr_function)
+            cached._t2h_cached = True
+            dl.select_ocr_function = cached
+    except Exception:
+        pass                # older or newer pymupdf4llm: just stay slow
+
+
+_cache_ocr_probe()
+
 # OCR runs at roughly a second or two per page. Conversion happens on a worker
 # thread with progress, so it no longer needs a tighter cap than the text
 # extractors and shares MAX_PAGES with them.
