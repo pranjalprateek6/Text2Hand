@@ -124,6 +124,14 @@
             <button class="ink" data-ink="blue" title="Blue" style="--c:#153c98" role="radio" aria-checked="false"></button>
             <button class="ink" data-ink="red" title="Red" style="--c:#961c18" role="radio" aria-checked="false"></button>
           </div>
+          <div class="sizes" role="radiogroup" aria-label="Handwriting size">
+            <button class="sizebtn" data-size="small" title="Small hand"
+                    role="radio" aria-checked="false">Aa</button>
+            <button class="sizebtn is-on" data-size="normal" title="Normal hand"
+                    role="radio" aria-checked="true">Aa</button>
+            <button class="sizebtn" data-size="large" title="Large hand"
+                    role="radio" aria-checked="false">Aa</button>
+          </div>
           <span class="count" id="count">0</span>
         </div>
       </section>
@@ -174,6 +182,7 @@
           <div class="ghost" id="loading" hidden>
             <div class="ghost__page"><span class="ghost__sheen"></span></div>
             <p class="ghost__line" id="loadingText">Laying out the text</p>
+            <button class="btn btn--outline btn--sm" id="cancelRender">Cancel</button>
           </div>
 
           <div class="notecard" id="note" hidden></div>
@@ -203,8 +212,11 @@
           settings back into the editor.</p>
         <p class="library__cap" id="libCap" hidden>The library keeps the last
           24 renders; the oldest roll off as new ones arrive.</p>
-        <button class="btn btn--sm library__clear" id="libClear" hidden>
-          Clear the library</button>
+        <div class="library__tools">
+          <input type="search" class="mini library__search" id="libSearch" hidden
+                 placeholder="Search the library" aria-label="Search the library" />
+          <button class="btn btn--sm" id="libClear" hidden>Clear the library</button>
+        </div>
       </div>
       <div class="grid" id="grid"></div>
       <div class="hollow" id="libEmpty">

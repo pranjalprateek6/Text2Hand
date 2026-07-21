@@ -202,14 +202,24 @@ def _combine_pdf(folder: Path) -> Path:
     return pdf
 
 
+# Three real sizes rather than a millimetre slider, for the same reason the
+# pens are four colours and not a wheel: every choice should look like a page
+# someone could have written. The ruling never moves; a person writing larger
+# on the same ruled pad is exactly what larger handwriting is.
+SIZES = {"small": 2.5, "normal": 3.0, "large": 3.5}
+
+
 def _render(text: str, ruled: bool, texture: bool, skew: bool, as_markdown: bool,
-            ink: str = "blue-black", on_progress=None):
+            ink: str = "blue-black", size: str = "normal", on_progress=None):
     """Render text to a fresh folder and return (render_id, page_count, missing)."""
     with _render_lock:
         t2h.RULED = ruled
         t2h.MARGIN_RULE = ruled
         t2h.PAPER_TEXTURE = texture
         t2h.SCAN_SKEW = 0.7 if skew else 0
+        # derive_metrics() rescales the glyphs from this and flushes every
+        # cache when the scale really changed, so setting it is enough.
+        t2h.X_HEIGHT_MM = SIZES.get(size, SIZES["normal"])
         colour = INKS.get(ink, INKS["blue-black"])
         if colour != t2h.INK_COLOR:
             # Glyphs and word images are tinted as they load and then cached,
@@ -253,15 +263,31 @@ def _job_start(message: str) -> str:
     return jid
 
 
+class JobCancelled(Exception):
+    """Raised inside a worker when its job has been asked to stop."""
+
+
 def _job_spawn(jid: str, work, failure: str) -> None:
     """Run work(progress) on a thread; whatever it returns is merged into the job.
 
     Both rendering and conversion outlive a request, so both go through here.
+    Cancellation rides on progress: both workers report between pages, which
+    is also the only place stopping cleanly is possible, so the progress call
+    doubles as the cancellation point. No page is ever half-drawn.
     """
+    def progress(msg: str) -> None:
+        with JOBS_LOCK:
+            cancelled = JOBS.get(jid, {}).get("cancel")
+        if cancelled:
+            raise JobCancelled()
+        _job_set(jid, message=msg)
+
     def runner() -> None:
         try:
-            result = work(lambda msg: _job_set(jid, message=msg))
+            result = work(progress)
             _job_set(jid, state="done", message="Done", **result)
+        except JobCancelled:
+            _job_set(jid, state="cancelled", message="Cancelled")
         except (ValueError, RuntimeError) as exc:
             _job_set(jid, state="error", error=str(exc))     # expected, already readable
         except Exception as exc:
@@ -436,11 +462,17 @@ def api_render():
         "skew": bool(data.get("skew", True)),
         "as_markdown": bool(data.get("markdown", False)),
         "ink": str(data.get("ink", "blue-black")),
+        "size": str(data.get("size", "normal")),
     }
+    # How many pages this is probably going to be, so a long render counts
+    # itself against a visible total instead of just counting. The ~ is
+    # honest: pagination is discovered as the text flows.
+    guess = max(1, round(len(text) / page_size()))
+
     def work(progress):
         def on_stage(stage: str, count: int) -> None:
             if stage == "page":
-                progress(f"Writing page {count}")
+                progress(f"Writing page {count} of ~{max(guess, count)}")
             elif stage == "skew":
                 progress("Finishing the pages")
             elif stage == "previews":
@@ -452,6 +484,18 @@ def api_render():
     jid = _job_start("Laying out the text")
     _job_spawn(jid, work, "Could not render")
     return jsonify(job=jid), 202
+
+
+@app.post("/api/job/<jid>/cancel")
+def api_job_cancel(jid: str):
+    """Ask a running job to stop. It stops at its next page boundary."""
+    with JOBS_LOCK:
+        job = JOBS.get(jid)
+        if job is None:
+            return jsonify(error="No such job."), 404
+        if job["state"] == "running":
+            job["cancel"] = True
+    return jsonify(ok=True)
 
 
 @app.get("/api/job/<jid>")

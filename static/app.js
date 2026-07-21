@@ -16,6 +16,8 @@ const PAGE_SIZE = window.PAGE_SIZE || 1200;
 const state = {
   id: null, pages: 0, page: 1,
   title: null,        // a name typed into the bar; null follows the text
+  job: null,          // the render job in flight, so Cancel can name it
+  reading: null,      // the conversion job in flight
   file: null,
   statusLine: null,   // what the bar status returns to after a job ends
   rendered: null,     // JSON of what is on screen, to skip pointless re-renders
@@ -41,6 +43,7 @@ $("navLibrary").addEventListener("click", () => showView("library"));
 
 const OPTIONS = { markdown: false, ruled: true, texture: true, skew: true };
 let INK = "blue-black";
+let SIZE = "normal";
 
 Object.keys(OPTIONS).forEach((key) => {
   const el = $("o" + key[0].toUpperCase() + key.slice(1));
@@ -63,6 +66,17 @@ document.querySelectorAll(".ink").forEach((dot) => {
   });
 });
 
+document.querySelectorAll(".sizebtn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    SIZE = btn.dataset.size;
+    document.querySelectorAll(".sizebtn").forEach((b) => {
+      b.classList.toggle("is-on", b === btn);
+      b.setAttribute("aria-checked", String(b === btn));
+    });
+    touched();
+  });
+});
+
 function setOptions(opts, ink) {
   Object.keys(OPTIONS).forEach((key) => {
     OPTIONS[key] = !!opts[key];
@@ -72,6 +86,8 @@ function setOptions(opts, ink) {
   });
   const want = document.querySelector(`.ink[data-ink="${ink}"]`);
   if (want) want.click();
+  const size = document.querySelector(`.sizebtn[data-size="${opts.size || "normal"}"]`);
+  if (size) size.click();
 }
 
 /* ---------------------------------------------------------- title and count */
@@ -228,6 +244,7 @@ async function poll(jobId, onStage) {
     if (!res.ok) return { error: "Lost track of that job." };
     const job = await res.json();
     if (job.state === "running") { if (onStage) onStage(job.message); continue; }
+    if (job.state === "cancelled") return { cancelled: true };
     if (job.state === "error") return { error: job.error || "That did not work." };
     return job;
   }
@@ -239,7 +256,7 @@ function payload() {
   return {
     text: $("text").value,
     ruled: OPTIONS.ruled, texture: OPTIONS.texture, skew: OPTIONS.skew,
-    markdown: OPTIONS.markdown, ink: INK,
+    markdown: OPTIONS.markdown, ink: INK, size: SIZE,
   };
 }
 
@@ -273,12 +290,15 @@ async function render() {
     });
     const started = await res.json();
     if (!res.ok) { setBusy(false); after(); note(started.error || "That did not work.", true); return; }
+    state.job = started.job;
 
     const done = await poll(started.job, (m) => {
       $("loadingText").textContent = m;
       $("status").textContent = m + "…";
     });
+    state.job = null;
     setBusy(false);
+    if (done.cancelled) { after(); $("status").textContent = "Cancelled"; return; }
     if (done.error) { after(); note(done.error, true); return; }
 
     state.id = done.id;
@@ -344,6 +364,10 @@ function show(n) {
 }
 
 $("render").addEventListener("click", render);
+// stopping is safe at any moment: the server only ever stops between pages
+$("cancelRender").addEventListener("click", () => {
+  if (state.job) fetch(`/api/job/${state.job}/cancel`, { method: "POST" }).catch(() => {});
+});
 $("prev").addEventListener("click", () => show(state.page - 1));
 $("next").addEventListener("click", () => show(state.page + 1));
 
@@ -419,14 +443,13 @@ async function remember(done, body) {
     });
   } catch { /* a library entry without a picture still works */ }
 
-  const entries = lib().filter((e) => e.text !== body.text || JSON.stringify(e.opts) !== JSON.stringify({
-    markdown: body.markdown, ruled: body.ruled, texture: body.texture, skew: body.skew,
-  }) || e.ink !== body.ink);
+  const opts = { markdown: body.markdown, ruled: body.ruled, texture: body.texture,
+                 skew: body.skew, size: body.size };
+  const entries = lib().filter((e) =>
+    e.text !== body.text || JSON.stringify(e.opts) !== JSON.stringify(opts) || e.ink !== body.ink);
   entries.unshift({
     id: done.id, title: title(), pages: done.pages, chars: body.text.length,
-    ts: Date.now(), text: body.text, ink: body.ink,
-    opts: { markdown: body.markdown, ruled: body.ruled, texture: body.texture, skew: body.skew },
-    thumb,
+    ts: Date.now(), text: body.text, ink: body.ink, opts, thumb,
   });
   try { localStorage.setItem(LIB_KEY, JSON.stringify(entries.slice(0, LIB_MAX))); }
   catch { /* quota: drop the oldest and try once more */
@@ -435,11 +458,18 @@ async function remember(done, body) {
 }
 
 function drawLibrary() {
-  const entries = lib();
-  $("libEmpty").hidden = entries.length > 0;
+  const all = lib();
+  const query = ($("libSearch").value || "").trim().toLowerCase();
+  // searched over the full text, not only the title: the memorable phrase is
+  // usually somewhere in the middle of the document
+  const entries = query
+    ? all.filter((e) => (e.title + "\n" + e.text).toLowerCase().includes(query))
+    : all;
+  $("libEmpty").hidden = all.length > 0;
   // at capacity the oldest entries roll off silently, so say so
-  $("libCap").hidden = entries.length < LIB_MAX;
-  $("libClear").hidden = entries.length === 0;
+  $("libCap").hidden = all.length < LIB_MAX;
+  $("libClear").hidden = all.length === 0;
+  $("libSearch").hidden = all.length < 2;
   const grid = $("grid");
   grid.innerHTML = "";
   const ago = (ts) => {
@@ -485,6 +515,8 @@ function drawLibrary() {
     grid.appendChild(card);
   });
 }
+
+$("libSearch").addEventListener("input", drawLibrary);
 
 $("libClear").addEventListener("click", async () => {
   const n = lib().length;
@@ -578,6 +610,11 @@ $("pdfClear").addEventListener("click", () => {
 });
 
 $("read").addEventListener("click", async () => {
+  // a second press while reading is the way out
+  if (state.reading) {
+    fetch(`/api/job/${state.reading}/cancel`, { method: "POST" }).catch(() => {});
+    return;
+  }
   if (!state.file) return;
   // reading lands its Markdown in the editor, over whatever is there
   if ($("text").value.trim() &&
@@ -589,8 +626,7 @@ $("read").addEventListener("click", async () => {
   body.append("pages", $("pageRange").value);
 
   hush();
-  $("read").disabled = true;
-  $("read").textContent = "Reading";
+  $("read").textContent = "Cancel";
   $("status").textContent = "Opening the PDF…";
   $("status").classList.add("is-live");
 
@@ -598,8 +634,10 @@ $("read").addEventListener("click", async () => {
     const res = await fetch("/api/convert", { method: "POST", body });
     const started = await res.json();
     if (!res.ok) { note(started.error || "Could not read that PDF.", true); return; }
+    state.reading = started.job;
 
     const done = await poll(started.job, (m) => { $("status").textContent = m + "…"; });
+    if (done.cancelled) { $("status").textContent = "Cancelled"; return; }
     if (done.error) { note(done.error, true); return; }
 
     // Extraction is never perfect, so it lands in the editor for review.
@@ -616,9 +654,10 @@ $("read").addEventListener("click", async () => {
   } catch (err) {
     note("Could not reach the server. Is it still running?", true);
   } finally {
-    $("read").disabled = false;
+    state.reading = null;
     $("read").textContent = "Read it";
-    $("status").textContent = state.statusLine || "Ready";
+    if ($("status").textContent !== "Cancelled")
+      $("status").textContent = state.statusLine || "Ready";
     $("status").classList.remove("is-live");
   }
 });
@@ -670,7 +709,9 @@ const DRAFT_KEY = "t2h.draft";
 function saveDraft() {
   try {
     localStorage.setItem(DRAFT_KEY, JSON.stringify({
-      text: $("text").value, opts: OPTIONS, ink: INK, title: state.title,
+      text: $("text").value, opts: { ...OPTIONS, size: SIZE }, ink: INK, title: state.title,
+      // enough to re-attach to the render after a reload, if it still exists
+      id: state.id, pages: state.pages, page: state.page, rendered: state.rendered,
     }));
   } catch {}
 }
@@ -686,6 +727,23 @@ try {
     $("text").value = draft.text;
     state.title = draft.title || null;
     setOptions(draft.opts || OPTIONS, draft.ink || "blue-black");
+    // The render this draft came from may still be on the server; showing it
+    // again beats a "Nothing rendered" pane over a full editor. Probed first,
+    // because the server prunes and a library of dead links teaches nothing.
+    if (draft.id) {
+      const img = new Image();
+      img.onload = () => {
+        state.id = draft.id;
+        state.pages = draft.pages || 1;
+        state.rendered = draft.rendered || null;
+        show(Math.min(draft.page || 1, state.pages));
+        $("exportBtn").disabled = false;
+        state.statusLine = `${state.pages} page${state.pages === 1 ? "" : "s"} · `
+          + `${draft.text.length.toLocaleString()} chars`;
+        $("status").textContent = state.statusLine;
+      };
+      img.src = `/preview/${draft.id}/1.jpg`;
+    }
   }
 } catch {}
 

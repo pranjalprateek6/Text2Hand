@@ -58,6 +58,30 @@ HEIGHT = {
     963: 1.10,   # sigma
     966: 1.70,   # phi, stem above and below the body
     968: 1.70,   # psi
+    # The rest of the lowercase alphabet, same proportions.
+    950: 1.75,   # zeta, ascender + tail
+    951: 1.55,   # eta, x body + tail
+    953: 1.00,   # iota
+    954: 1.05,   # kappa
+    957: 1.00,   # nu
+    958: 1.85,   # xi, ascender + tail
+    961: 1.55,   # rho, x body + tail
+    964: 1.10,   # tau
+    965: 1.00,   # upsilon
+    967: 1.55,   # chi, x body + tail
+    969: 1.00,   # omega
+    # Capitals sit on the line at the Latin capitals' height.
+    915: 1.55,   # Gamma
+    916: 1.55,   # Delta
+    920: 1.55,   # Theta
+    923: 1.55,   # Lambda
+    926: 1.55,   # Xi
+    928: 1.55,   # Pi
+    931: 1.55,   # Sigma
+    934: 1.70,   # Phi, stem pokes past the ring
+    936: 1.65,   # Psi
+    937: 1.55,   # Omega
+
     8712: 0.95,  # element of
     8721: 1.50,  # n-ary summation
     8706: 1.40,  # partial derivative
@@ -256,6 +280,91 @@ def main():
     stroke(d, arc_pts(23, 27, 15, 21, 180, 0, n=22), j=0.6)
     stroke(d, [(23, 6), (23, 82)], j=0.8); save(im, 968)
 
+    im, d = new(44, 66)                                                       # eta
+    stroke(d, [(7, 10), (8, 44)], j=0.8)
+    stroke(d, arc_pts(19, 24, 12, 14, 180, 360, n=18), j=0.6)
+    stroke(d, [(31, 24), (31, 62)], j=0.8); save(im, 951)
+
+    im, d = new(40, 66)                                                       # rho
+    ring(d, [6, 6, 34, 38])
+    stroke(d, [(7, 22), (6, 62)], j=0.8); save(im, 961)
+
+    im, d = new(48, 68)                                                       # chi
+    stroke(d, [(6, 10), (22, 34), (40, 62)], j=0.8)
+    stroke(d, [(40, 8), (26, 30), (16, 46), (7, 60)], j=0.8); save(im, 967)
+
+    im, d = new(18, 46)                                                       # iota
+    stroke(d, [(9, 6), (9, 36), (14, 42)], j=0.8); save(im, 953)
+
+    im, d = new(34, 48)                                                       # kappa
+    stroke(d, [(7, 6), (7, 44)], j=0.8)
+    stroke(d, [(7, 27), (21, 8)], j=0.8)
+    stroke(d, [(10, 24), (24, 44)], j=0.8); save(im, 954)
+
+    im, d = new(36, 46)                                                       # nu
+    stroke(d, [(6, 8), (15, 40), (29, 7)], j=0.8); save(im, 957)
+
+    im, d = new(40, 50)                                                       # tau
+    stroke(d, [(4, 10), (34, 8)], j=0.8)
+    stroke(d, [(19, 10), (18, 34), (23, 44), (29, 42)], j=0.8); save(im, 964)
+
+    im, d = new(38, 44)                                                       # upsilon
+    stroke(d, arc_pts(19, 14, 13, 22, 180, 0, n=20), j=0.6); save(im, 965)
+
+    im, d = new(56, 46)                                                       # omega
+    stroke(d, arc_pts(16, 18, 11, 19, 180, 30, n=16), j=0.6)
+    stroke(d, arc_pts(40, 18, 11, 19, 150, 0, n=16), j=0.6); save(im, 969)
+
+    im, d = new(40, 82)                                                       # zeta
+    stroke(d, [(8, 8), (30, 6)], j=0.8)
+    stroke(d, [(30, 6), (14, 26), (10, 44), (20, 54), (30, 60), (26, 72), (14, 76)], j=0.8)
+    save(im, 950)
+
+    im, d = new(40, 86)                                                       # xi
+    stroke(d, [(10, 8), (28, 6)], j=0.8)
+    stroke(d, [(28, 6), (12, 20), (22, 30), (8, 44), (16, 58), (28, 62)], j=0.8)
+    stroke(d, [(28, 62), (25, 74), (13, 78)], j=0.8); save(im, 958)
+
+    # --- Greek capitals: straight-limbed, so mostly plain strokes ----------
+    im, d = new(34, 64)                                                       # Gamma
+    stroke(d, [(8, 6), (8, 58)]); stroke(d, [(8, 6), (30, 7)]); save(im, 915)
+
+    im, d = new(48, 64)                                                       # Delta
+    stroke(d, [(24, 6), (6, 58)], j=0.8); stroke(d, [(24, 6), (42, 58)], j=0.8)
+    stroke(d, [(6, 58), (42, 58)], j=0.8); save(im, 916)
+
+    im, d = new(44, 64)                                                       # Theta
+    stroke(d, arc_pts(22, 32, 17, 27, 0, 360, n=36), j=0.6)
+    stroke(d, [(14, 32), (30, 32)], j=0.8); save(im, 920)
+
+    im, d = new(48, 64)                                                       # Lambda
+    stroke(d, [(24, 6), (6, 58)], j=0.8); stroke(d, [(24, 6), (42, 58)], j=0.8)
+    save(im, 923)
+
+    im, d = new(40, 64)                                                       # Xi (capital)
+    stroke(d, [(6, 8), (34, 6)]); stroke(d, [(10, 32), (30, 31)])
+    stroke(d, [(5, 57), (35, 56)]); save(im, 926)
+
+    im, d = new(42, 64)                                                       # Pi (capital)
+    stroke(d, [(5, 7), (37, 6)]); stroke(d, [(9, 7), (9, 58)])
+    stroke(d, [(33, 7), (33, 58)]); save(im, 928)
+
+    im, d = new(40, 64)                                                       # Sigma (capital)
+    stroke(d, [(36, 8), (6, 6), (22, 32), (6, 58), (36, 60)], j=1.0); save(im, 931)
+
+    im, d = new(44, 70)                                                       # Phi (capital)
+    ring(d, [6, 16, 38, 54])
+    stroke(d, [(22, 5), (22, 66)], j=0.8); save(im, 934)
+
+    im, d = new(46, 70)                                                       # Psi (capital)
+    stroke(d, arc_pts(23, 18, 15, 20, 180, 0, n=20), j=0.6)
+    stroke(d, [(23, 6), (23, 66)], j=0.8); save(im, 936)
+
+    im, d = new(46, 64)                                                       # Omega (capital)
+    stroke(d, arc_pts(23, 26, 16, 20, 120, 420, n=32), j=0.6)
+    stroke(d, [(12, 44), (10, 56), (2, 57)], j=0.8)
+    stroke(d, [(34, 44), (36, 56), (44, 57)], j=0.8); save(im, 937)
+
     # --- maths --------------------------------------------------------------
     im, d = new(38, 42)                                                       # element of
     stroke(d, arc_pts(21, 21, 15, 17, 60, 300), j=0.6)
@@ -289,7 +398,7 @@ def main():
 
     # The console may not be UTF-8 (cp1252 on Windows), so never print the
     # characters themselves.
-    print("wrote 21 ascii symbols and 18 greek/maths glyphs")
+    print("wrote 21 ascii symbols and 39 greek/maths glyphs")
 
 
 if __name__ == "__main__":

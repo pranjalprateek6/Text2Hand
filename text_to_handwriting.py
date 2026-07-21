@@ -87,12 +87,12 @@ INK_MIN, INK_MAX = 0.78, 1.0            # per-glyph opacity (pen-pressure) range
 # body, not by a fraction of their height: see _drop_below_line. The Greek
 # letters follow the same anatomy: gamma and mu carry their bodies on the line
 # with the tail below, exactly like g and p.
-DESCENDERS = set("gjpqyγμ")
+DESCENDERS = set("gjpqyγμηρχ")
 # f belongs with them in spirit, but its body reaches well above the x-height,
 # so the body rule would bury it. It keeps the fractional drop. Left out of both
 # sets it was aligned like an x-height letter, which sat its tail on the rule
 # and made every f read as a t.
-TAILED_ASCENDERS = set("fβφψ")         # rise past the x-height and hang a tail
+TAILED_ASCENDERS = set("fβφψζξ")       # rise past the x-height and hang a tail
 # Marks whose tail crosses the writing line rather than resting on it. Without
 # this a comma sits entirely above the rule and reads as a 9.
 HANGING = set(",;")
@@ -177,6 +177,9 @@ EQ_MAX_WIDTH = 0.86                     # of the writing column
 # --------------------------------------------------------------------------- #
 _cache: dict[str, list[Image.Image] | None] = {}
 
+# The Sheet currently being written, for cleanup when a render is abandoned.
+_live_sheet = None
+
 # Optional progress sink, set for the duration of a render_pages() call. Page
 # count is not known up front (pagination is discovered as text flows), so the
 # only honest progress signal is "a new page was started".
@@ -214,12 +217,22 @@ def _prepare(path: str) -> Image.Image:
     return im
 
 
+# Greek letters that are the same drawing as a Latin one. Omicron is o, and
+# most Greek capitals are indistinguishable from Latin capitals in any hand,
+# so they borrow the captured letters instead of being drawn imitations.
+GLYPH_ALIASES = {
+    "ο": "o",
+    "Α": "A", "Β": "B", "Ε": "E", "Ζ": "Z", "Η": "H", "Ι": "I", "Κ": "K",
+    "Μ": "M", "Ν": "N", "Ο": "O", "Ρ": "P", "Τ": "T", "Υ": "Y", "Χ": "X",
+}
+
+
 def glyph_variants(ch: str) -> list[Image.Image] | None:
     """All prepared images for a character (real variants if present), or None."""
     if ch in _cache:
         return _cache[ch]
 
-    scode = str(ord(ch))
+    scode = str(ord(GLYPH_ALIASES.get(ch, ch)))
     variants: list[Image.Image] = []
     for path in sorted(glob.glob(os.path.join(FONT_DIR, scode + "*.png"))):
         stem = os.path.splitext(os.path.basename(path))[0]
@@ -737,6 +750,12 @@ class Sheet:
     PAGE_POOL = 3
 
     def __init__(self, on_page=None) -> None:
+        # Remembered at module level so stream_pages can clean up a sheet it
+        # never got handed: a render cancelled mid-page raises out of render()
+        # before the Sheet is returned, and the skew pool's threads would
+        # otherwise outlive the render that made them.
+        global _live_sheet
+        _live_sheet = self
         self.template = Image.open(BG_PATH).convert("RGB")
         self.width, self.height = self.template.size
         # With an on_page sink a finished page is handed over and forgotten, so
@@ -1401,6 +1420,8 @@ def stream_pages(text: str, on_page, as_markdown: bool = False,
         sheet.finish()
     finally:
         _progress = None
+        if _live_sheet is not None:       # close() is safe to repeat
+            _live_sheet.close()
     return sheet.count, sheet.missing
 
 

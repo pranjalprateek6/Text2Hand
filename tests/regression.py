@@ -328,6 +328,43 @@ if _att:
 else:
     skip("equation token checks", "attention.pdf not found")
 
+# --- full Greek coverage, drawn and aliased --------------------------------
+_drawn = "ζηικνξρτυχω" + "ΓΔΘΛΞΠΣΦΨΩ"
+_missing_files = [c for c in _drawn
+                  if not os.path.exists(os.path.join("myfont", f"{ord(c)}.png"))]
+check("new greek glyphs on disk", not _missing_files,
+      " ".join(ascii(c) for c in _missing_files) or f"{len(_drawn)} drawn")
+_aliased = "οΑΒΕΖΗΙΚΜΝΟΡΤΥΧ"
+_dead = [c for c in _aliased if not t2h.glyph_variants(c)]
+check("greek aliases resolve to latin glyphs", not _dead,
+      " ".join(ascii(c) for c in _dead) or f"{len(_aliased)} aliased")
+_pgs, _miss = t2h.render_pages("α β γ δ ε ζ η θ ι κ λ μ ν ξ ο π ρ σ τ υ φ χ ψ ω "
+                               "Γ Δ Θ Λ Ξ Π Σ Φ Ψ Ω")
+check("full greek line renders clean", not _miss,
+      " ".join(ascii(c) for c in _miss) or "nothing skipped")
+check("eta rho chi declared descenders", set("ηρχ") <= t2h.DESCENDERS)
+check("zeta xi declared tailed ascenders", set("ζξ") <= t2h.TAILED_ASCENDERS)
+
+# --- the E glyph is one piece ----------------------------------------------
+# Its capture kept a fragment of the letter above it, which every rendered E
+# wore as a breve until someone finally looked at one.
+import numpy as _np2
+_e = _np2.asarray(Image.open("myfont/69.png").convert("L"))
+_rows = _np2.where((_e < 150).sum(axis=1) > 0)[0]
+_gaps = (_np2.diff(_rows) > 8).sum() if len(_rows) else 0
+check("E glyph is a single component", _gaps == 0, f"{_gaps} gaps")
+
+# --- handwriting sizes really change the glyphs ----------------------------
+_heights = {}
+for _mm in (2.5, 3.0, 3.5):
+    t2h.X_HEIGHT_MM = _mm
+    t2h.derive_metrics()
+    _heights[_mm] = t2h.glyph_variants("o")[0].height
+t2h.X_HEIGHT_MM = 3.0
+t2h.derive_metrics()
+check("three sizes give three glyph heights",
+      _heights[2.5] < _heights[3.0] < _heights[3.5], str(_heights))
+
 # --- paper grain: present, subtle, and allowed to repeat -------------------
 # The blank-sheet pool and the cached texture layers mean pages can share
 # their paper exactly, like sheets torn from one pad. What matters is that
