@@ -328,6 +328,55 @@ if _att:
 else:
     skip("equation token checks", "attention.pdf not found")
 
+# --- paper grain: present, subtle, and allowed to repeat -------------------
+# The blank-sheet pool and the cached texture layers mean pages can share
+# their paper exactly, like sheets torn from one pad. What matters is that
+# the grain exists (texture on has to differ from texture off), that it stays
+# far too faint to read as a pattern, and that reuse never leaks ink: a
+# pooled sheet that was written on by mistake would show up here first.
+#
+# Measured with the skew off, because rotating the sheet resamples the grain
+# and would smear the comparison. And only ever measured in a region PROVEN
+# blank first: two earlier attempts at this check sampled handwriting and
+# rules by accident and returned confident nonsense.
+import numpy as _np
+
+_texts = ("The page fills more slowly than you expect it to. " * 120)
+_skew, _seedpages = t2h.SCAN_SKEW, None
+t2h.SCAN_SKEW = 0
+try:
+    _pgs, _ = t2h.render_pages(_texts)
+    _BOX = (400, 18, 720, 98)          # top margin, above the first ruled line
+    _strips = [_np.asarray(p.convert("L").crop(_BOX), dtype=_np.int16) for p in _pgs]
+
+    _clean = all(int(s.min()) > 200 for s in _strips)
+    check("grain strip is proven blank on every page", _clean,
+          f"min brightness {min(int(s.min()) for s in _strips)}")
+
+    if _clean:
+        # grain exists: the same region on an untextured render is flat
+        t2h.PAPER_TEXTURE = False
+        _flat, _ = t2h.render_pages(_texts[:400])
+        _fs = _np.asarray(_flat[0].convert("L").crop(_BOX), dtype=_np.int16)
+        t2h.PAPER_TEXTURE = True
+        check("texture leaves visible grain", float(_strips[0].std()) > float(_fs.std()) + 0.2,
+              f"std {float(_strips[0].std()):.2f} textured vs {float(_fs.std()):.2f} flat")
+
+        # and it is subtle: pages may share a sheet outright (diff 0), but no
+        # pair may differ by enough to read as a pattern under the writing
+        _worst = max(float(_np.abs(a - b).mean())
+                     for i, a in enumerate(_strips) for b in _strips[i + 1:])
+        check("grain difference between pages stays subtle", _worst < 4.0,
+              f"worst pair {_worst:.2f}/255")
+
+        # reuse must hand out CLEAN sheets: blank margins on later pages,
+        # where the pool is certainly recycling
+        check("recycled sheets carry no ink", all(int(s.min()) > 200 for s in _strips[3:]),
+              f"{len(_strips) - 3} recycled pages checked" if len(_strips) > 3 else "few pages")
+finally:
+    t2h.SCAN_SKEW = _skew
+    t2h.PAPER_TEXTURE = True
+
 bad = [n for n, ok, _ in results if not ok]
 print(f"\n{len(results) - len(bad)}/{len(results)} passed"
       + (f", {len(skipped)} skipped" if skipped else ""))
