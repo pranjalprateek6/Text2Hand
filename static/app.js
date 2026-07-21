@@ -88,6 +88,14 @@ function title() {
   return first ? (first.length > 40 ? first.slice(0, 40) + "…" : first) : "Untitled";
 }
 
+function fileStem() {
+  // The display title, ready to name a downloaded file. The server sanitizes
+  // for the filesystem; this only decides whether there is a name worth
+  // sending at all.
+  const t = title();
+  return t === "Untitled" ? "" : t.replace(/…$/, "").trim();
+}
+
 function count() {
   const n = $("text").value.length;
   const pages = Math.max(1, Math.ceil(n / PAGE_SIZE));
@@ -130,6 +138,11 @@ const SAMPLES = {
 document.querySelectorAll(".try").forEach((btn) => {
   btn.addEventListener("click", () => {
     const which = btn.dataset.sample;
+    // The chips hide once there is text, so this only ever triggers on
+    // whitespace; still, a keyboard path or a future layout should not be
+    // able to wipe the editor without asking.
+    if ($("text").value.trim() &&
+        !window.confirm("Replace what you've written with the sample?")) return;
     $("text").value = SAMPLES[which] || "";
     if (OPTIONS.markdown !== (which === "markdown")) $("oMarkdown").click();
     count();
@@ -213,7 +226,10 @@ async function render() {
     state.id = done.id;
     state.pages = done.pages;
     state.rendered = JSON.stringify(body);
-    show(1);
+    // Keep the reader's place: proofreading page 6, fixing a word and
+    // re-rendering used to bounce back to page 1. show() clamps, so a render
+    // that came back shorter lands on its last page instead.
+    show(state.page);
     $("exportBtn").disabled = false;
     state.statusLine = `${done.pages} page${done.pages === 1 ? "" : "s"} · ${body.text.length.toLocaleString()} chars`;
     $("status").textContent = state.statusLine;
@@ -246,14 +262,19 @@ function show(n) {
   $("page").alt = `Page ${state.page}`;
   $("page").hidden = false;
   $("empty").hidden = true;
-  $("n").textContent = `${state.page} / ${state.pages}`;
+  $("pageN").value = state.page;
+  $("pageN").max = state.pages;
+  $("pageTotal").textContent = `/ ${state.pages}`;
   $("prev").disabled = state.page === 1;
   $("next").disabled = state.page === state.pages;
   $("pager").hidden = state.pages < 2;
-  $("dlPdf").href = `/download/${state.id}/handwriting.pdf`;
-  $("dlZip").href = `/download/${state.id}/pages.zip`;
-  $("dlPagePng").href = `/download/${state.id}/page_${state.page}.png`;
-  $("dlPagePdf").href = `/download/${state.id}/page_${state.page}.pdf`;
+  // Downloads carry the document's title, so the file that lands in a full
+  // Downloads folder says which document it is, not "handwriting (7).pdf".
+  const name = fileStem() ? `?name=${encodeURIComponent(fileStem())}` : "";
+  $("dlPdf").href = `/download/${state.id}/handwriting.pdf${name}`;
+  $("dlZip").href = `/download/${state.id}/pages.zip${name}`;
+  $("dlPagePng").href = `/download/${state.id}/page_${state.page}.png${name}`;
+  $("dlPagePdf").href = `/download/${state.id}/page_${state.page}.pdf${name}`;
 
   // On a one-page render the whole document and this page are the same file,
   // and the zip is that one PNG in a wrapper. Offer the two artefacts that
@@ -268,6 +289,18 @@ $("render").addEventListener("click", render);
 $("prev").addEventListener("click", () => show(state.page - 1));
 $("next").addEventListener("click", () => show(state.page + 1));
 
+// Type a page number to jump straight there: prev/next alone made page 40 of
+// an 80-page render a 40-click trip. Enter commits via blur, and show()
+// clamps whatever was typed.
+$("pageN").addEventListener("change", () => {
+  const n = parseInt($("pageN").value, 10);
+  if (Number.isFinite(n) && state.id) show(n);
+  else $("pageN").value = state.page;
+});
+$("pageN").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); $("pageN").blur(); }
+});
+
 /* ------------------------------------------------------------- auto render */
 
 // Overleaf-style: when Auto is on, a pause after a change re-renders. Off by
@@ -280,6 +313,9 @@ $("auto").addEventListener("change", () => {
 });
 
 function touched() {
+  // every path that changes the document runs through here, which makes it
+  // the one place the draft needs saving from
+  draftSoon();
   if (!$("auto").checked) return;
   if (!$("text").value.trim()) return;
   if (JSON.stringify(payload()) === state.rendered) return;
@@ -330,6 +366,8 @@ async function remember(done, body) {
 function drawLibrary() {
   const entries = lib();
   $("libEmpty").hidden = entries.length > 0;
+  // at capacity the oldest entries roll off silently, so say so
+  $("libCap").hidden = entries.length < LIB_MAX;
   const grid = $("grid");
   grid.innerHTML = "";
   const ago = (ts) => {
@@ -354,6 +392,8 @@ function drawLibrary() {
       `</span></span></span>`;
     card.querySelector(".cardlet__title").textContent = e.title;   // never innerHTML user text
     const drop = () => {
+      // asked, because the X is small, next to the open action, and final
+      if (!window.confirm(`Remove "${e.title}" from the library?`)) return;
       localStorage.setItem(LIB_KEY, JSON.stringify(lib().filter((x) => x.ts !== e.ts)));
       drawLibrary();
     };
@@ -375,6 +415,12 @@ function drawLibrary() {
 }
 
 function openEntry(e) {
+  // Anything rendered is already in the library; only typing that was never
+  // rendered is unsaved, and that is the one thing opening an entry can lose.
+  const current = $("text").value;
+  if (current.trim() && current !== e.text &&
+      !lib().some((x) => x.text === current) &&
+      !window.confirm("Replace the unsaved text in the editor with this entry?")) return;
   $("text").value = e.text;
   setOptions(e.opts, e.ink);
   count();
@@ -449,6 +495,9 @@ $("pdfClear").addEventListener("click", () => {
 
 $("read").addEventListener("click", async () => {
   if (!state.file) return;
+  // reading lands its Markdown in the editor, over whatever is there
+  if ($("text").value.trim() &&
+      !window.confirm("Reading the PDF replaces the text in the editor. Continue?")) return;
 
   const body = new FormData();
   body.append("file", state.file);
@@ -522,15 +571,24 @@ document.addEventListener("keydown", (e) => {
 /* ------------------------------------------------------------------ session */
 
 // The editor survives a reload: losing a page of typing to F5 is the kind of
-// thing people do not forgive a tool for.
+// thing people do not forgive a tool for. Saved a moment after each change,
+// not only on beforeunload: that event never fires for a crashed tab, a
+// killed process or most of mobile, which are exactly the exits that lose
+// the most typing.
 const DRAFT_KEY = "t2h.draft";
-window.addEventListener("beforeunload", () => {
+function saveDraft() {
   try {
     localStorage.setItem(DRAFT_KEY, JSON.stringify({
       text: $("text").value, opts: OPTIONS, ink: INK,
     }));
   } catch {}
-});
+}
+let draftTimer = null;
+function draftSoon() {
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(saveDraft, 800);
+}
+window.addEventListener("beforeunload", saveDraft);
 try {
   const draft = JSON.parse(localStorage.getItem(DRAFT_KEY) || "null");
   if (draft && draft.text) {

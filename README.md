@@ -23,12 +23,16 @@ Everything on that page, including the ruled paper, the table grid and the figur
 Markdown is the contract between reading a document and drawing it. Any input format only has to reach Markdown, and the renderer never learns a second input grammar:
 
 ```
-PDF  ─┐
-DOCX ─┼─►  converter  ─►  Markdown  ─►  block renderer  ─►  pages + PDF
-HTML ─┘                      ▲
-                             │
-                    you can edit it here
+PDF ──►  converter  ─►  Markdown  ─►  pasted or typed Markdown joins here
+                            │
+                   you can edit it here
+                            │
+                            ▼
+                     block renderer  ─►  pages + PDF
 ```
+
+PDF is the only built-in converter today; anything else gets there by being
+Markdown already, pasted or typed.
 
 That middle step is the point. Extraction is never perfect, and because the intermediate is readable, a wrong heading is a ten second fix rather than a dead end.
 
@@ -133,7 +137,17 @@ Text in scripts the handwriting has no glyphs for (Cyrillic, Arabic, CJK and so 
 
 The `myfont` folder holds one PNG per character, named by its ASCII code. For example `65.png` is `A`, `97.png` is `a`, and `46.png` is a full stop. `bg.png` is the blank page background.
 
-To use your own handwriting, replace these images with cropped photos of your own letters, named by the matching ASCII code. You can add variants for extra realism by adding files such as `65_1.png` and `65_2.png`, and the engine picks among them at random.
+There is a supported pipeline for capturing a whole hand, and it is the same one the bundled font came from:
+
+```
+python tools/make_capture_sheets.py    # print the sheets, write on them, scan at 300 dpi
+python tools/extract_glyphs.py         # letter sheet  -> myfont_new/<code>.png
+python tools/extract_words.py          # paragraph     -> wordfont/<n>.png + index.json
+```
+
+`extract_glyphs.py` deliberately writes to `myfont_new/`, not `myfont/`, so a bad scan cannot silently replace the working font. Look the results over, then copy the ones you keep into `myfont/`. `salvage_letters.py` can recover a missed letter from a captured word, which is how the bundled `v` and `w` were made.
+
+You can also skip the pipeline entirely: replace any image in `myfont/` with a cropped photo of your own letter, named by the matching code. Add variants as `65_1.png`, `65_2.png` and so on, and the engine picks among them at random.
 
 The bundled font is a real hand, captured from the sheets in `sample/` and cut up by the extractors in `tools/`. Every letter, digit and punctuation mark is that hand; only the technical symbols are drawn rather than written. `v` and `w` were skipped when the letter sheet was written and were recovered instead from words that contained them, which is also why they have more variants than the rest. Characters with no matching image are skipped and listed at the end, so a missing glyph never stops a run.
 
@@ -141,14 +155,13 @@ Alongside it, `wordfont/` holds whole words captured in one stroke. Where a word
 
 ## Glyph tools
 
-Not every character came from the original handwriting sample. Two generators in `tools/` fill the gaps. Both are deterministic, so re-running them reproduces the committed glyphs exactly:
+Not every character came from the original handwriting sample. One generator in `tools/` fills the gaps, and it is deterministic, so re-running it reproduces the committed glyphs exactly:
 
 ```
-python tools/make_punctuation.py
 python tools/make_symbols.py
 ```
 
-`make_punctuation.py` **composes** `"` `'` `:` `;` out of marks that already exist in the sample. A colon is two periods, a semicolon is a period above a comma, a double quote is two commas, and an apostrophe is a single comma. Because they reuse real strokes, they match the rest of the handwriting exactly.
+The quotes, colons and semicolons were once composed by a separate `make_punctuation.py`; they have since been captured from the real hand, and that script is gone.
 
 `make_symbols.py` **draws** the 21 technical symbols with no natural building block, such as `# $ % & @ / \ { }`, plus 16 Greek letters and maths symbols (alpha through sigma, element-of, summation, partial, square root, infinity) so converted papers keep their equations. These are approximations in a hand style, so they read as neat rather than personal.
 

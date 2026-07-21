@@ -136,7 +136,11 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                    stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
             </button>
-            <span class="pager__n" id="n">1 / 1</span>
+            <span class="pager__n">
+              <input class="pager__jump" id="pageN" type="number" min="1" value="1"
+                     aria-label="Page number" />
+              <span id="pageTotal">/ 1</span>
+            </span>
             <button class="iconbtn" id="next" aria-label="Next page">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                    stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
@@ -173,6 +177,8 @@
         <h2>Library</h2>
         <p>Everything rendered from this browser. Open one to load its text and
           settings back into the editor.</p>
+        <p class="library__cap" id="libCap" hidden>The library keeps the last
+          24 renders; the oldest roll off as new ones arrive.</p>
       </div>
       <div class="grid" id="grid"></div>
       <div class="hollow" id="libEmpty">

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import shutil
 import tempfile
 import threading
@@ -291,6 +292,19 @@ def _upload_key(path: Path, *parts: str) -> str:
     return h.hexdigest()
 
 
+def _dl_stem() -> str:
+    """Filename stem for a download, from the ?name= the studio sends.
+
+    The studio names files after the document's title, so an export of "Deep
+    Learning Notes" is not one more handwriting.pdf in a full Downloads
+    folder. The title is user text, so it is reduced to characters every
+    filesystem accepts before it may become a filename; empty (or absent)
+    means the caller's default name stands.
+    """
+    name = re.sub(r"[^\w \-]+", "", request.args.get("name", ""))
+    return re.sub(r"\s+", " ", name).strip()[:60]
+
+
 def _safe(rid: str) -> Path:
     """Resolve a render folder, refusing anything that is not a plain id."""
     if not rid.isalnum():
@@ -476,8 +490,9 @@ def download_page_pdf(rid: str, n: int):
         if not src.exists():
             abort(404)
         Image.open(src).convert("RGB").save(pdf)
-    return send_file(pdf, mimetype="application/pdf",
-                     as_attachment=True, download_name=f"page_{n}.pdf")
+    stem = _dl_stem()
+    return send_file(pdf, mimetype="application/pdf", as_attachment=True,
+                     download_name=f"{stem} page {n}.pdf" if stem else f"page_{n}.pdf")
 
 
 @app.get("/download/<rid>/pages.zip")
@@ -494,8 +509,9 @@ def download_zip(rid: str):
             combined = folder / "handwriting.pdf"
             if combined.exists():
                 z.write(combined, combined.name)
-    return send_file(zpath, mimetype="application/zip",
-                     as_attachment=True, download_name="handwriting_pages.zip")
+    stem = _dl_stem()
+    return send_file(zpath, mimetype="application/zip", as_attachment=True,
+                     download_name=f"{stem} pages.zip" if stem else "handwriting_pages.zip")
 
 
 @app.get("/download/<rid>/handwriting.pdf")
@@ -511,8 +527,9 @@ def download_pdf(rid: str):
             _combine_pdf(folder)
         except FileNotFoundError:
             abort(404)
-    return send_file(path, mimetype="application/pdf",
-                     as_attachment=True, download_name="handwriting.pdf")
+    stem = _dl_stem()
+    return send_file(path, mimetype="application/pdf", as_attachment=True,
+                     download_name=f"{stem}.pdf" if stem else "handwriting.pdf")
 
 
 @app.get("/download/<rid>/page_<int:n>.png")
@@ -520,8 +537,9 @@ def download_page(rid: str, n: int):
     path = _safe(rid) / f"page_{n}.png"
     if not path.exists():
         abort(404)
-    return send_file(path, mimetype="image/png",
-                     as_attachment=True, download_name=f"page_{n}.png")
+    stem = _dl_stem()
+    return send_file(path, mimetype="image/png", as_attachment=True,
+                     download_name=f"{stem} page {n}.png" if stem else f"page_{n}.png")
 
 
 if __name__ == "__main__":

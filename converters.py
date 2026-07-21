@@ -189,11 +189,20 @@ def inspect(path: str) -> tuple[int, bool]:
 
     try:
         with pymupdf.open(path) as doc:
+            # An encrypted PDF opens fine and only fails when a page is read,
+            # which used to land it in the generic "damaged" message below. It
+            # is neither damaged nor fake, and deserves to be told apart.
+            if doc.needs_pass:
+                raise ValueError(
+                    "That PDF is password-protected. Remove the password "
+                    "first (printing it to a new PDF usually works).")
             total = doc.page_count
             probe = min(SCAN_PROBE_PAGES, total)
             # Same cheap heuristic as the reference pipeline: no extractable
             # text on the first few pages means it is images of text, not text.
             has_text = any(doc.load_page(i).get_text().strip() for i in range(probe))
+    except ValueError:
+        raise                             # already written for the browser
     except Exception:
         # pymupdf's own message includes the server's temp file path, which
         # must not be shown to a browser
@@ -490,7 +499,20 @@ def _page_ocr(doc, number: int, ctx: dict | None = None) -> str:
 def _llamaparse(path: str, pages: list[int]) -> str:
     from llama_parse import LlamaParse
 
-    docs = LlamaParse(result_type="markdown").load_data(path)
+    # target_pages is LlamaParse's own page filter (zero-based, comma
+    # separated). The range used to be accepted here and then silently
+    # ignored, so "1-10" returned the whole document.
+    spec = ",".join(str(p) for p in pages)
+    try:
+        docs = LlamaParse(result_type="markdown", target_pages=spec).load_data(path)
+    except TypeError:
+        # an older llama_parse without target_pages parses everything; keep
+        # the asked-for pages when the result is one document per page, and
+        # otherwise return it whole rather than guessing at page boundaries
+        docs = LlamaParse(result_type="markdown").load_data(path)
+        if len(docs) > 1:
+            keep = set(pages)
+            docs = [d for i, d in enumerate(docs) if i in keep]
     return "\n\n".join(d.text for d in docs)
 
 

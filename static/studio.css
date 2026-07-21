@@ -281,7 +281,16 @@ select.mini { max-width: 200px; cursor: pointer; }
   background: var(--muted);
   border-radius: 999px;
 }
-.pager__n { min-width: 56px; text-align: center; font-family: var(--font-mono); font-size: 11.5px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+.pager__n { display: inline-flex; align-items: center; gap: 3px; font-family: var(--font-mono); font-size: 11.5px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+.pager__jump {
+  width: 34px; padding: 2px 0; text-align: right;
+  font: inherit; color: var(--foreground);
+  background: transparent; border: 1px solid transparent; border-radius: 4px;
+  -moz-appearance: textfield; appearance: textfield;
+}
+.pager__jump::-webkit-outer-spin-button,
+.pager__jump::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.pager__jump:hover, .pager__jump:focus { border-color: var(--border); outline: none; background: var(--background); }
 
 .hollow { margin: auto; display: grid; place-items: center; gap: 6px; text-align: center; padding: 40px; }
 .hollow svg { width: 30px; height: 30px; color: color-mix(in oklch, var(--muted-foreground) 55%, transparent); margin-bottom: 6px; }
@@ -326,6 +335,7 @@ select.mini { max-width: 200px; cursor: pointer; }
 .library__head { margin-bottom: 32px; }
 .library__head h2 { font-family: var(--font-display); font-size: clamp(34px, 5vw, 54px); letter-spacing: -0.02em; margin-top: 10px; }
 .library__head p { margin-top: 10px; font-size: 14.5px; color: var(--muted-foreground); max-width: 46rem; }
+.library__head .library__cap { font-size: 12.5px; color: color-mix(in oklch, var(--muted-foreground) 75%, transparent); }
 
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 18px; }
 .cardlet {

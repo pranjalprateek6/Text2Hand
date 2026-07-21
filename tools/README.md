@@ -20,9 +20,14 @@ a pen is dark, so extraction drops the guide by brightness and keeps the ink.
 ## Extraction
 
 ```
-python tools/extract_glyphs.py     # letter sheet  -> myfont/<ascii>.png
+python tools/extract_glyphs.py     # letter sheet  -> myfont_new/<ascii>.png
 python tools/extract_words.py      # paragraph     -> wordfont/<n>.png + index.json
 ```
+
+`extract_glyphs.py` stages into `myfont_new/` on purpose: the renderer reads
+`myfont/`, and extraction from a bad scan should never overwrite a working
+font unreviewed. Inspect `myfont_new/`, then copy what you keep into
+`myfont/`.
 
 Both label by position rather than by recognising anything: the sheet holds
 known content in a known order, so a shape gets its label from the text. Any

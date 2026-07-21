@@ -42,10 +42,31 @@ def to_blocks(md_text: str) -> list[Block]:
     # silently lost. Converted PDFs mix the two constantly.
     html = markdown(md_text, extensions=["tables", "fenced_code", "sane_lists"])
     soup = BeautifulSoup(html, "html.parser")
+    _keep_links(soup)
     out: list[Block] = []
     for node in list(soup.children):
         _walk(node, out, depth=0)
     return out
+
+
+def _keep_links(soup) -> None:
+    """Fold each link's destination into its text, as "text (url)".
+
+    Handwriting cannot hyperlink, and get_text() keeps a link's words while
+    silently dropping where they pointed, so "[the docs](https://x)" used to
+    reach the page as just "the docs". Only real destinations are folded in:
+    an anchor within the document says nothing useful on paper, and a bare URL
+    whose text already is the URL would only repeat itself.
+    """
+    for a in soup.find_all("a"):
+        href = (a.get("href") or "").strip()
+        if not href.startswith(("http://", "https://", "mailto:")):
+            continue
+        plain = href[7:] if href.startswith("mailto:") else href
+        text = a.get_text(" ", strip=True)
+        if not text or text in (href, plain):
+            continue
+        a.string = f"{text} ({plain})"
 
 
 def _walk(node, out: list[Block], depth: int) -> None:
