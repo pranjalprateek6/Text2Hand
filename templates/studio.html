@@ -182,6 +182,18 @@
       </section>
     </div>
 
+    <!-- a question the app asks before doing something destructive -->
+    <div class="ask" id="ask" hidden role="dialog" aria-modal="true" aria-labelledby="askMsg">
+      <div class="ask__veil" id="askVeil"></div>
+      <div class="ask__box">
+        <p class="ask__msg" id="askMsg"></p>
+        <div class="ask__row">
+          <button class="btn btn--outline btn--sm" id="askCancel">Cancel</button>
+          <button class="btn btn--sm" id="askOk">Continue</button>
+        </div>
+      </div>
+    </div>
+
     <!-- ----------------------------------------------------- library view -->
     <div class="library" id="viewLibrary" hidden>
       <div class="library__head">

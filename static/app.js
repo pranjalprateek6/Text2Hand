@@ -157,19 +157,56 @@ const SAMPLES = {
 };
 
 document.querySelectorAll(".try").forEach((btn) => {
-  btn.addEventListener("click", () => {
+  btn.addEventListener("click", async () => {
     const which = btn.dataset.sample;
     // The chips hide once there is text, so this only ever triggers on
     // whitespace; still, a keyboard path or a future layout should not be
     // able to wipe the editor without asking.
     if ($("text").value.trim() &&
-        !window.confirm("Replace what you've written with the sample?")) return;
+        !(await ask("Replace what you've written with the sample?", "Replace"))) return;
     $("text").value = SAMPLES[which] || "";
     if (OPTIONS.markdown !== (which === "markdown")) $("oMarkdown").click();
     count();
     touched();
     $("text").focus();
   });
+});
+
+/* ----------------------------------------------------------------- question */
+
+// The app's own confirm. window.confirm is the browser talking; this is the
+// studio talking, in its own type and colours. Returns a promise, so every
+// caller awaits the answer the way the old call blocked for it.
+let asking = null;
+
+function ask(message, okLabel = "Continue") {
+  return new Promise((resolve) => {
+    asking = { resolve, before: document.activeElement };
+    $("askMsg").textContent = message;
+    $("askOk").textContent = okLabel;
+    $("ask").hidden = false;
+    $("askOk").focus();
+  });
+}
+
+function askDone(answer) {
+  if (!asking) return;
+  $("ask").hidden = true;
+  const { resolve, before } = asking;
+  asking = null;
+  if (before && before.focus) before.focus();
+  resolve(answer);
+}
+
+$("askOk").addEventListener("click", () => askDone(true));
+$("askCancel").addEventListener("click", () => askDone(false));
+$("askVeil").addEventListener("click", () => askDone(false));
+// two buttons and a question: Tab just moves between the buttons
+$("ask").addEventListener("keydown", (e) => {
+  if (e.key === "Tab") {
+    e.preventDefault();
+    ($("askOk") === document.activeElement ? $("askCancel") : $("askOk")).focus();
+  }
 });
 
 /* -------------------------------------------------------------------- notes */
@@ -426,9 +463,9 @@ function drawLibrary() {
       `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>` +
       `</span></span></span>`;
     card.querySelector(".cardlet__title").textContent = e.title;   // never innerHTML user text
-    const drop = () => {
+    const drop = async () => {
       // asked, because the X is small, next to the open action, and final
-      if (!window.confirm(`Remove "${e.title}" from the library?`)) return;
+      if (!(await ask(`Remove "${e.title}" from the library?`, "Remove"))) return;
       localStorage.setItem(LIB_KEY, JSON.stringify(lib().filter((x) => x.ts !== e.ts)));
       drawLibrary();
     };
@@ -449,22 +486,22 @@ function drawLibrary() {
   });
 }
 
-$("libClear").addEventListener("click", () => {
+$("libClear").addEventListener("click", async () => {
   const n = lib().length;
   if (!n) return;
-  if (!window.confirm(`Remove all ${n} entr${n === 1 ? "y" : "ies"} from the library? `
-                      + "This cannot be undone.")) return;
+  if (!(await ask(`Remove all ${n} entr${n === 1 ? "y" : "ies"} from the library? `
+                  + "This cannot be undone.", "Remove all"))) return;
   localStorage.removeItem(LIB_KEY);
   drawLibrary();
 });
 
-function openEntry(e) {
+async function openEntry(e) {
   // Anything rendered is already in the library; only typing that was never
   // rendered is unsaved, and that is the one thing opening an entry can lose.
   const current = $("text").value;
   if (current.trim() && current !== e.text &&
       !lib().some((x) => x.text === current) &&
-      !window.confirm("Replace the unsaved text in the editor with this entry?")) return;
+      !(await ask("Replace the unsaved text in the editor with this entry?", "Replace"))) return;
   $("text").value = e.text;
   // a card's name is kept only if it was really a rename; a title the text
   // would derive anyway stays live, following future edits
@@ -544,7 +581,7 @@ $("read").addEventListener("click", async () => {
   if (!state.file) return;
   // reading lands its Markdown in the editor, over whatever is there
   if ($("text").value.trim() &&
-      !window.confirm("Reading the PDF replaces the text in the editor. Continue?")) return;
+      !(await ask("Reading the PDF replaces the text in the editor. Continue?", "Read it"))) return;
 
   const body = new FormData();
   body.append("file", state.file);
@@ -607,6 +644,12 @@ window.addEventListener("drop", (e) => {
 /* ----------------------------------------------------------------- keyboard */
 
 document.addEventListener("keydown", (e) => {
+  // while a question is up it owns the keyboard: Escape declines, Enter
+  // presses the focused button on its own, and nothing reaches the app behind
+  if (!$("ask").hidden) {
+    if (e.key === "Escape") { e.preventDefault(); askDone(false); }
+    return;
+  }
   if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); render(); return; }
   if (/^(TEXTAREA|INPUT|SELECT)$/.test(e.target.tagName)) return;
   if (e.target.isContentEditable) return;   // typing a name, not paging
