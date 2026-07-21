@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import sys
 import threading
 import unicodedata
 from concurrent.futures import ThreadPoolExecutor
@@ -149,6 +150,28 @@ def _ocr_ready() -> tuple[bool, str]:
     return True, ""
 
 
+def _key(env: str) -> str | None:
+    """An API key from the environment, or from the user's saved one.
+
+    On Windows a key saved while the server is already running lands in the
+    registry but not in this process, so the dropdown kept saying "set the
+    key" at the one moment someone had just set it. Read through to the saved
+    value, and put it in the process environment so the client libraries that
+    read it from there find it too.
+    """
+    val = os.getenv(env)
+    if not val and sys.platform == "win32":
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as k:
+                val = str(winreg.QueryValueEx(k, env)[0])
+        except OSError:
+            val = None
+    if val:
+        os.environ[env] = val
+    return val or None
+
+
 def available() -> list[dict]:
     """Every converter, whether it is usable right now, and why not."""
     ocr_ok, ocr_why = _ocr_ready()
@@ -169,7 +192,7 @@ def available() -> list[dict]:
         ("llamaparse", "Cloud (LlamaParse)", "llama_parse", "LLAMA_CLOUD_API_KEY"),
         ("mistral", "Cloud (Mistral OCR)", "mistralai", "MISTRAL_API_KEY"),
     ):
-        installed, keyed = _has(module), bool(os.getenv(env))
+        installed, keyed = _has(module), bool(_key(env))
         reason = ""
         if not installed:
             reason = f"pip install {module.replace('_', '-')}"
