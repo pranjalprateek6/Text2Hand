@@ -53,7 +53,13 @@ body { overflow: hidden; height: 100vh; }
   font-size: 19px; letter-spacing: -0.01em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   max-width: 320px;
+  /* editable: a rename here names the exports too */
+  cursor: text;
+  padding: 1px 6px; margin-left: -6px; border-radius: 6px;
+  border: 1px solid transparent;
 }
+.bar__title:hover { border-color: var(--border); }
+.bar__title:focus { outline: none; border-color: var(--foreground); background: var(--card); }
 .bar__status {
   font-family: var(--font-mono);
   font-size: 11px;
@@ -240,7 +246,17 @@ body { overflow: hidden; height: 100vh; }
 }
 .mini:focus { outline: none; border-color: var(--foreground); }
 .mini--slim { width: 72px; text-align: center; flex: none; }
-select.mini { max-width: 200px; cursor: pointer; }
+select.mini {
+  max-width: 200px; cursor: pointer;
+  /* the browser's arrow sits wherever it likes inside a pill; draw our own
+     chevron where it belongs */
+  appearance: none; -webkit-appearance: none;
+  padding-right: 32px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23787369' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 13px;
+}
 
 .iconbtn {
   appearance: none;
@@ -260,15 +276,19 @@ select.mini { max-width: 200px; cursor: pointer; }
 .pages {
   flex: 1; min-height: 0;
   overflow: auto;
-  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  /* "safe" keeps the left edge reachable when a zoomed page overflows */
+  display: flex; flex-direction: column; align-items: safe center; gap: 14px;
   padding: 26px;
   background:
     radial-gradient(color-mix(in oklch, var(--foreground) 7%, transparent) 1px, transparent 1px);
   background-size: 22px 22px;
 }
+.zoom { display: inline-flex; gap: 2px; margin-right: 10px; }
+
 .page {
   display: block;
-  width: min(100%, 540px);
+  width: calc(540px * var(--zoom, 1));
+  max-width: none;
   border-radius: 4px;
   box-shadow: 0 24px 60px rgba(30, 25, 10, 0.16), 0 4px 12px rgba(30, 25, 10, 0.08);
   animation: land 500ms var(--ease) both;
@@ -336,6 +356,7 @@ select.mini { max-width: 200px; cursor: pointer; }
 .library__head h2 { font-family: var(--font-display); font-size: clamp(34px, 5vw, 54px); letter-spacing: -0.02em; margin-top: 10px; }
 .library__head p { margin-top: 10px; font-size: 14.5px; color: var(--muted-foreground); max-width: 46rem; }
 .library__head .library__cap { font-size: 12.5px; color: color-mix(in oklch, var(--muted-foreground) 75%, transparent); }
+.library__clear { margin-top: 16px; }
 
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 18px; }
 .cardlet {

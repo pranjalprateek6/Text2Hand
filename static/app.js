@@ -15,6 +15,7 @@ const PAGE_SIZE = window.PAGE_SIZE || 1200;
 
 const state = {
   id: null, pages: 0, page: 1,
+  title: null,        // a name typed into the bar; null follows the text
   file: null,
   statusLine: null,   // what the bar status returns to after a job ends
   rendered: null,     // JSON of what is on screen, to skip pointless re-renders
@@ -75,17 +76,22 @@ function setOptions(opts, ink) {
 
 /* ---------------------------------------------------------- title and count */
 
-function title() {
+function titleOf(text) {
   // First non-empty line, with Markdown markers stripped for display: the
   // title of "# **Notes**" is "Notes", and a converted PDF's bold header
   // must not show its asterisks in the bar or on a library card.
-  const first = ($("text").value.split("\n").find((l) => l.trim()) || "").trim()
+  const first = (text.split("\n").find((l) => l.trim()) || "").trim()
     .replace(/^[#>\s-]+/, "")
     // strip emphasis markers but keep single underscores: Pranjal_Prateek is
     // a name, not italics
     .replace(/(\*\*|__|[*`])/g, "")
     .trim();
   return first ? (first.length > 40 ? first.slice(0, 40) + "…" : first) : "Untitled";
+}
+
+// A name typed into the bar wins; until then the title follows the text.
+function title() {
+  return state.title || titleOf($("text").value);
 }
 
 function fileStem() {
@@ -102,8 +108,23 @@ function count() {
   $("count").textContent = n ? `${n.toLocaleString()} · ~${pages}p` : "0";
   $("count").classList.toggle("is-over", n > MAX_CHARS);
   $("tries").hidden = n > 0;
-  $("docTitle").textContent = title();
+  // never rewrite the name mid-edit out from under the person typing it
+  if (document.activeElement !== $("docTitle")) $("docTitle").textContent = title();
 }
+
+// The name in the bar is editable, and an edited name follows the document
+// into its exports and its library card.
+$("docTitle").addEventListener("input", () => {
+  state.title = $("docTitle").textContent.trim() || null;
+  draftSoon();
+});
+$("docTitle").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); $("docTitle").blur(); }
+});
+$("docTitle").addEventListener("blur", () => {
+  count();                              // an emptied name falls back to the text's
+  if (state.id) show(state.page);       // exports pick the new name up
+});
 
 $("text").addEventListener("input", () => { count(); touched(); });
 
@@ -289,6 +310,19 @@ $("render").addEventListener("click", render);
 $("prev").addEventListener("click", () => show(state.page - 1));
 $("next").addEventListener("click", () => show(state.page + 1));
 
+// The preview opens at 85%, which fits a whole page in the pane without a
+// scrollbar; each press moves 15%. show() never touches this, so the level
+// survives paging and re-renders.
+let zoom = 0.85;
+function applyZoom() {
+  $("pages").style.setProperty("--zoom", zoom);
+  $("zoomOut").disabled = zoom < 0.41;
+  $("zoomIn").disabled = zoom > 1.95;
+}
+$("zoomIn").addEventListener("click", () => { zoom = Math.min(2.05, zoom + 0.15); applyZoom(); });
+$("zoomOut").addEventListener("click", () => { zoom = Math.max(0.40, zoom - 0.15); applyZoom(); });
+applyZoom();
+
 // Type a page number to jump straight there: prev/next alone made page 40 of
 // an 80-page render a 40-click trip. Enter commits via blur, and show()
 // clamps whatever was typed.
@@ -368,6 +402,7 @@ function drawLibrary() {
   $("libEmpty").hidden = entries.length > 0;
   // at capacity the oldest entries roll off silently, so say so
   $("libCap").hidden = entries.length < LIB_MAX;
+  $("libClear").hidden = entries.length === 0;
   const grid = $("grid");
   grid.innerHTML = "";
   const ago = (ts) => {
@@ -414,6 +449,15 @@ function drawLibrary() {
   });
 }
 
+$("libClear").addEventListener("click", () => {
+  const n = lib().length;
+  if (!n) return;
+  if (!window.confirm(`Remove all ${n} entr${n === 1 ? "y" : "ies"} from the library? `
+                      + "This cannot be undone.")) return;
+  localStorage.removeItem(LIB_KEY);
+  drawLibrary();
+});
+
 function openEntry(e) {
   // Anything rendered is already in the library; only typing that was never
   // rendered is unsaved, and that is the one thing opening an entry can lose.
@@ -422,6 +466,9 @@ function openEntry(e) {
       !lib().some((x) => x.text === current) &&
       !window.confirm("Replace the unsaved text in the editor with this entry?")) return;
   $("text").value = e.text;
+  // a card's name is kept only if it was really a rename; a title the text
+  // would derive anyway stays live, following future edits
+  state.title = e.title === titleOf(e.text) ? null : e.title;
   setOptions(e.opts, e.ink);
   count();
   // restoring options fires the same handlers as clicking them, and each of
@@ -562,6 +609,7 @@ window.addEventListener("drop", (e) => {
 document.addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); render(); return; }
   if (/^(TEXTAREA|INPUT|SELECT)$/.test(e.target.tagName)) return;
+  if (e.target.isContentEditable) return;   // typing a name, not paging
   if (e.key === "Escape") { $("exportPop").hidden = true; return; }
   if ($("viewWrite").hidden || state.pages < 2) return;
   if (e.key === "ArrowLeft") { e.preventDefault(); show(state.page - 1); }
@@ -579,7 +627,7 @@ const DRAFT_KEY = "t2h.draft";
 function saveDraft() {
   try {
     localStorage.setItem(DRAFT_KEY, JSON.stringify({
-      text: $("text").value, opts: OPTIONS, ink: INK,
+      text: $("text").value, opts: OPTIONS, ink: INK, title: state.title,
     }));
   } catch {}
 }
@@ -593,6 +641,7 @@ try {
   const draft = JSON.parse(localStorage.getItem(DRAFT_KEY) || "null");
   if (draft && draft.text) {
     $("text").value = draft.text;
+    state.title = draft.title || null;
     setOptions(draft.opts || OPTIONS, draft.ink || "blue-black");
   }
 } catch {}

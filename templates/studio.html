@@ -31,7 +31,9 @@
       </nav>
 
       <div class="bar__doc">
-        <span class="bar__title" id="docTitle">Untitled</span>
+        <span class="bar__title" id="docTitle" contenteditable="plaintext-only"
+              spellcheck="false"
+              title="Click to rename. Exported files are named after this.">Untitled</span>
         <span class="bar__status" id="status">Ready</span>
       </div>
       <span class="bar__gap"></span>
@@ -131,6 +133,16 @@
         <div class="pane__bar">
           <span class="pane__label" id="previewLabel">02 / Output</span>
           <span class="pane__gap"></span>
+          <div class="zoom" role="group" aria-label="Zoom">
+            <button class="iconbtn" id="zoomOut" aria-label="Zoom out" title="Zoom out">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                   stroke-linecap="round"><path d="M5 12h14"/></svg>
+            </button>
+            <button class="iconbtn" id="zoomIn" aria-label="Zoom in" title="Zoom in">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                   stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            </button>
+          </div>
           <div class="pager" id="pager" hidden>
             <button class="iconbtn" id="prev" aria-label="Previous page">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
@@ -179,6 +191,8 @@
           settings back into the editor.</p>
         <p class="library__cap" id="libCap" hidden>The library keeps the last
           24 renders; the oldest roll off as new ones arrive.</p>
+        <button class="btn btn--sm library__clear" id="libClear" hidden>
+          Clear the library</button>
       </div>
       <div class="grid" id="grid"></div>
       <div class="hollow" id="libEmpty">
