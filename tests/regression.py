@@ -48,10 +48,16 @@ def skip(name, why):
 
 
 def fixture(*names):
-    """Locate an optional paper, or None. See the module docstring."""
-    roots = [os.environ.get("T2H_FIXTURES", ""),
-             os.path.join(ROOT, "tests", "fixtures"),
-             os.path.join(os.path.expanduser("~"), "Downloads")]
+    """Locate an optional paper, or None. See the module docstring.
+
+    T2H_FIXTURES, when set, is the only place searched: an explicit override
+    that falls through to the default folders is not an override, and it made
+    a "run as CI would" rehearsal quietly pick papers out of ~/Downloads.
+    """
+    override = os.environ.get("T2H_FIXTURES")
+    roots = [override] if override is not None else [
+        os.path.join(ROOT, "tests", "fixtures"),
+        os.path.join(os.path.expanduser("~"), "Downloads")]
     for root in filter(None, roots):
         for name in names:
             path = os.path.join(root, name)

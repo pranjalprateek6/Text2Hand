@@ -17,3 +17,6 @@ pytesseract>=0.3.10
 # Optional cloud converters, each also needs its API key in the environment.
 # llama-parse       # LLAMA_CLOUD_API_KEY
 # mistralai         # MISTRAL_API_KEY
+
+# The regression suite measures pages as arrays; the app itself never needs it.
+numpy>=1.26

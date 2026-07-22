@@ -1,0 +1,32 @@
+name: tests
+
+# The regression suite guards the renderer's geometry, the glyph coverage,
+# the converters and the app's limits. It runs on every push so the safety
+# net stops depending on somebody remembering to hold it.
+#
+# The two real-paper fixtures are not in the repository (large, and someone
+# else's writing), so those checks skip here: the suite prints them as
+# skipped and still exits by the checks it did run.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  suite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Run the regression suite
+        run: python tests/regression.py
