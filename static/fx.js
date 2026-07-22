@@ -1,6 +1,6 @@
 "use strict";
 
-/* Text2Hand — the Optimus template's behaviours, without React.
+/* Text2Hand: the Optimus template's behaviours, without React.
  *
  * Each effect is a copy of what the original's hooks do: the nav condenses
  * into a floating pill after 20px of scroll, the hero's last word swaps every
