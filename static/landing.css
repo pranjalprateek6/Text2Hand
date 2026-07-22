@@ -77,7 +77,7 @@ section { position: relative; }
 /* padding-block, never the shorthand: this element is also a .wrap, and the
    shorthand's zero was silently erasing .wrap's inline padding, leaving the
    hero flush against the viewport edge while the stats under it kept theirs */
-.hero__in { position: relative; z-index: 10; padding-block: 160px 200px; }
+.hero__in { position: relative; z-index: 10; padding-block: 150px 240px; }
 .hero__title { font-size: clamp(3rem, 11vw, 9.5rem); }
 .hero__title .line { display: block; }
 .hero__word { position: relative; display: inline-block; }
@@ -86,14 +86,16 @@ section { position: relative; }
   height: 12px;
   background: color-mix(in oklch, var(--foreground) 10%, transparent);
 }
-.hero__cols {
-  margin-top: 56px;
-  display: grid; gap: 40px;
-  align-items: end;
+/* One column of flow: promise, action, proof, all on the same left edge. The
+   buttons used to sit in a second column beside the lede, which balanced
+   until the proof strip made the left side taller and left them floating
+   next to nothing, off the path the eye actually takes. */
+.hero__lede {
+  margin-top: 48px;
+  font-size: clamp(18px, 2vw, 23px); line-height: 1.55;
+  color: var(--muted-foreground); max-width: 36rem;
 }
-@media (min-width: 1024px) { .hero__cols { grid-template-columns: 1fr 1fr; gap: 96px; } }
-.hero__lede { font-size: clamp(18px, 2vw, 23px); line-height: 1.55; color: var(--muted-foreground); max-width: 36rem; }
-.hero__acts { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+.hero__acts { margin-top: 36px; display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
 .hero__note { width: 100%; font-family: var(--font-mono); font-size: 12px; color: var(--muted-foreground); }
 
 /* one line of the actual product, in the first screen: the proof should not
