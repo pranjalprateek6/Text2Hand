@@ -173,8 +173,10 @@ function keysToInk(canvas) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
   const SRC = "typed text becomes ink";
-  const N = 13;
+  const N = 16;
   let t = 0, raf = null, running = !REDUCED;
+  // the morph window: type until 0.42, ink from 0.60, a crossfade between
+  const M0 = 0.42, M1 = 0.60;
 
   // each particle's shape is fixed at boot, so strokes wobble like a pen
   // rather than boiling like static
@@ -199,32 +201,53 @@ function keysToInk(canvas) {
     const r = canvas.getBoundingClientRect();
     if (!r.width) return;
     ctx.clearRect(0, 0, r.width, r.height);
+    const stroke = (x, y, p, reveal, alpha) => {
+      // the stroke draws itself point by point, the way a pen would: `reveal`
+      // is how much of it exists yet, with the tip interpolated so growth is
+      // continuous rather than segment-at-a-time
+      const pt = (k) => [x - 13 + k * 4.4,
+                         y + p.seg[k] * p.amp + Math.sin(t * 1.6 + k * 1.3) * 1.1];
+      ctx.strokeStyle = `rgba(28, 36, 82, ${alpha})`;
+      ctx.lineWidth = 2;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.beginPath();
+      const total = 6 * reveal;
+      const full = Math.floor(total);
+      let [px, py] = pt(0);
+      ctx.moveTo(px, py);
+      for (let k = 1; k <= full; k++) { const [ax, ay] = pt(k); ctx.lineTo(ax, ay); }
+      if (full < 6) {
+        const frac = total - full;
+        const [ax, ay] = pt(full), [bx, by] = pt(full + 1);
+        ctx.lineTo(ax + (bx - ax) * frac, ay + (by - ay) * frac);
+      }
+      ctx.stroke();
+    };
+
     for (const p of P) {
       const prog = (p.phase + t * p.speed) % 1;
       const x = r.width * (0.06 + prog * 0.88);
       const y = r.height * p.lane + Math.sin(t * 0.8 + p.lane * 9) * 4;
-      if (prog < 0.48) {
-        // still type: crisp, monospaced, upright
-        const alpha = Math.min(1, prog / 0.08) * 0.55;
-        ctx.font = "15px monospace";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillStyle = `rgba(40, 36, 26, ${alpha})`;
-        ctx.fillText(p.ch, x, y);
-      } else {
-        // ink now: a short wobbling stroke, fading as it travels
-        const fade = 1 - (prog - 0.48) / 0.52;
-        ctx.strokeStyle = `rgba(28, 36, 82, ${0.5 * fade})`;
-        ctx.lineWidth = 2;
-        ctx.lineCap = "round";
-        ctx.lineJoin = "round";
-        ctx.beginPath();
-        for (let k = 0; k < 7; k++) {
-          const px = x - 13 + k * 4.4;
-          const py = y + p.seg[k] * p.amp + Math.sin(t * 1.6 + k * 1.3) * 1.1;
-          k ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+
+      if (prog < M1) {
+        // still type, at least partly: crisp, monospaced, upright. Inside the
+        // morph window it sinks and thins as the ink takes over.
+        const u = prog < M0 ? 0 : (prog - M0) / (M1 - M0);
+        const ease = u * u * (3 - 2 * u);              // smoothstep, no snap
+        const alpha = Math.min(1, prog / 0.08) * 0.55 * (1 - ease);
+        if (alpha > 0.01) {
+          ctx.font = "15px monospace";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillStyle = `rgba(40, 36, 26, ${alpha})`;
+          ctx.fillText(p.ch, x, y + ease * 3);
         }
-        ctx.stroke();
+        if (ease > 0) stroke(x, y, p, ease, 0.5 * ease);
+      } else {
+        // fully ink: the whole stroke, fading as it travels out
+        const fade = 1 - (prog - M1) / (1 - M1);
+        stroke(x, y, p, 1, 0.5 * fade);
       }
     }
   };
