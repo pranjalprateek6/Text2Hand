@@ -162,6 +162,99 @@ function asciiPage(canvas) {
   }
 }
 
+/* -------------------------------------------------------------- keys to ink */
+
+/* The left-hand companion to the ASCII page: typed characters drift across
+   the canvas and, midway, stop being type. Each one dissolves into a short
+   wobbly pen stroke that fades as it goes: the product's whole transformation
+   in one loop. Same manners as the page: still under reduced motion, paused
+   offscreen, repainted on resize and on becoming visible. */
+function keysToInk(canvas) {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  const SRC = "typed text becomes ink";
+  const N = 13;
+  let t = 0, raf = null, running = !REDUCED;
+
+  // each particle's shape is fixed at boot, so strokes wobble like a pen
+  // rather than boiling like static
+  const P = Array.from({ length: N }, (_, i) => ({
+    ch: SRC[i % SRC.length] === " " ? "·" : SRC[i % SRC.length],
+    lane: (i + 0.6) / (N + 0.6),
+    speed: 0.045 + (i % 5) * 0.011,
+    phase: (i * 0.31) % 1,
+    seg: Array.from({ length: 7 }, () => Math.random() - 0.5),
+    amp: 3 + Math.random() * 4,
+  }));
+
+  const resize = () => {
+    const dpr = devicePixelRatio || 1;
+    const r = canvas.getBoundingClientRect();
+    canvas.width = r.width * dpr;
+    canvas.height = r.height * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  };
+
+  const paint = () => {
+    const r = canvas.getBoundingClientRect();
+    if (!r.width) return;
+    ctx.clearRect(0, 0, r.width, r.height);
+    for (const p of P) {
+      const prog = (p.phase + t * p.speed) % 1;
+      const x = r.width * (0.06 + prog * 0.88);
+      const y = r.height * p.lane + Math.sin(t * 0.8 + p.lane * 9) * 4;
+      if (prog < 0.48) {
+        // still type: crisp, monospaced, upright
+        const alpha = Math.min(1, prog / 0.08) * 0.55;
+        ctx.font = "15px monospace";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = `rgba(40, 36, 26, ${alpha})`;
+        ctx.fillText(p.ch, x, y);
+      } else {
+        // ink now: a short wobbling stroke, fading as it travels
+        const fade = 1 - (prog - 0.48) / 0.52;
+        ctx.strokeStyle = `rgba(28, 36, 82, ${0.5 * fade})`;
+        ctx.lineWidth = 2;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.beginPath();
+        for (let k = 0; k < 7; k++) {
+          const px = x - 13 + k * 4.4;
+          const py = y + p.seg[k] * p.amp + Math.sin(t * 1.6 + k * 1.3) * 1.1;
+          k ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+        }
+        ctx.stroke();
+      }
+    }
+  };
+
+  const loop = () => {
+    if (!running) return;
+    paint();
+    t += 0.016;
+    raf = requestAnimationFrame(loop);
+  };
+
+  resize();
+  addEventListener("resize", resize);
+  new ResizeObserver(() => { resize(); paint(); }).observe(canvas);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) { resize(); paint(); }
+  });
+  if (REDUCED) t = 5;                        // a settled mid-flight frame
+  paint();                                   // painted once even if frames never run
+  if (!REDUCED) {
+    new IntersectionObserver((es) => {
+      es.forEach((e) => {
+        running = e.isIntersecting;
+        if (running) { if (raf) cancelAnimationFrame(raf); loop(); }
+        else if (raf) cancelAnimationFrame(raf);
+      });
+    }).observe(canvas);
+  }
+}
+
 /* -------------------------------------------------------------- how it works */
 
 function steps() {
@@ -225,6 +318,7 @@ function boot() {
   shrinkNav();
   document.querySelectorAll("[data-words]").forEach(wordRotator);
   document.querySelectorAll(".fx-page").forEach(asciiPage);
+  document.querySelectorAll(".fx-keys").forEach(keysToInk);
   document.querySelectorAll("[data-spotlight]").forEach(spotlight);
   steps();
   reveals();

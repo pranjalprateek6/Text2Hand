@@ -38,6 +38,7 @@
   <!-- --------------------------------------------------------------- hero -->
   <section class="hero">
     <div class="hero__art"><canvas class="fx-page" role="img" aria-label="A sketched page of ruled paper writing itself, on a loop"></canvas></div>
+    <div class="hero__art hero__art--left"><canvas class="fx-keys" role="img" aria-label="Typed characters drifting across and turning into pen strokes"></canvas></div>
 
     <div class="hero__grid" aria-hidden="true">
       {% for i in range(1, 8) %}<i class="h" style="top: {{ 12.5 * i }}%"></i>{% endfor %}
@@ -69,12 +70,6 @@
         <span class="hero__note">Free · runs on your machine · no account</span>
       </div>
 
-      <figure class="hero__proof rv" data-delay="350">
-        <img src="{{ url_for('static', filename='hero_line.jpg') }}"
-             alt="One line of actual output: handwriting in ink on ruled paper"
-             width="940" height="69" loading="lazy" />
-        <figcaption>actual output, unretouched</figcaption>
-      </figure>
     </div>
 
     <div class="hero__stats" aria-label="Numbers from the renderer">

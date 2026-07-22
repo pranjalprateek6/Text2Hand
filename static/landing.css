@@ -67,7 +67,14 @@ section { position: relative; }
   opacity: 0.4;
   pointer-events: none;
 }
-.fx-page { width: 100%; height: 100%; display: block; }
+/* the left companion: smaller and fainter, so the pair frames the centred
+   text instead of competing with it */
+.hero__art--left {
+  right: auto; left: -100px;
+  width: min(540px, 42vw); height: min(540px, 42vw);
+  opacity: 0.35;
+}
+.fx-page, .fx-keys { width: 100%; height: 100%; display: block; }
 
 .hero__grid { position: absolute; inset: 0; pointer-events: none; opacity: 0.3; }
 .hero__grid i { position: absolute; background: color-mix(in oklch, var(--foreground) 10%, transparent); }
@@ -86,33 +93,20 @@ section { position: relative; }
   height: 12px;
   background: color-mix(in oklch, var(--foreground) 10%, transparent);
 }
-/* One column of flow: promise, action, proof, all on the same left edge. The
-   buttons used to sit in a second column beside the lede, which balanced
-   until the proof strip made the left side taller and left them floating
-   next to nothing, off the path the eye actually takes. */
+/* Centred column of flow, framed by an animation on either side: promise,
+   then action, straight down the middle. */
+.hero__in { text-align: center; }
 .hero__lede {
-  margin-top: 48px;
+  margin: 48px auto 0;
   font-size: clamp(18px, 2vw, 23px); line-height: 1.55;
   color: var(--muted-foreground); max-width: 36rem;
 }
-.hero__acts { margin-top: 36px; display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+.hero__acts {
+  margin-top: 36px;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+  gap: 16px;
+}
 .hero__note { width: 100%; font-family: var(--font-mono); font-size: 12px; color: var(--muted-foreground); }
-
-/* one line of the actual product, in the first screen: the proof should not
-   live four thousand pixels below the promise */
-.hero__proof { margin-top: 30px; max-width: 470px; }
-.hero__proof img {
-  width: 100%;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  box-shadow: 0 16px 40px rgba(30, 25, 10, 0.12);
-  transform: rotate(-0.4deg);
-}
-.hero__proof figcaption {
-  margin-top: 9px;
-  font-family: var(--font-mono); font-size: 11px;
-  color: var(--muted-foreground);
-}
 
 /* stats pinned to the hero's foot: one static row, each number bound to its
    own cell so a viewport edge can never split a pair */
