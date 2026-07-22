@@ -45,7 +45,7 @@
     </div>
 
     <div class="wrap hero__in">
-      <p class="eyebrow rv">Typed text to real handwriting</p>
+      <p class="eyebrow rv">A page written, not typeset</p>
 
       <h1 class="display hero__title" style="margin-top: 28px">
         <span class="line">Typed text,</span>
@@ -70,15 +70,29 @@
           <span class="hero__note">Free · runs on your machine · no account</span>
         </div>
       </div>
+
+      <figure class="hero__proof rv" data-delay="350">
+        <img src="{{ url_for('static', filename='hero_line.jpg') }}"
+             alt="One line of actual output: handwriting in ink on ruled paper"
+             width="940" height="69" loading="lazy" />
+        <figcaption>actual output, unretouched</figcaption>
+      </figure>
     </div>
 
     <div class="hero__stats" aria-label="Numbers from the renderer">
       <div class="wrap hero__stats-row">
-        <div class="stat"><b>1,287</b><span>characters to a page<i>A4 · 33 RULED LINES</i></span></div>
-        <div class="stat"><b>112</b><span>glyphs, one hand<i>MYFONT</i></span></div>
-        <div class="stat"><b>70</b><span>words in one stroke<i>WORDFONT</i></span></div>
-        <div class="stat"><b>18</b><span>maths glyphs drawn<i>GREEK + OPERATORS</i></span></div>
-        <div class="stat"><b>80</b><span>pages a run<i>RENDERER</i></span></div>
+        {# counted from the shipped assets at serve time; the hardcoded
+           versions were stale within a week of being written #}
+        <div class="stat"><b>{{ "{:,}".format(stats.chars_page) }}</b><span>characters to a page
+          <i aria-hidden="true">A4 · 33 RULED LINES</i></span></div>
+        <div class="stat"><b>{{ stats.glyphs }}</b><span>glyphs, one hand
+          <i aria-hidden="true">MYFONT</i></span></div>
+        <div class="stat"><b>{{ stats.words }}</b><span>words in one stroke
+          <i aria-hidden="true">WORDFONT</i></span></div>
+        <div class="stat"><b>{{ stats.maths }}</b><span>greek and maths letters
+          <i aria-hidden="true">{{ stats.drawn }} DRAWN · {{ stats.aliased }} ALIASED</i></span></div>
+        <div class="stat"><b>{{ stats.max_pages }}</b><span>pages a run
+          <i aria-hidden="true">RENDERER</i></span></div>
       </div>
     </div>
 </section>
@@ -295,7 +309,7 @@ pages.zip &middot; full-size PNGs</pre>
     <div class="wrap">
       <div class="cta__box rv" data-spotlight>
         <p class="eyebrow">Ready when you are</p>
-        <h2 class="display" style="margin-top: 20px">Stop writing<br />it out.</h2>
+        <h2 class="display" style="margin-top: 20px" aria-label="Stop writing it out.">Stop writing<br />it out.</h2>
         <div class="cta__row">
           <a class="btn btn--lg" href="{{ url_for('studio') }}">
             Open the studio

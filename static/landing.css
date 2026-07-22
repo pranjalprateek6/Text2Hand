@@ -44,7 +44,12 @@ section { position: relative; }
 .nav__tm { font-family: var(--font-mono); font-size: 11px; color: var(--muted-foreground); }
 .nav__links { display: none; align-items: center; gap: 48px; }
 @media (min-width: 900px) { .nav__links { display: flex; } }
-.nav__links a { font-size: 14px; color: color-mix(in oklch, var(--foreground) 70%, transparent); transition: color 300ms var(--ease); }
+.nav__links a {
+  font-size: 14px; color: color-mix(in oklch, var(--foreground) 70%, transparent);
+  transition: color 300ms var(--ease);
+  /* the hit area reaches finger size without moving a pixel of layout */
+  padding: 13px 6px; margin: -13px -6px;
+}
 .nav__links a:hover { color: var(--foreground); }
 .nav__cta { display: flex; align-items: center; gap: 16px; }
 
@@ -69,7 +74,10 @@ section { position: relative; }
 .hero__grid i.h { height: 1px; left: 0; right: 0; }
 .hero__grid i.v { width: 1px; top: 0; bottom: 0; }
 
-.hero__in { position: relative; z-index: 10; padding: 160px 0 200px; }
+/* padding-block, never the shorthand: this element is also a .wrap, and the
+   shorthand's zero was silently erasing .wrap's inline padding, leaving the
+   hero flush against the viewport edge while the stats under it kept theirs */
+.hero__in { position: relative; z-index: 10; padding-block: 160px 200px; }
 .hero__title { font-size: clamp(3rem, 11vw, 9.5rem); }
 .hero__title .line { display: block; }
 .hero__word { position: relative; display: inline-block; }
@@ -87,6 +95,22 @@ section { position: relative; }
 .hero__lede { font-size: clamp(18px, 2vw, 23px); line-height: 1.55; color: var(--muted-foreground); max-width: 36rem; }
 .hero__acts { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
 .hero__note { width: 100%; font-family: var(--font-mono); font-size: 12px; color: var(--muted-foreground); }
+
+/* one line of the actual product, in the first screen: the proof should not
+   live four thousand pixels below the promise */
+.hero__proof { margin-top: 30px; max-width: 470px; }
+.hero__proof img {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 16px 40px rgba(30, 25, 10, 0.12);
+  transform: rotate(-0.4deg);
+}
+.hero__proof figcaption {
+  margin-top: 9px;
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--muted-foreground);
+}
 
 /* stats pinned to the hero's foot: one static row, each number bound to its
    own cell so a viewport edge can never split a pair */
@@ -215,7 +239,11 @@ section { position: relative; }
 .footer__brand p { margin-top: 12px; font-size: 14px; color: var(--muted-foreground); max-width: 26rem; }
 .footer h4 { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted-foreground); margin-bottom: 14px; font-weight: 500; }
 .footer ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
-.footer ul a { font-size: 14px; color: color-mix(in oklch, var(--foreground) 70%, transparent); transition: color 250ms var(--ease); }
+.footer ul a {
+  font-size: 14px; color: color-mix(in oklch, var(--foreground) 70%, transparent);
+  transition: color 250ms var(--ease);
+  display: inline-block; padding: 11px 6px; margin: -11px -6px;
+}
 .footer ul a:hover { color: var(--foreground); }
 .footer__base {
   margin-top: 56px; padding-top: 24px;
@@ -226,7 +254,7 @@ section { position: relative; }
 .footer__gap { flex: 1; }
 
 @media (max-width: 700px) {
-  .hero__in { padding: 140px 0 40px; }
+  .hero__in { padding-block: 140px 40px; }
   .hero__stats { position: static; margin-top: 8px; padding-bottom: 40px; }
   .hero__art { opacity: 0.2; }
   .codecard { position: static; }

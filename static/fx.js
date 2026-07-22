@@ -144,6 +144,11 @@ function asciiPage(canvas) {
   // script runs, and a window resize never comes to correct it. Re-measure
   // and repaint whenever the box itself changes size.
   new ResizeObserver(() => { resize(); paint(); }).observe(canvas);
+  // A tab restored from prerender ran no frames and may hold a blank bitmap;
+  // becoming visible is the moment to make it true.
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) { resize(); paint(); }
+  });
   if (REDUCED) written = 1e9;                // a finished page, held still
   paint();                                   // painted once even if frames never run
   if (!REDUCED) {

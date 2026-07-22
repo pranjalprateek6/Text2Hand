@@ -341,11 +341,42 @@ def _safe(rid: str) -> Path:
     return folder
 
 
+def _landing_stats() -> dict:
+    """The numbers the landing page brags with, counted from the shipped
+    assets when the page is served. They were hardcoded once, and were wrong
+    within a week: the glyph count grew, the Greek coverage doubled, and the
+    page went on advertising the old figures. A number on a page that sells
+    precision has to be one the code cannot let rot.
+    """
+    codes = set()
+    for name in os.listdir(t2h.FONT_DIR):
+        stem, dot, ext = name.partition(".")
+        if ext != "png" or not stem[:1].isdigit():
+            continue
+        digits = ""
+        for ch in stem:
+            if not ch.isdigit():
+                break
+            digits += ch
+        codes.add(int(digits))
+    try:
+        import json
+        with open(os.path.join(t2h.WORD_DIR, "index.json"), encoding="utf-8") as fh:
+            words = len(json.load(fh))
+    except (OSError, ValueError):
+        words = 0
+    drawn = len([c for c in codes if c >= 880])       # the Greek block and up
+    return {"chars_page": page_size(), "glyphs": len(codes), "words": words,
+            "drawn": drawn, "aliased": len(t2h.GLYPH_ALIASES),
+            "maths": drawn + len(t2h.GLYPH_ALIASES),
+            "max_pages": MAX_OUTPUT_PAGES}
+
+
 @app.get("/")
 def landing():
     """The front door. A placeholder until the real landing page is designed;
     the tool itself lives at /studio."""
-    return render_template("landing.html")
+    return render_template("landing.html", stats=_landing_stats())
 
 
 @app.get("/studio")
