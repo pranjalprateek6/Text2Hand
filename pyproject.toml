@@ -1,0 +1,31 @@
+[project]
+name = "text2hand"
+version = "0.2.0"
+description = "Turn typed text, Markdown or a PDF into pages written in a captured human hand."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "Pillow>=10.0",
+    "Flask>=3.0",
+    "Markdown>=3.5",
+    "beautifulsoup4>=4.12",
+]
+
+[project.optional-dependencies]
+pdf = ["pymupdf4llm>=0.0.17"]
+ocr = ["pymupdf4llm>=0.0.17", "pytesseract>=0.3.10"]
+serve = ["gunicorn>=22; sys_platform != 'win32'", "waitress>=3.0; sys_platform == 'win32'"]
+dev = ["numpy>=1.26", "ruff>=0.6"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = [".claude", ".remember", "Text To Handwriting.py"]
+
+[tool.ruff.lint]
+# Correctness only: pyflakes and bugbear. The codebase has its own deliberate
+# layout (aligned comments, compact test checks), so style rules are not
+# enforced; a lint failure here should always mean a likely bug.
+select = ["F", "B"]
+# zip(strict=) would be the fix, and these zips pair lists built to match
+ignore = ["B905"]

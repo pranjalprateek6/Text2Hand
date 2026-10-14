@@ -247,7 +247,7 @@ def inspect(path: str) -> tuple[int, bool]:
         # pymupdf's own message includes the server's temp file path, which
         # must not be shown to a browser
         raise ValueError("That file could not be opened as a PDF. "
-                         "It may be damaged, or not really a PDF.")
+                         "It may be damaged, or not really a PDF.") from None
     return total, not has_text
 
 

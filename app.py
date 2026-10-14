@@ -16,6 +16,7 @@ Then open http://127.0.0.1:5000
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import re
 import shutil
@@ -32,6 +33,8 @@ from PIL import Image
 
 import converters
 import text_to_handwriting as t2h
+
+log = logging.getLogger("text2hand")
 
 app = Flask(__name__)
 # Never cache static assets. Otherwise an edited CSS or JS file can leave a
@@ -361,13 +364,19 @@ def _job_spawn(jid: str, work, failure: str) -> None:
         _job_set(jid, message=msg)
 
     def runner() -> None:
+        started = time.perf_counter()
         try:
             result = work(progress)
             _job_set(jid, state="done", message="Done", **result)
+            # one line per finished job, enough to see load and cost in a log
+            log.info("job %s done in %.2fs %s", jid, time.perf_counter() - started,
+                     {k: result[k] for k in ("pages", "pages_converted", "chars") if k in result})
         except JobCancelled:
             _job_set(jid, state="cancelled", message="Cancelled")
+            log.info("job %s cancelled after %.2fs", jid, time.perf_counter() - started)
         except (ValueError, RuntimeError) as exc:
             _job_set(jid, state="error", error=str(exc))     # expected, already readable
+            log.info("job %s refused: %s", jid, exc)
         except BaseException as exc:
             # BaseException, not Exception: the renderer raises SystemExit when
             # it finds no glyphs, and anything that escaped here would leave
@@ -471,6 +480,19 @@ def _landing_stats() -> dict:
             "drawn": drawn, "aliased": len(t2h.GLYPH_ALIASES),
             "maths": drawn + len(t2h.GLYPH_ALIASES),
             "max_pages": MAX_OUTPUT_PAGES}
+
+
+@app.get("/healthz")
+def healthz():
+    """For a load balancer or uptime check: up, and how loaded.
+
+    Deliberately cheap. It reports the queue rather than rendering anything,
+    so a busy server answers it as fast as an idle one.
+    """
+    with JOBS_LOCK:
+        active = sum(1 for j in JOBS.values() if j["state"] == "running")
+    return jsonify(ok=True, active_jobs=active, max_active_jobs=MAX_ACTIVE_JOBS,
+                   warm=bool(_page_sizes))
 
 
 @app.get("/")
@@ -771,6 +793,8 @@ def warm() -> None:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=os.environ.get("T2H_LOG_LEVEL", "INFO"),
+                        format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     RENDER_ROOT.mkdir(parents=True, exist_ok=True)
     threading.Thread(target=warm, daemon=True).start()
     # The Werkzeug debugger runs arbitrary code for anyone who can reach it, so

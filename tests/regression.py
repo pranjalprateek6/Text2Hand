@@ -272,7 +272,7 @@ check("element/asterisk/infinity centred", set("∈∗∞") <= t2h.CENTERED)
 _, greek_missing = t2h.render_pages("rate α where x ∈ S and √n, θ λ μ σ ∑ ∂ ∞")
 check("greek line renders with nothing skipped", not greek_missing,
       "clean" if not greek_missing else f"skipped {greek_missing}")
-import converters as _conv  # noqa: repeated alias is harmless
+import converters as _conv  # noqa: F811  (a repeated alias is harmless)
 _note_md = "some α and β with かな"
 _left = {ch for ch in _note_md if ord(ch) > 126 and not __import__("os").path.exists(
     __import__("os").path.join("myfont", f"{ord(ch)}.png"))}
@@ -599,6 +599,9 @@ if _PAPER:
           f"{_dark:,} dark px in the preview" if _ok else str(_err))
 else:
     skip("app equation round trip", "million-step paper not found")
+
+_h = _client.get("/healthz")
+check("health check answers", _h.status_code == 200 and _h.get_json()["ok"], str(_h.get_json()))
 
 bad = [n for n, ok, _ in results if not ok]
 print(f"\n{len(results) - len(bad)}/{len(results)} passed"
