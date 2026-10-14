@@ -229,6 +229,8 @@ $("ask").addEventListener("keydown", (e) => {
 
 function note(message, bad) {
   const el = $("note");
+  // an error interrupts a screen reader; anything else waits its turn
+  if (bad) el.setAttribute("role", "alert"); else el.removeAttribute("role");
   el.textContent = message;
   el.classList.toggle("is-bad", !!bad);
   el.hidden = false;
@@ -260,6 +262,16 @@ function payload() {
   };
 }
 
+// Changing the text or a setting used to leave the old render on screen
+// looking current, and Export went on handing out that old file. Now the page
+// dims and says so until it is rendered again.
+function markStale() {
+  const stale = !!state.id && !state.busy && JSON.stringify(payload()) !== state.rendered;
+  $("pages").classList.toggle("is-stale", stale);
+  $("stale").hidden = !stale;
+}
+$("stale").addEventListener("click", () => render());
+
 function setBusy(on, stage) {
   state.busy = on;
   $("render").classList.toggle("is-busy", on);
@@ -273,6 +285,7 @@ function setBusy(on, stage) {
     $("pager").hidden = true;
     $("loadingText").textContent = stage || "Laying out the text";
   }
+  markStale();
 }
 
 async function render() {
@@ -332,6 +345,7 @@ function after() {
   else $("empty").hidden = false;
   $("status").textContent = state.statusLine || "Ready";
   $("status").classList.remove("is-live");
+  markStale();
 }
 
 function show(n) {
@@ -361,6 +375,7 @@ function show(n) {
   $("dlZip").hidden = !many;
   $("dlPagePdf").hidden = !many;
   document.querySelector("#exportPop .pop__rule").hidden = !many;
+  markStale();
 }
 
 $("render").addEventListener("click", render);
@@ -373,16 +388,25 @@ $("next").addEventListener("click", () => show(state.page + 1));
 
 // The preview opens at 85%, which fits a whole page in the pane without a
 // scrollbar; each press moves 15%. show() never touches this, so the level
-// survives paging and re-renders.
+// survives paging and re-renders. On a narrow screen 85% is wider than the
+// pane, so until someone zooms by hand it fits the page to the width instead.
 let zoom = 0.85;
+let zoomedByHand = false;
 function applyZoom() {
   $("pages").style.setProperty("--zoom", zoom);
   $("zoomOut").disabled = zoom < 0.41;
   $("zoomIn").disabled = zoom > 1.95;
 }
-$("zoomIn").addEventListener("click", () => { zoom = Math.min(2.05, zoom + 0.15); applyZoom(); });
-$("zoomOut").addEventListener("click", () => { zoom = Math.max(0.40, zoom - 0.15); applyZoom(); });
-applyZoom();
+function fitZoom() {
+  if (zoomedByHand) return;
+  const room = $("pages").clientWidth - 52;          // the pane's padding
+  zoom = room > 0 ? Math.max(0.4, Math.min(0.85, room / 540)) : 0.85;
+  applyZoom();
+}
+$("zoomIn").addEventListener("click", () => { zoomedByHand = true; zoom = Math.min(2.05, zoom + 0.15); applyZoom(); });
+$("zoomOut").addEventListener("click", () => { zoomedByHand = true; zoom = Math.max(0.40, zoom - 0.15); applyZoom(); });
+window.addEventListener("resize", fitZoom);
+fitZoom();
 
 // Type a page number to jump straight there: prev/next alone made page 40 of
 // an 80-page render a 40-click trip. Enter commits via blur, and show()
@@ -411,6 +435,7 @@ function touched() {
   // every path that changes the document runs through here, which makes it
   // the one place the draft needs saving from
   draftSoon();
+  markStale();
   if (!$("auto").checked) return;
   if (!$("text").value.trim()) return;
   if (JSON.stringify(payload()) === state.rendered) return;
@@ -545,6 +570,7 @@ async function openEntry(e) {
   // of a document whose render already exists
   clearTimeout(state.timer);
   state.rendered = JSON.stringify(payload());
+  markStale();
   showView("write");
   // The server may have pruned this render, so probe before trusting it.
   const img = new Image();
