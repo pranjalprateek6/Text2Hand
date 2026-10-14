@@ -42,7 +42,7 @@ A font pastes an identical letter every time. A person never writes the same let
 
 - **Variants.** If several images exist for one character, one is chosen at random for each occurrence.
 - **Jitter.** Every glyph gets its own random rotation, scale, baseline wobble, letter spacing and ink darkness, so repeats never match.
-- **Baseline.** Glyphs sit on a writing line with a slow drift along each line. The letters g, j, p, q and y drop their tails below the line, quotes and apostrophes hang high, and math symbols sit on the x-height axis.
+- **Baseline.** Glyphs sit on a writing line with a slow drift along each line, and every line starts that drift at its own point and runs very slightly uphill or down. A word rises or sinks as one piece, with a smaller wobble left to each letter inside it. The letters g, j, p, q and y drop their tails below the line, quotes and apostrophes hang high, and math symbols sit on the x-height axis.
 - **Clean compositing.** An alpha mask is built from ink darkness, so rotation and tight spacing never paint white boxes over neighbouring letters.
 - **Ink and paper.** Strokes are recoloured to a blue-black pen, and the page carries a faint off-white tint with subtle grain and mottle instead of flat white.
 - **Fatigue.** Letters grow slightly and get less tidy toward the foot of each page, because a hand tires.
@@ -185,7 +185,7 @@ You can also skip the pipeline entirely: replace any image in `myfont/` with a c
 
 The bundled font is a real hand, captured from the sheets in `sample/` and cut up by the extractors in `tools/`. Every letter, digit and punctuation mark is that hand; only the technical symbols are drawn rather than written. `v` and `w` were skipped when the letter sheet was written and were recovered instead from words that contained them, which is also why they have more variants than the rest. Characters with no matching image are skipped and listed at the end, so a missing glyph never stops a run.
 
-Alongside it, `wordfont/` holds whole words captured in one stroke. Where a word has an image it is drawn from that, keeping the joins a real hand makes; everything else is assembled from letters. On unseen text roughly a third of words come from images, and the two are not distinguishable by eye. Set `USE_WORDS = False` to render everything letter by letter.
+Alongside it, `wordfont/` holds whole words captured in one stroke. Where a word has an image it is drawn from that, keeping the joins a real hand makes; everything else is assembled from letters. On unseen text roughly a third of words come from images. The words were written with a lighter pen than the letters, so each is darkened on load to the letters' stroke density; their sizes still vary a little, since they were written freehand. Set `USE_WORDS = False` to render everything letter by letter.
 
 ## Glyph tools
 

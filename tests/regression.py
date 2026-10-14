@@ -607,6 +607,27 @@ check("render job publishes ready pages",
       _job is not None and _job.get("ready") == _job.get("pages") and _job["pages"] > 1,
       f"ready {_job and _job.get('ready')} of {_job and _job.get('pages')}" if _job else str(_err))
 
+# --- captured words write in the same ink as the letters --------------------
+def _level(im):
+    a = _np.asarray(im.getchannel("A"), dtype=float)
+    return a[a > 40].mean()
+
+
+t2h.derive_metrics()
+_letters = _np.mean([_level(t2h.glyph_variants(c)[0]) for c in "aceimnorsuvwxz"])
+_faintest = min(_level(im) for im, _ in t2h._load_words().values())
+check("no captured word is far fainter than the letters", _faintest > 0.9 * _letters,
+      f"faintest word {_faintest:.0f} vs letters {_letters:.0f}")
+
+# --- lines do not all drift in the same shape ------------------------------
+_sh_ = t2h.Sheet()
+_shapes = set()
+for _ in range(6):
+    _sh_._start_line()
+    _shapes.add((round(_sh_._drift_phase, 3), round(_sh_._drift_step, 4), round(_sh_._slope, 5)))
+_sh_.close()
+check("each line gets its own drift and slope", len(_shapes) == 6, f"{len(_shapes)} of 6 distinct")
+
 _h = _client.get("/healthz")
 check("health check answers", _h.status_code == 200 and _h.get_json()["ok"], str(_h.get_json()))
 

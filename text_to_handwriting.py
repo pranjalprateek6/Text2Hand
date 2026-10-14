@@ -83,6 +83,13 @@ ROT_JITTER = 2.2                        # max rotation per glyph, +/- degrees
 SCALE_JITTER = 0.05                     # max size change per glyph, +/- fraction
 BASELINE_WOBBLE = 6                     # max vertical wobble per glyph, +/- px
 LINE_DRIFT = 8                          # slow baseline drift across a line, px
+LINE_SLOPE = 0.25                       # each line runs uphill or down by up to this, degrees
+# How the baseline wobble is shared out. A hand does not jump every letter on
+# its own: a word sits a little high or low as a whole, and the letters inside
+# it vary less. All independent per letter, the line looked jittery rather
+# than written.
+WORD_WOBBLE_SHARE = 0.6                 # of BASELINE_WOBBLE, moved per word
+GLYPH_WOBBLE_SHARE = 0.45               # of BASELINE_WOBBLE, left to each letter
 KERN_JITTER = (-3, 4)                   # extra space between letters (min, max) px
 MARGIN_JITTER = 6                        # ragged left margin, px of random indent
 INK_MIN, INK_MAX = 0.78, 1.0            # per-glyph opacity (pen-pressure) range
@@ -289,12 +296,47 @@ def _load_words() -> dict[str, tuple[Image.Image, int]]:
         if not box:
             continue
         im = im.crop(box)
+        # The words were written on a different sheet, with less pressure:
+        # their strokes averaged 169 against the letters' 185, and "was"
+        # only 128, so assembled and captured words sat side by side in two
+        # visibly different inks. Each is brought up to the letters' level.
+        gain = _ink_gain(im.getchannel("A"))
+        if gain > 1.0:
+            im.putalpha(im.getchannel("A").point(lambda v, g=gain: min(255, int(v * g))))
         if INK_COLOR is not None:
             tinted = Image.new("RGBA", im.size, tuple(INK_COLOR) + (0,))
             tinted.putalpha(im.getchannel("A"))
             im = tinted
         _words[label] = (im, _baseline_of(im))
     return _words
+
+
+_INK_LEVEL: float | None = None         # mean stroke darkness of the letter glyphs
+_INK_GAIN_MAX = 1.45                    # never darken a faint word more than this
+
+
+def _ink_level(alpha: Image.Image) -> float:
+    """Mean alpha of a mask's real strokes, ignoring the faint fringe."""
+    hist = alpha.histogram()
+    count = sum(hist[41:])
+    return sum(v * n for v, n in enumerate(hist) if v > 40) / count if count else 0.0
+
+
+def _ink_gain(alpha: Image.Image) -> float:
+    """How much to darken a word image to match the letters' stroke darkness."""
+    global _INK_LEVEL
+    if _INK_LEVEL is None:
+        levels = []
+        for ch in "aceimnorsuvwxz":
+            for path in sorted(glob.glob(os.path.join(glob.escape(FONT_DIR), f"{ord(ch)}*.png"))):
+                grey = Image.open(path).convert("L")
+                levels.append(_ink_level(grey.point(
+                    lambda p: 0 if p >= INK_THRESHOLD else 255 - p)))
+        _INK_LEVEL = sum(levels) / len(levels) if levels else 0.0
+    own = _ink_level(alpha)
+    if not own or not _INK_LEVEL:
+        return 1.0
+    return max(1.0, min(_INK_GAIN_MAX, _INK_LEVEL / own))
 
 
 def _baseline_of(im: Image.Image) -> int:
@@ -437,13 +479,14 @@ def char_advance(ch: str) -> int:
     if ch == " ":
         return SPACE_WIDTH
     vs = glyph_variants(ch)
-    return vs[0].width if vs else 0
+    # the average over the variants, since any one of them may be drawn
+    return round(sum(v.width for v in vs) / len(vs)) if vs else 0
 
 
 # --------------------------------------------------------------------------- #
 # Per-glyph jitter
 # --------------------------------------------------------------------------- #
-JITTER_POOL = 4                         # pre-jittered copies kept per glyph bucket
+JITTER_POOL = 8                         # pre-jittered copies kept per glyph bucket
 JITTER_POOL_MAX = 6000                  # total pooled images before the pool resets
 _SCALE_STEP = 0.025                     # scale bucket width for the pool key
 _TIRED_AT = 1.35                        # boost above this counts as the tired bucket
@@ -565,7 +608,7 @@ def _workers() -> int:
     return max(1, min(8, (os.cpu_count() or 2)))
 
 
-WORD_POOL = 6                           # pre-jittered copies kept per word bucket
+WORD_POOL = 10                          # pre-jittered copies kept per word bucket
 _word_pool: dict[tuple, list[tuple[Image.Image, int]]] = {}
 
 
@@ -869,6 +912,8 @@ class Sheet:
         self._blanks = _blank_pool()            # prepared sheets, copied per page
         self.page = None
         self._skew_pool = None
+        self._line_x0, self._slope, self._word_shift = 0, 0.0, 0
+        self._drift_step = 0.06
         self._new_page()
 
     def close(self) -> None:
@@ -1099,8 +1144,7 @@ class Sheet:
                                    (core, round(size / _SCALE_STEP),
                                     boost >= _TIRED_AT))
 
-        sway = max(1, int(BASELINE_WOBBLE * (1 + FATIGUE_JITTER * tired)))
-        y = self.baseline - base + random.randint(-sway, sway) + self._drift()
+        y = self.baseline - base + self._word_shift + self._drift()
         self.page.paste(image, (int(self.x), int(y)), image)
         self.x += image.width + random.randint(*KERN_JITTER)
         self._last = core[-1]                 # a whole word skips put(), so record it here
@@ -1114,7 +1158,9 @@ class Sheet:
         self.scale = scale
         space = int(SPACE_WIDTH * scale)
         self.x = x
+        self._start_line()
         for i, word in enumerate(words):
+            self._new_word()
             for ch in word:
                 self.put(ch)
             if i < len(words) - 1:
@@ -1172,8 +1218,10 @@ class Sheet:
 
         self.x = x0 + random.randint(0, MARGIN_JITTER)
         start = self.x
+        self._start_line()
         slack = width - line_w                   # room a correction may borrow
         for i, word in enumerate(words):
+            self._new_word()
             # Start the word wrong, cross it out, write it again. Only where
             # there is spare width, so a correction can never push past the margin.
             if (CORRECTIONS and len(word) > 3 and align == "left"
@@ -1199,12 +1247,36 @@ class Sheet:
         self.scale = 1.0
         self.newline(left, advance=max(1.0, scale))
 
+    def _start_line(self) -> None:
+        """Give the line about to be written its own drift and slope.
+
+        Every line used to start its sine drift at the same phase and step it
+        at the same rate, so all of them rose and fell in the same shape, a
+        pattern the eye picks up down a page. Now each starts somewhere else
+        on the curve, moves at its own pace, and runs very slightly uphill or
+        downhill as a whole, the way a hand drifts off the rule.
+        """
+        self._line_x0 = self.x
+        self._drift_phase = random.uniform(0, 2 * math.pi)
+        self._drift_step = random.uniform(0.035, 0.075)
+        self._slope = (math.tan(math.radians(random.uniform(-LINE_SLOPE, LINE_SLOPE)))
+                       if LINE_SLOPE else 0.0)
+        self._word_shift = 0
+
+    def _new_word(self) -> None:
+        """Set how far the next word sits off the line, as one piece."""
+        boost = 1 + FATIGUE_JITTER * self._fatigue()
+        sway = int(BASELINE_WOBBLE * WORD_WOBBLE_SHARE * boost)
+        self._word_shift = random.randint(-sway, sway) if sway else 0
+
     def _drift(self) -> int:
-        # a gentle sine drift so the writing line is never laser-straight
-        if not LINE_DRIFT:
-            return 0
-        self._drift_phase += 0.06
-        return int(LINE_DRIFT * math.sin(self._drift_phase))
+        # a gentle sine drift so the writing line is never laser-straight,
+        # plus the line's slope at this point along it
+        offset = self._slope * (self.x - self._line_x0)
+        if LINE_DRIFT:
+            self._drift_phase += self._drift_step
+            offset += LINE_DRIFT * math.sin(self._drift_phase)
+        return int(offset)
 
     def _fatigue(self) -> float:
         """0 at the top of the page, 1 at the foot."""
@@ -1227,9 +1299,11 @@ class Sheet:
         boost = 1 + FATIGUE_JITTER * tired
         scale = self.scale * (1 + FATIGUE_GROWTH * tired)
 
-        advance = int(vs[0].width * scale)        # rhythm set by the un-jittered width
         vi = random.randrange(len(vs))
         chosen = vs[vi]
+        # spaced by the variant actually drawn: a narrow w spaced like a wide
+        # one left a gap, a wide one spaced like a narrow one collided
+        advance = int(chosen.width * scale)
         flipped = False
         if ch in MIRRORED_OPENING:
             if self._opening():
@@ -1240,8 +1314,8 @@ class Sheet:
         g = jittered(chosen, scale, boost,
                      pool_key(ch, vi, flipped, scale, boost))
 
-        sway = max(1, int(BASELINE_WOBBLE * boost))
-        wobble = random.randint(-sway, sway) + self._drift()
+        sway = max(1, int(BASELINE_WOBBLE * GLYPH_WOBBLE_SHARE * boost))
+        wobble = random.randint(-sway, sway) + self._word_shift + self._drift()
         x = self.x + (advance - g.width) // 2     # keep rotation-expansion centred
         if ch in CENTERED:                        # math symbols float on the x-height axis
             y = self.baseline - X_HEIGHT // 2 - g.height // 2 + wobble
