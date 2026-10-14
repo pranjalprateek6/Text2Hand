@@ -600,6 +600,13 @@ if _PAPER:
 else:
     skip("app equation round trip", "million-step paper not found")
 
+# the studio shows pages as they finish, so a job publishes its id and how
+# many pages are ready, counted from page 1
+_job, _err = _app_render({"text": "A page that fills and spills over. " * 160})
+check("render job publishes ready pages",
+      _job is not None and _job.get("ready") == _job.get("pages") and _job["pages"] > 1,
+      f"ready {_job and _job.get('ready')} of {_job and _job.get('pages')}" if _job else str(_err))
+
 _h = _client.get("/healthz")
 check("health check answers", _h.status_code == 200 and _h.get_json()["ok"], str(_h.get_json()))
 

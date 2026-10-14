@@ -108,29 +108,57 @@
           <button class="try" data-sample="pangram">Pangram</button>
           <button class="try" data-sample="punctuation">Punctuation</button>
           <button class="try" data-sample="symbols">Symbols</button>
-          <button class="try" data-sample="markdown">Markdown</button>
+          <button class="try" data-sample="markdown" aria-label="Markdown sample">Markdown</button>
         </div>
 
         <div class="pane__foot">
-          <div class="opts">
-            <button class="opt" id="oMarkdown" aria-pressed="false">Markdown</button>
-            <button class="opt is-on" id="oRuled" aria-pressed="true">Lines</button>
-            <button class="opt is-on" id="oTexture" aria-pressed="true">Texture</button>
-            <button class="opt is-on" id="oSkew" aria-pressed="true">Tilt</button>
+          <!-- every control carries a visible caption: the bare pills and dots
+               read as decoration, and touch has no hover to explain them -->
+          <div class="grp">
+            <label class="grp__cap" for="look">Look</label>
+            <select class="mini mini--look" id="look" aria-label="Look">
+              <option value="notebook">Notebook</option>
+              <option value="plain">Plain sheet</option>
+              <option value="letter">Letter</option>
+              <option value="clean">Clean scan</option>
+              <option value="custom" hidden>Custom</option>
+            </select>
           </div>
-          <div class="inks" role="radiogroup" aria-label="Pen">
-            <button class="ink is-on" data-ink="blue-black" title="Blue-black" style="--c:#141a42" role="radio" aria-checked="true"></button>
-            <button class="ink" data-ink="black" title="Black" style="--c:#1a1a1d" role="radio" aria-checked="false"></button>
-            <button class="ink" data-ink="blue" title="Blue" style="--c:#153c98" role="radio" aria-checked="false"></button>
-            <button class="ink" data-ink="red" title="Red" style="--c:#961c18" role="radio" aria-checked="false"></button>
+          <div class="grp">
+            <span class="grp__cap" id="capPaper">Paper</span>
+            <div class="opts" role="group" aria-labelledby="capPaper">
+              <button class="opt is-on" id="oRuled" aria-pressed="true" title="Ruled lines and a margin">Lines</button>
+              <button class="opt is-on" id="oTexture" aria-pressed="true" title="Paper tint and grain">Texture</button>
+              <button class="opt is-on" id="oSkew" aria-pressed="true" title="Tilt the page slightly, as if scanned">Tilt</button>
+            </div>
           </div>
-          <div class="sizes" role="radiogroup" aria-label="Handwriting size">
-            <button class="sizebtn" data-size="small" title="Small hand"
-                    role="radio" aria-checked="false">Aa</button>
-            <button class="sizebtn is-on" data-size="normal" title="Normal hand"
-                    role="radio" aria-checked="true">Aa</button>
-            <button class="sizebtn" data-size="large" title="Large hand"
-                    role="radio" aria-checked="false">Aa</button>
+          <div class="grp">
+            <span class="grp__cap" id="capPen">Pen</span>
+            <div class="inks" role="radiogroup" aria-labelledby="capPen">
+              <button class="ink is-on" data-ink="blue-black" title="Blue-black" aria-label="Blue-black" style="--c:#141a42" role="radio" aria-checked="true"></button>
+              <button class="ink" data-ink="black" title="Black" aria-label="Black" style="--c:#1a1a1d" role="radio" aria-checked="false"></button>
+              <button class="ink" data-ink="blue" title="Blue" aria-label="Blue" style="--c:#153c98" role="radio" aria-checked="false"></button>
+              <button class="ink" data-ink="red" title="Red" aria-label="Red" style="--c:#961c18" role="radio" aria-checked="false"></button>
+              <span class="ink__name" id="inkName" aria-hidden="true">Blue-black</span>
+            </div>
+          </div>
+          <div class="grp">
+            <span class="grp__cap" id="capSize">Size</span>
+            <div class="sizes" role="radiogroup" aria-labelledby="capSize">
+              <button class="sizebtn" data-size="small" title="Small hand" aria-label="Small"
+                      role="radio" aria-checked="false">Aa</button>
+              <button class="sizebtn is-on" data-size="normal" title="Normal hand" aria-label="Normal"
+                      role="radio" aria-checked="true">Aa</button>
+              <button class="sizebtn" data-size="large" title="Large hand" aria-label="Large"
+                      role="radio" aria-checked="false">Aa</button>
+            </div>
+          </div>
+          <div class="grp">
+            <span class="grp__cap" id="capRead">Read as</span>
+            <div class="opts" role="group" aria-labelledby="capRead">
+              <button class="opt" id="oMarkdown" aria-pressed="false"
+                      title="Draw headings, lists and tables instead of the raw symbols">Markdown</button>
+            </div>
           </div>
           <span class="count" id="count">0</span>
         </div>
@@ -144,6 +172,10 @@
                   title="The text or settings changed since this render (Ctrl+Enter)">
             <span class="stale__dot" aria-hidden="true"></span>Out of date · Render again
           </button>
+          <span class="live" id="live" hidden>
+            <span class="live__text" id="liveText">Writing</span>
+            <button class="live__stop" id="liveCancel">Cancel</button>
+          </span>
           <span class="pane__gap"></span>
           <div class="zoom" role="group" aria-label="Zoom">
             <button class="iconbtn" id="zoomOut" aria-label="Zoom out" title="Zoom out">

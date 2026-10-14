@@ -147,7 +147,8 @@ INKS = {
 }
 
 
-def _write_streaming(text: str, folder: Path, as_markdown: bool, on_progress):
+def _write_streaming(text: str, folder: Path, as_markdown: bool, on_progress,
+                     on_ready=None):
     """Render, writing each page out as it is finished, and return (count, missing).
 
     The renderer hands over one page at a time and keeps nothing, so the only
@@ -165,6 +166,24 @@ def _write_streaming(text: str, folder: Path, as_markdown: bool, on_progress):
     width = t2h._workers()
     slots = threading.Semaphore(width)
     failures: list[Exception] = []
+
+    # Which previews are on disk, so the studio can show page 1 while page 9
+    # is still being drawn. Pages finish out of order across the writer
+    # threads, so what is reported is the run of pages complete from the
+    # first: a viewer paging forward never meets a hole.
+    previewed: set[int] = set()
+    ready = [0]
+    ready_lock = threading.Lock()
+
+    def mark_ready(i: int) -> None:
+        with ready_lock:
+            previewed.add(i)
+            before = ready[0]
+            while ready[0] + 1 in previewed:
+                ready[0] += 1
+            advanced = ready[0] if ready[0] != before else 0
+        if advanced and on_ready:
+            on_ready(advanced)
 
     # The whole-document PDF is appended here, from the page already in hand.
     # Building it afterwards from the PNGs meant decoding every page back off
@@ -210,6 +229,7 @@ def _write_streaming(text: str, folder: Path, as_markdown: bool, on_progress):
                 thumb = preview.copy()
                 thumb.thumbnail((THUMB_WIDTH, THUMB_WIDTH * 4), Image.LANCZOS)
                 thumb.save(folder / f"thumb_{i}.jpg", quality=72, optimize=True)
+                mark_ready(i)
 
                 # The full-size page is kept as a high quality JPEG, not a
                 # PNG. Paper grain is close to random and barely compresses
@@ -265,7 +285,8 @@ def _combine_pdf(folder: Path) -> Path:
 
 
 def _render(text: str, ruled: bool, texture: bool, skew: bool, as_markdown: bool,
-            ink: str = "blue-black", size: str = "normal", on_progress=None):
+            ink: str = "blue-black", size: str = "normal", on_progress=None,
+            on_ready=None):
     """Render text to a fresh folder and return (render_id, page_count, missing)."""
     with _render_lock:
         t2h.RULED = ruled
@@ -285,7 +306,9 @@ def _render(text: str, ruled: bool, texture: bool, skew: bool, as_markdown: bool
         rid = uuid.uuid4().hex[:12]
         folder = RENDER_ROOT / rid
         folder.mkdir(parents=True, exist_ok=True)
-        count, missing = _write_streaming(text, folder, as_markdown, on_progress)
+        count, missing = _write_streaming(
+            text, folder, as_markdown, on_progress,
+            on_ready=(lambda n: on_ready(rid, n)) if on_ready else None)
 
     if on_progress:
         on_progress("previews", count)
@@ -356,12 +379,21 @@ def _job_spawn(jid: str, work, failure: str) -> None:
     is also the only place stopping cleanly is possible, so the progress call
     doubles as the cancellation point. No page is ever half-drawn.
     """
-    def progress(msg: str) -> None:
+    def progress(msg: str | None = None, **fields) -> None:
+        """Report a stage, and stop here if the job was cancelled.
+
+        Fields alone, with no message, are published without the
+        cancellation check: they come from writer threads, where stopping is
+        not safe, and only say what is already done.
+        """
+        if msg is None:
+            _job_set(jid, **fields)
+            return
         with JOBS_LOCK:
             cancelled = JOBS.get(jid, {}).get("cancel")
         if cancelled:
             raise JobCancelled()
-        _job_set(jid, message=msg)
+        _job_set(jid, message=msg, **fields)
 
     def runner() -> None:
         started = time.perf_counter()
@@ -652,7 +684,10 @@ def api_render():
             elif stage == "previews":
                 progress("Preparing previews")
 
-        rid, count, missing = _render(text, on_progress=on_stage, **opts)
+        def on_ready(rid: str, n: int) -> None:
+            progress(id=rid, ready=n)
+
+        rid, count, missing = _render(text, on_progress=on_stage, on_ready=on_ready, **opts)
         return {"id": rid, "pages": count, "missing": missing}
 
     jid = _job_start("Laying out the text")

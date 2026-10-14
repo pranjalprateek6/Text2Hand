@@ -61,7 +61,9 @@ document.querySelectorAll(".ink").forEach((dot) => {
     document.querySelectorAll(".ink").forEach((d) => {
       d.classList.toggle("is-on", d === dot);
       d.setAttribute("aria-checked", String(d === dot));
+      d.tabIndex = d === dot ? 0 : -1;
     });
+    $("inkName").textContent = dot.title;
     touched();
   });
 });
@@ -72,9 +74,55 @@ document.querySelectorAll(".sizebtn").forEach((btn) => {
     document.querySelectorAll(".sizebtn").forEach((b) => {
       b.classList.toggle("is-on", b === btn);
       b.setAttribute("aria-checked", String(b === btn));
+      b.tabIndex = b === btn ? 0 : -1;
     });
     touched();
   });
+});
+
+// A radio group is one stop on the Tab key, and the arrows move the choice
+// within it, the way a native radio group behaves.
+document.querySelectorAll('[role="radiogroup"]').forEach((group) => {
+  const radios = [...group.querySelectorAll('[role="radio"]')];
+  radios.forEach((r) => { r.tabIndex = r.getAttribute("aria-checked") === "true" ? 0 : -1; });
+  group.addEventListener("keydown", (e) => {
+    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+    if (!step) return;
+    e.preventDefault();
+    e.stopPropagation();                     // not a page turn
+    const at = radios.indexOf(document.activeElement);
+    const next = radios[(at + step + radios.length) % radios.length];
+    next.click();
+    next.focus();
+  });
+});
+
+/* ------------------------------------------------------------------- looks */
+
+// One choice that sets the paper, pen and size together, for the common
+// cases. Any change by hand afterwards shows as Custom rather than leaving a
+// preset named that no longer describes the page.
+const LOOKS = {
+  notebook: { ruled: true, texture: true, skew: true, ink: "blue-black", size: "normal" },
+  plain: { ruled: false, texture: true, skew: true, ink: "black", size: "normal" },
+  letter: { ruled: false, texture: true, skew: false, ink: "blue", size: "large" },
+  clean: { ruled: true, texture: false, skew: false, ink: "blue-black", size: "normal" },
+};
+
+function syncLook() {
+  const match = Object.keys(LOOKS).find((k) => {
+    const l = LOOKS[k];
+    return l.ruled === OPTIONS.ruled && l.texture === OPTIONS.texture &&
+      l.skew === OPTIONS.skew && l.ink === INK && l.size === SIZE;
+  });
+  $("look").value = match || "custom";
+}
+
+$("look").addEventListener("change", () => {
+  const l = LOOKS[$("look").value];
+  if (!l) return;
+  setOptions({ ...OPTIONS, ...l }, l.ink);
+  touched();
 });
 
 function setOptions(opts, ink) {
@@ -245,7 +293,7 @@ async function poll(jobId, onStage) {
     const res = await fetch(`/api/job/${jobId}`);
     if (!res.ok) return { error: "Lost track of that job." };
     const job = await res.json();
-    if (job.state === "running") { if (onStage) onStage(job.message); continue; }
+    if (job.state === "running") { if (onStage) onStage(job.message, job); continue; }
     if (job.state === "cancelled") return { cancelled: true };
     if (job.state === "error") return { error: job.error || "That did not work." };
     return job;
@@ -272,20 +320,50 @@ function markStale() {
 }
 $("stale").addEventListener("click", () => render());
 
+function cancelJob() {
+  // a press before the server has named the job is remembered, not lost
+  if (!state.job) { state.cancelPending = state.busy; return; }
+  fetch(`/api/job/${state.job}/cancel`, { method: "POST" }).catch(() => {});
+}
+
+// While a render runs, a page already on screen stays there, dimmed, with
+// the progress and a Cancel in a chip above it; replacing it with a skeleton
+// threw away the page someone was reading. The skeleton is only for when
+// there is nothing to show yet.
 function setBusy(on, stage) {
   state.busy = on;
+  state.live = null;
+  state.cancelPending = false;
   $("render").classList.toggle("is-busy", on);
   $("renderLabel").textContent = on ? (stage || "Rendering") : "Render";
   $("status").textContent = on ? (stage || "Rendering…") : $("status").textContent;
   $("status").classList.toggle("is-live", on);
-  $("loading").hidden = !on;
+  const showing = on && !$("page").hidden;
+  $("loading").hidden = !on || showing;
+  $("live").hidden = !showing;
+  $("pages").classList.toggle("is-working", showing);
   if (on) {
     $("empty").hidden = true;
-    $("page").hidden = true;
-    $("pager").hidden = true;
+    $("liveText").textContent = stage || "Laying out the text";
     $("loadingText").textContent = stage || "Laying out the text";
   }
   markStale();
+}
+
+// Pages of the render in flight, shown as soon as their previews exist. The
+// job publishes how many are ready, counted from page 1 with no gaps.
+function showLive(job) {
+  if (!job || !job.id || !job.ready) return;
+  const n = Math.min(Math.max(state.page, 1), job.ready);
+  if (state.live === `${job.id}/${n}`) return;
+  state.live = `${job.id}/${n}`;
+  $("page").src = `/preview/${job.id}/${n}.jpg`;
+  $("page").alt = `Page ${n}, still writing`;
+  $("page").hidden = false;
+  $("loading").hidden = true;
+  $("live").hidden = false;
+  $("pager").hidden = true;
+  $("pages").classList.remove("is-working", "is-stale");
 }
 
 async function render() {
@@ -304,10 +382,13 @@ async function render() {
     const started = await res.json();
     if (!res.ok) { setBusy(false); after(); note(started.error || "That did not work.", true); return; }
     state.job = started.job;
+    if (state.cancelPending) cancelJob();
 
-    const done = await poll(started.job, (m) => {
+    const done = await poll(started.job, (m, job) => {
       $("loadingText").textContent = m;
+      $("liveText").textContent = m;
       $("status").textContent = m + "…";
+      showLive(job);
     });
     state.job = null;
     setBusy(false);
@@ -341,8 +422,10 @@ async function render() {
 
 /* what the preview shows when a render fails or is missing */
 function after() {
-  if (state.id) { $("page").hidden = false; $("pager").hidden = state.pages < 2; }
-  else $("empty").hidden = false;
+  // the page on screen may be one from the render that just stopped, so the
+  // last finished render is put back rather than whatever is showing
+  if (state.id) show(state.page);
+  else { $("page").hidden = true; $("empty").hidden = false; }
   $("status").textContent = state.statusLine || "Ready";
   $("status").classList.remove("is-live");
   markStale();
@@ -378,11 +461,11 @@ function show(n) {
   markStale();
 }
 
-$("render").addEventListener("click", render);
+// While busy, the Render button is the way out: its label is the progress.
+$("render").addEventListener("click", () => (state.busy ? cancelJob() : render()));
 // stopping is safe at any moment: the server only ever stops between pages
-$("cancelRender").addEventListener("click", () => {
-  if (state.job) fetch(`/api/job/${state.job}/cancel`, { method: "POST" }).catch(() => {});
-});
+$("cancelRender").addEventListener("click", cancelJob);
+$("liveCancel").addEventListener("click", cancelJob);
 $("prev").addEventListener("click", () => show(state.page - 1));
 $("next").addEventListener("click", () => show(state.page + 1));
 
@@ -435,11 +518,18 @@ function touched() {
   // every path that changes the document runs through here, which makes it
   // the one place the draft needs saving from
   draftSoon();
+  syncLook();
   markStale();
   if (!$("auto").checked) return;
   if (!$("text").value.trim()) return;
   if (JSON.stringify(payload()) === state.rendered) return;
-  if (state.busy) { state.queued = true; return; }
+  if (state.busy) {
+    // The render in flight is for text that has already changed, so finishing
+    // it only delays the one that matters. Stop it; the change renders next.
+    state.queued = true;
+    cancelJob();
+    return;
+  }
   clearTimeout(state.timer);
   state.timer = setTimeout(render, 1400);
 }
@@ -774,3 +864,4 @@ try {
 } catch {}
 
 count();
+syncLook();
