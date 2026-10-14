@@ -685,13 +685,17 @@ async function openEntry(e) {
     $("status").textContent = state.statusLine;
   };
   img.onerror = () => {
+    // The server keeps renders for a couple of hours, and the library keeps
+    // everything needed to make one again: the text and every setting are
+    // already back in place, so the entry is simply rendered again rather
+    // than left as a dead end that asks the person to do it.
     state.id = null; state.pages = 0; state.rendered = null;
     $("page").hidden = true; $("pager").hidden = true;
-    $("empty").hidden = false;
+    $("empty").hidden = true;
     $("exportBtn").disabled = true;
     state.statusLine = null;
-    $("status").textContent = "Ready";
-    note("This render has been cleaned up on the server. Press Render to make it again.");
+    note("That render had expired on the server, so it is being written again.");
+    render();
   };
   img.src = `/preview/${e.id}/1.jpg`;
   $("text").focus();
@@ -699,12 +703,47 @@ async function openEntry(e) {
 
 /* -------------------------------------------------------------------- menus */
 
-$("exportBtn").addEventListener("click", (e) => {
-  e.stopPropagation();
-  const open = $("exportPop").hidden;
+// The Export menu behaves like a menu from the keyboard as well: opening it
+// puts focus on the first choice, the arrows move between the choices on
+// offer, and Escape or Tab closes it with focus back on the button.
+function menuItems() {
+  return [...$("exportPop").querySelectorAll('[role="menuitem"]')].filter((a) => !a.hidden);
+}
+
+function setMenu(open, focusFirst) {
   $("exportPop").hidden = !open;
   $("exportBtn").setAttribute("aria-expanded", String(open));
+  if (open && focusFirst) { const first = menuItems()[0]; if (first) first.focus(); }
+}
+
+$("exportBtn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  // a click from the keyboard (Enter or Space) has no pointer position
+  setMenu($("exportPop").hidden, e.detail === 0);
 });
+
+$("exportBtn").addEventListener("keydown", (e) => {
+  if (e.key === "ArrowDown" && !$("exportBtn").disabled) { e.preventDefault(); setMenu(true, true); }
+});
+
+$("exportPop").addEventListener("keydown", (e) => {
+  const items = menuItems();
+  const at = items.indexOf(document.activeElement);
+  const step = { ArrowDown: 1, ArrowUp: -1 }[e.key];
+  if (step) {
+    e.preventDefault();
+    items[(at + step + items.length) % items.length].focus();
+  } else if (e.key === "Home" || e.key === "End") {
+    e.preventDefault();
+    items[e.key === "Home" ? 0 : items.length - 1].focus();
+  } else if (e.key === "Escape" || e.key === "Tab") {
+    if (e.key === "Escape") e.preventDefault();
+    e.stopPropagation();
+    setMenu(false);
+    $("exportBtn").focus();
+  }
+});
+$("exportPop").addEventListener("click", () => setMenu(false));
 document.addEventListener("click", (e) => {
   if (!e.target.closest(".menu")) {
     $("exportPop").hidden = true;
