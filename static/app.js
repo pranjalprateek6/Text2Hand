@@ -355,7 +355,7 @@ function show(n) {
   $("dlPagePdf").href = `/download/${state.id}/page_${state.page}.pdf${name}`;
 
   // On a one-page render the whole document and this page are the same file,
-  // and the zip is that one PNG in a wrapper. Offer the two artefacts that
+  // and the zip is that one page in a wrapper. Offer the two artefacts that
   // actually differ rather than four entries where two are duplicates.
   const many = state.pages > 1;
   $("dlZip").hidden = !many;

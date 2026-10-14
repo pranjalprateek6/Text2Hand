@@ -810,6 +810,36 @@ def derive_metrics() -> None:
 # --------------------------------------------------------------------------- #
 # Page rendering
 # --------------------------------------------------------------------------- #
+# Textured, ruled blank sheets, kept from one render to the next. Building one
+# is a multiply and two blends across a 30 MB page, about 130 ms, and every
+# render used to start by doing it again for a sheet identical to the last
+# render's. Keyed by everything that changes how a blank sheet looks, and only
+# the two most recent looks are kept, since each costs ~90 MB.
+_blank_pools: dict[tuple, list[Image.Image]] = {}
+_templates: dict[str, Image.Image] = {}
+_BLANK_LOOKS = 2
+
+
+def _blank_pool() -> list[Image.Image]:
+    key = (BG_PATH, PAPER_TEXTURE, RULED, MARGIN_RULE, LINE_HEIGHT,
+           MARGIN_T, MARGIN_B, MARGIN_L, RULE_COLOR, RULE_WIDTH, RULE_OFFSET,
+           MARGIN_RULE_COLOR, PAPER_TINT, PAPER_NOISE,
+           PAPER_GRAIN_ALPHA, PAPER_MOTTLE_ALPHA)
+    pool = _blank_pools.pop(key, None)
+    if pool is None:
+        pool = []
+    _blank_pools[key] = pool                  # re-inserted, so it counts as newest
+    while len(_blank_pools) > _BLANK_LOOKS:
+        _blank_pools.pop(next(iter(_blank_pools)))
+    return pool
+
+
+def _template() -> Image.Image:
+    if BG_PATH not in _templates:
+        _templates[BG_PATH] = Image.open(BG_PATH).convert("RGB")
+    return _templates[BG_PATH]
+
+
 class Sheet:
     """A stack of pages you can write glyphs onto; starts a new page on demand."""
 
@@ -826,7 +856,7 @@ class Sheet:
         # otherwise outlive the render that made them.
         global _live_sheet
         _live_sheet = self
-        self.template = Image.open(BG_PATH).convert("RGB")
+        self.template = _template()
         self.width, self.height = self.template.size
         # With an on_page sink a finished page is handed over and forgotten, so
         # only the one being written is held. Without one they pile up here,
@@ -838,13 +868,13 @@ class Sheet:
         self.scale = 1.0                      # block-level glyph size
         self._last = ""                       # last character written, for quote direction
         self._in_quote = False                # inside a quotation, for quote direction
-        self._blanks: list[Image.Image] = []   # prepared sheets, copied per page
+        self._blanks = _blank_pool()            # prepared sheets, copied per page
         self.page = None
         self._skew_pool = None
         self._new_page()
 
     def close(self) -> None:
-        self._blanks.clear()
+        self._blanks = []                       # the pool itself outlives this sheet
         if self._skew_pool is not None:
             self._skew_pool.shutdown(wait=True)
             self._skew_pool = None

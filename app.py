@@ -195,7 +195,9 @@ def _write_streaming(text: str, folder: Path, as_markdown: bool, on_progress):
                 # JPEG for the preview: the paper grain makes PNG very
                 # inefficient here (roughly 5x larger) and this copy is only
                 # ever shown on screen.
-                preview = page.copy()
+                # Halved by box averaging first, which is half the cost of
+                # filtering the full page and looks the same at 900px.
+                preview = page.reduce(2)
                 preview.thumbnail((PREVIEW_WIDTH, PREVIEW_WIDTH * 4), Image.LANCZOS)
                 preview.save(folder / f"preview_{i}.jpg", quality=82, optimize=True)
 
@@ -206,10 +208,14 @@ def _write_streaming(text: str, folder: Path, as_markdown: bool, on_progress):
                 thumb.thumbnail((THUMB_WIDTH, THUMB_WIDTH * 4), Image.LANCZOS)
                 thumb.save(folder / f"thumb_{i}.jpg", quality=72, optimize=True)
 
-                # Level 3 rather than zlib's default 6. A page is mostly paper
-                # grain, which is close to random and barely compresses, so the
-                # extra effort buys about 5% of file size for twice the time.
-                page.save(folder / f"page_{i}.png", compress_level=3)
+                # The full-size page is kept as a high quality JPEG, not a
+                # PNG. Paper grain is close to random and barely compresses
+                # losslessly, so the PNG was 11 MB and 380 ms a page, the
+                # single largest cost in a render, for a file most people
+                # never download. This is 2.5 MB and 30 ms, with 4:4:4 colour
+                # so thin red ink keeps its edges. A PNG is made from it only
+                # when one is asked for.
+                page.save(folder / f"page_{i}.jpg", quality=95, subsampling=0)
                 append_pdf(page, i)
             except Exception as exc:
                 failures.append(exc)
@@ -229,6 +235,11 @@ def _write_streaming(text: str, folder: Path, as_markdown: bool, on_progress):
     return count, missing
 
 
+def _pages_on_disk(folder: Path) -> list[Path]:
+    """The full-size page images, in page order: page_10 after page_2."""
+    return sorted(folder.glob("page_*.jpg"), key=lambda p: int(p.stem.split("_")[1]))
+
+
 def _combine_pdf(folder: Path) -> Path:
     """Build the whole-document PDF from the pages already on disk.
 
@@ -239,7 +250,7 @@ def _combine_pdf(folder: Path) -> Path:
     about 0.4% of file size in superseded page tables.
     """
     pdf = folder / "handwriting.pdf"
-    pngs = sorted(folder.glob("page_*.png"), key=lambda p: int(p.stem.split("_")[1]))
+    pngs = _pages_on_disk(folder)
     if not pngs:
         raise FileNotFoundError("no pages to combine")
     if pdf.exists():
@@ -669,7 +680,7 @@ def thumb(rid: str, n: int):
 def download_page_pdf(rid: str, n: int):
     """Single page as a PDF, built on first request and then cached."""
     folder = _safe(rid)
-    src = folder / f"page_{n}.png"
+    src = folder / f"page_{n}.jpg"
     if not src.exists():
         abort(404)
 
@@ -685,14 +696,15 @@ def download_page_pdf(rid: str, n: int):
 
 @app.get("/download/<rid>/pages.zip")
 def download_zip(rid: str):
-    """Every page PNG plus the combined PDF, zipped on first request."""
+    """Every full-size page plus the combined PDF, zipped on first request."""
     folder = _safe(rid)
 
     def build(tmp: Path) -> None:
-        pngs = sorted(folder.glob("page_*.png"),
-                      key=lambda p: int(p.stem.split("_")[1]))   # page_10 after page_2
-        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
-            for p in pngs:
+        # Stored, not deflated: JPEG and PDF pages are already compressed,
+        # and deflating them again took 15 seconds on a 60 page document to
+        # save almost nothing.
+        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_STORED) as z:
+            for p in _pages_on_disk(folder):
                 z.write(p, p.name)
             combined = folder / "handwriting.pdf"
             if combined.exists():
@@ -724,16 +736,43 @@ def download_pdf(rid: str):
 
 @app.get("/download/<rid>/page_<int:n>.png")
 def download_page(rid: str, n: int):
-    path = _safe(rid) / f"page_{n}.png"
-    if not path.exists():
+    folder = _safe(rid)
+    src = folder / f"page_{n}.jpg"
+    if not src.exists():
         abort(404)
+
+    def build(tmp: Path) -> None:
+        with Image.open(src) as page:
+            page.save(tmp, "PNG", compress_level=3, dpi=(_pdf_dpi(),) * 2)
+
+    path = _build_once(folder / f"page_{n}.png", build)
     stem = _dl_stem()
     return send_file(path, mimetype="image/png", as_attachment=True,
                      download_name=f"{stem} page {n}.png" if stem else f"page_{n}.png")
 
 
+def warm() -> None:
+    """Do the first visitor's slow work before there is a first visitor.
+
+    The first studio load used to take 1.3 s, measuring the hand, and the
+    first render paid again for loading every glyph and word image and for
+    texturing a blank sheet. All of it is the same for everyone, so it is done
+    once at startup on a background thread. A WSGI server should call this
+    after importing the app.
+    """
+    for size in SIZES:
+        page_size(size)
+    with _render_lock:
+        t2h.X_HEIGHT_MM = SIZES["normal"]
+        t2h.derive_metrics()
+        t2h._load_words()
+        t2h.Sheet().close()                 # builds the default blank sheet
+    import markdown_blocks  # noqa: F401  (pulls in markdown and bs4)
+
+
 if __name__ == "__main__":
     RENDER_ROOT.mkdir(parents=True, exist_ok=True)
+    threading.Thread(target=warm, daemon=True).start()
     # The Werkzeug debugger runs arbitrary code for anyone who can reach it, so
     # it is opt-in, and the server listens on this machine only unless told
     # otherwise. Anything public belongs behind a real WSGI server anyway.

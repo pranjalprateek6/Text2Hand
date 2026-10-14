@@ -560,6 +560,17 @@ if _job and _job["state"] == "done":
     with _pm.open(stream=_single.data, filetype="pdf") as _doc:
         _w = _doc[0].rect.width
     check("single-page PDF is A4 too", abs(_w - 595) < 6, f"{_w:.0f} pt wide")
+    # full-size pages are kept as JPEG; a PNG is made only when asked for
+    _png = _client.get(f"/download/{_job['id']}/page_1.png")
+    check("page PNG export builds on demand",
+          _png.status_code == 200 and _png.data[:8] == b"\x89PNG\r\n\x1a\n",
+          f"{_png.status_code}, {len(_png.data):,} bytes")
+    import zipfile as _zf
+    _z = _client.get(f"/download/{_job['id']}/pages.zip")
+    with _zf.ZipFile(_io.BytesIO(_z.data)) as _zip:
+        _names = _zip.namelist()
+    check("zip holds every page and the PDF",
+          "page_1.jpg" in _names and "handwriting.pdf" in _names, str(_names))
 
 bad = [n for n, ok, _ in results if not ok]
 print(f"\n{len(results) - len(bad)}/{len(results)} passed"
