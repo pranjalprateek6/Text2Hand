@@ -26,6 +26,8 @@ def _workers() -> int:
     return max(1, min(8, (os.cpu_count() or 2)))
 
 MAX_PAGES = 50          # a 400-page report would render for hours; cap it
+# the renderer's glyph folder, found next to this file rather than in the cwd
+_FONT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "myfont")
 SCAN_PROBE_PAGES = 3    # how many pages to check when guessing "scanned"
 
 
@@ -105,10 +107,25 @@ def normalize(text: str) -> str:
     matters. Anything still unmappable is deliberately left alone so the
     renderer reports it instead of losing it silently.
     """
+    # Superscripts and subscripts first, since decomposition would flatten
+    # them into ordinary digits and x² would quietly become x2, a different
+    # number. Written out the way they are typed in plain text instead.
+    text = _SUPERSCRIPT_RUN.sub(lambda m: "^" + m.group().translate(_SUPERSCRIPTS), text)
+    text = _SUBSCRIPT_RUN.sub(lambda m: "_" + m.group().translate(_SUBSCRIPTS), text)
+    text = re.sub(r"\s*°\s*([CF])\b", r" deg \1", text)     # 25°C, not 25 degC
+    # A middle dot between two terms is multiplication, a·b; standing apart it
+    # is a bullet or separator, and the table below turns that into a dash.
+    text = re.sub(r"(?<=\S)·(?=\S)", "*", text)
     for bad, good in _TYPOGRAPHY.items():
         text = text.replace(bad, good)
     return "".join(c for c in unicodedata.normalize("NFKD", text)
                    if not unicodedata.combining(c))
+
+
+_SUPERSCRIPTS = str.maketrans("⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ⁿⁱ", "0123456789+-=()ni")
+_SUBSCRIPTS = str.maketrans("₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎", "0123456789+-=()")
+_SUPERSCRIPT_RUN = re.compile("[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ⁿⁱ]+")
+_SUBSCRIPT_RUN = re.compile("[₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎]+")
 
 
 @dataclass
@@ -724,7 +741,7 @@ def to_markdown(path: str, converter: str = "pymupdf", page_spec: str = "",
     # draw (Cyrillic, Arabic, CJK and so on). Only the second kind is worth a
     # warning, so check the font before naming a character as missing.
     def _has_glyph(ch: str) -> bool:
-        return os.path.exists(os.path.join("myfont", f"{ord(ch)}.png"))
+        return os.path.exists(os.path.join(_FONT_DIR, f"{ord(ch)}.png"))
 
     foreign = {ch for ch in md if ord(ch) > 126 and not _has_glyph(ch)}
     if foreign:

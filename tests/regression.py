@@ -484,6 +484,83 @@ except ValueError:
 check("an ordinary page keeps full resolution",
       _cv._safe_dpi(_pm.Rect(0, 0, 595, 842), 300) == 300)
 
+# --- writing stays inside the right margin ---------------------------------
+# Fatigue grows the hand down the page and every glyph adds kerning jitter, so
+# lines wrapped against the bare measurement used to run ~90px past the margin.
+# A long URL has no space to break at and ran clean off the paper.
+_skew, t2h.SCAN_SKEW = t2h.SCAN_SKEW, 0
+try:
+    _text = ("A line of ordinary prose that wraps several times across the page. " * 60
+             + "\n\nhttps://example.com/a/very/long/path/that/never/ends/and/keeps/"
+               "going/on/and/on/forever/index.html")
+    _over = -9999
+    for _p in t2h.render_pages(_text)[0]:
+        _a = _np.asarray(_p.convert("L"))
+        _cols = _np.where((_a[:, :_a.shape[1] - 60] < 110).any(axis=0))[0]
+        _over = max(_over, int(_cols.max()) - (_a.shape[1] - t2h.MARGIN_R))
+    check("no ink runs past the right margin", _over <= 20, f"furthest {_over}px past")
+finally:
+    t2h.SCAN_SKEW = _skew
+
+# --- word images follow the hand size --------------------------------------
+_ws = {}
+for _mm in (2.5, 3.5):
+    t2h.X_HEIGHT_MM = _mm
+    t2h.derive_metrics()
+    _ws[_mm] = t2h.WORD_SCALE
+t2h.X_HEIGHT_MM = 3.0
+t2h.derive_metrics()
+check("word images rescale with the hand size", _ws[2.5] < t2h.WORD_SCALE < _ws[3.5],
+      f"{_ws[2.5]:.3f} < {t2h.WORD_SCALE:.3f} < {_ws[3.5]:.3f}")
+
+# --- the renderer finds its glyphs from any working directory ---------------
+import subprocess as _sp
+_out = _sp.run([sys.executable, "-c",
+                "import sys; sys.path.insert(0, sys.argv[1]); import text_to_handwriting as t;"
+                " print(bool(t.glyph_variants('a')))", ROOT],
+               cwd=_tf.gettempdir(), capture_output=True, text=True)
+check("glyphs load from another working directory", _out.stdout.strip() == "True",
+      _out.stdout.strip() or _out.stderr.strip()[-120:])
+
+# --- typed text is normalised without changing what it says -----------------
+_n = converters.normalize("don’t café “quoted” x² H₂O 25°C a·b")
+check("typed typography folds to drawable text",
+      _n == "don't cafe \"quoted\" x^2 H_2O 25 deg C a*b", _n)
+
+
+def _app_render(payload):
+    """Run one render through the real endpoint and wait for it."""
+    import time as _time
+    r = _client.post("/api/render", json=payload)
+    if r.status_code != 202:
+        return None, r.get_json()
+    jid = r.get_json()["job"]
+    for _ in range(600):
+        job = _client.get(f"/api/job/{jid}").get_json()
+        if job["state"] != "running":
+            return job, None
+        _time.sleep(0.1)
+    return None, "timed out"
+
+
+_job, _err = _app_render({"text": "It’s a café, isn’t it?", "size": "large"})
+check("app render of pasted typography skips nothing",
+      _job is not None and _job["state"] == "done" and not _job["missing"],
+      str(_err or (_job and (_job.get("missing") or _job.get("error")))))
+check("a large render leaves the normal page size alone",
+      app.page_size() == app.page_size("normal") and app.page_size("large") < app.page_size(),
+      f"normal {app.page_size()}, large {app.page_size('large')}")
+if _job and _job["state"] == "done":
+    _pdf = _client.get(f"/download/{_job['id']}/handwriting.pdf")
+    with _pm.open(stream=_pdf.data, filetype="pdf") as _doc:
+        _w, _h = _doc[0].rect.width, _doc[0].rect.height
+    check("exported PDF pages are A4", abs(_w - 595) < 6 and abs(_h - 842) < 8,
+          f"{_w:.0f} x {_h:.0f} pt")
+    _single = _client.get(f"/download/{_job['id']}/page_1.pdf")
+    with _pm.open(stream=_single.data, filetype="pdf") as _doc:
+        _w = _doc[0].rect.width
+    check("single-page PDF is A4 too", abs(_w - 595) < 6, f"{_w:.0f} pt wide")
+
 bad = [n for n, ok, _ in results if not ok]
 print(f"\n{len(results) - len(bad)}/{len(results)} passed"
       + (f", {len(skipped)} skipped" if skipped else ""))

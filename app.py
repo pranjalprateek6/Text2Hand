@@ -21,6 +21,7 @@ import re
 import shutil
 import tempfile
 import threading
+import time
 import uuid
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
@@ -43,14 +44,17 @@ app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
 
 RENDER_ROOT = Path(os.environ.get("T2H_RENDER_ROOT")
                    or Path(tempfile.gettempdir()) / "text2hand_web")
+# Renders are kept for a while rather than only the newest few. Keeping five in
+# total meant that once two people used the app, each one's renders deleted the
+# other's downloads within minutes. The count cap stays as a backstop on disk.
+RENDER_TTL = int(os.environ.get("T2H_RENDER_TTL_MIN", "120")) * 60
 # Equation crops live apart from the renders, in the one folder Markdown images
 # are allowed to come from. The Markdown names them by a relative path inside
 # it, so nothing a browser sees or sends is a path on this machine.
 ASSET_ROOT = RENDER_ROOT / "assets"
 t2h.IMAGE_ROOT = str(ASSET_ROOT)
-# A full-res page is roughly 9 MB, and a long document can be 50+ pages, so
-# keeping many old renders around costs gigabytes. Keep only a few.
-KEEP_RENDERS = 5
+# However recent, never more than this many renders on disk at once.
+KEEP_RENDERS = int(os.environ.get("T2H_KEEP_RENDERS", "40"))
 KEEP_EQ_ASSETS = 8      # equation-crop folders, one per PDF conversion
 PREVIEW_WIDTH = 900        # downscaled width for the in-page preview
 THUMB_WIDTH = 200          # downscaled width for the page-strip thumbnails
@@ -62,21 +66,51 @@ THUMB_WIDTH = 200          # downscaled width for the page-strip thumbnails
 MAX_OUTPUT_PAGES = 80
 
 
-def page_size() -> int:
-    return max(1, t2h.chars_per_page())
-
-
-def render_limit() -> int:
-    return MAX_OUTPUT_PAGES * page_size()
-
-
 # The renderer keeps its settings in module globals, so only one render at a
 # time may touch them.
 _render_lock = threading.Lock()
 
+# Three real sizes rather than a millimetre slider, for the same reason the
+# pens are four colours and not a wheel: every choice should look like a page
+# someone could have written. The ruling never moves; a person writing larger
+# on the same ruled pad is exactly what larger handwriting is.
+SIZES = {"small": 2.5, "normal": 3.0, "large": 3.5}
+_page_sizes: dict[str, int] = {}
+
+
+def page_size(size: str = "normal") -> int:
+    """Characters that fit on a page in this hand size, measured once.
+
+    It used to be asked of the renderer on every call, which meant two things:
+    it reported whatever size the last render had left in the module globals,
+    so one large render shrank everyone's limit until someone rendered normal
+    again; and it re-derived those globals without the render lock, from
+    request threads, underneath a render in progress.
+    """
+    size = size if size in SIZES else "normal"
+    if size not in _page_sizes:
+        with _render_lock:
+            if size not in _page_sizes:
+                t2h.X_HEIGHT_MM = SIZES[size]       # every render sets it again
+                _page_sizes[size] = max(1, t2h.chars_per_page())
+    return _page_sizes[size]
+
+
+def render_limit(size: str = "normal") -> int:
+    return MAX_OUTPUT_PAGES * page_size(size)
+
+
+def _pdf_dpi() -> float:
+    """The resolution that makes a page come out A4 in a PDF.
+
+    Pillow assumes 72 dpi unless told, which made every exported page 36 by
+    52 inches: right on screen, and absurd the moment anyone printed it.
+    """
+    return t2h.px_per_mm() * 25.4
+
 
 def _prune() -> None:
-    """Keep only the most recent render folders, and a few equation crops.
+    """Drop renders past their time or past the cap, and old equation crops.
 
     Equation assets are pruned on their own clock: they are referenced by
     Markdown sitting in someone's editor, which outlives the renders made from
@@ -89,9 +123,13 @@ def _prune() -> None:
         return sorted((p for p in root.iterdir() if p.is_dir() and keep(p)),
                       key=lambda p: p.stat().st_mtime, reverse=True)
 
+    cutoff = time.time() - RENDER_TTL
+    # Only plain ids are renders. An upload_ folder belongs to a conversion
+    # that may still be reading it, and is removed by that conversion.
     renders = newest_first(RENDER_ROOT, lambda p: p.name.isalnum())
+    expired = [p for p in renders[:KEEP_RENDERS] if p.stat().st_mtime < cutoff]
     assets = newest_first(ASSET_ROOT, lambda p: p.name.startswith("eq_"))
-    for old in renders[KEEP_RENDERS:] + assets[KEEP_EQ_ASSETS:]:
+    for old in renders[KEEP_RENDERS:] + expired + assets[KEEP_EQ_ASSETS:]:
         shutil.rmtree(old, ignore_errors=True)
 
 
@@ -135,13 +173,14 @@ def _write_streaming(text: str, folder: Path, as_markdown: bool, on_progress):
         pdf_path.unlink()
     turn = threading.Condition()
     next_up = [1]
+    dpi = _pdf_dpi()
 
     def append_pdf(page, i):
         with turn:
             while next_up[0] != i:
                 turn.wait()
             try:
-                page.convert("RGB").save(pdf_path, append=i > 1)
+                page.convert("RGB").save(pdf_path, append=i > 1, resolution=dpi)
             finally:
                 # advanced even if this page failed, or every page behind it
                 # would wait for a turn that never comes
@@ -207,15 +246,8 @@ def _combine_pdf(folder: Path) -> Path:
         pdf.unlink()                    # appending onto a stale file would grow it
     for n, path in enumerate(pngs):
         with Image.open(path) as page:
-            page.convert("RGB").save(pdf, append=n > 0)
+            page.convert("RGB").save(pdf, append=n > 0, resolution=_pdf_dpi())
     return pdf
-
-
-# Three real sizes rather than a millimetre slider, for the same reason the
-# pens are four colours and not a wheel: every choice should look like a page
-# someone could have written. The ruling never moves; a person writing larger
-# on the same ruled pad is exactly what larger handwriting is.
-SIZES = {"small": 2.5, "normal": 3.0, "large": 3.5}
 
 
 def _render(text: str, ruled: bool, texture: bool, skew: bool, as_markdown: bool,
@@ -354,6 +386,26 @@ def _upload_key(path: Path, *parts: str) -> str:
     for part in parts:
         h.update(b"\0" + part.encode())
     return h.hexdigest()
+
+
+def _build_once(path: Path, build) -> Path:
+    """Make a download on first request, so no one is ever served half of it.
+
+    `build` writes to the temporary path it is given, which is then renamed
+    into place in one step. Built in place instead, a second request arriving
+    mid-build found the file already there and sent the truncated part. Two
+    simultaneous first requests now both build, and whichever rename lands
+    last wins with an identical file.
+    """
+    if not path.exists():
+        tmp = path.with_name(f".{uuid.uuid4().hex[:8]}.{path.name}")
+        try:
+            build(tmp)
+            os.replace(tmp, path)
+        finally:
+            if tmp.exists():
+                tmp.unlink()
+    return path
 
 
 def _dl_stem() -> str:
@@ -524,15 +576,23 @@ def converters_safe_name(filename: str) -> str:
 
 @app.post("/api/render")
 def api_render():
-    data = request.get_json(silent=True) or {}
-    text = (data.get("text") or "").strip()
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    raw = data.get("text")
+    size = str(data.get("size", "normal"))
+    # Pasted text is the commonest input there is, and text from a word
+    # processor is full of curly quotes, dashes and accents. Those used to be
+    # folded only for PDFs, so typed "don’t" came out as "dont" and "café" as
+    # "caf". Folded here too, with the same table.
+    text = converters.normalize(raw if isinstance(raw, str) else "").strip()
     if not text:
         return jsonify(error="Write some text first."), 400
-    limit = render_limit()
+    limit = render_limit(size)
     if len(text) > limit:
         over = len(text)
         return jsonify(error=(
-            f"That is {over:,} characters, roughly {over // page_size()} handwritten "
+            f"That is {over:,} characters, roughly {over // page_size(size)} handwritten "
             f"pages, over the {MAX_OUTPUT_PAGES}-page limit. "
             "Convert a smaller page range, or trim the text."
         )), 400
@@ -543,12 +603,12 @@ def api_render():
         "skew": bool(data.get("skew", True)),
         "as_markdown": bool(data.get("markdown", False)),
         "ink": str(data.get("ink", "blue-black")),
-        "size": str(data.get("size", "normal")),
+        "size": size,
     }
     # How many pages this is probably going to be, so a long render counts
     # itself against a visible total instead of just counting. The ~ is
     # honest: pagination is discovered as the text flows.
-    guess = max(1, round(len(text) / page_size()))
+    guess = max(1, round(len(text) / page_size(size)))
 
     def work(progress):
         def on_stage(stage: str, count: int) -> None:
@@ -609,12 +669,15 @@ def thumb(rid: str, n: int):
 def download_page_pdf(rid: str, n: int):
     """Single page as a PDF, built on first request and then cached."""
     folder = _safe(rid)
-    pdf = folder / f"page_{n}.pdf"
-    if not pdf.exists():
-        src = folder / f"page_{n}.png"
-        if not src.exists():
-            abort(404)
-        Image.open(src).convert("RGB").save(pdf)
+    src = folder / f"page_{n}.png"
+    if not src.exists():
+        abort(404)
+
+    def build(tmp: Path) -> None:
+        with Image.open(src) as page:          # closed, or Windows cannot prune it
+            page.convert("RGB").save(tmp, "PDF", resolution=_pdf_dpi())
+
+    pdf = _build_once(folder / f"page_{n}.pdf", build)
     stem = _dl_stem()
     return send_file(pdf, mimetype="application/pdf", as_attachment=True,
                      download_name=f"{stem} page {n}.pdf" if stem else f"page_{n}.pdf")
@@ -624,16 +687,18 @@ def download_page_pdf(rid: str, n: int):
 def download_zip(rid: str):
     """Every page PNG plus the combined PDF, zipped on first request."""
     folder = _safe(rid)
-    zpath = folder / "pages.zip"
-    if not zpath.exists():
+
+    def build(tmp: Path) -> None:
         pngs = sorted(folder.glob("page_*.png"),
                       key=lambda p: int(p.stem.split("_")[1]))   # page_10 after page_2
-        with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as z:
+        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
             for p in pngs:
                 z.write(p, p.name)
             combined = folder / "handwriting.pdf"
             if combined.exists():
                 z.write(combined, combined.name)
+
+    zpath = _build_once(folder / "pages.zip", build)
     stem = _dl_stem()
     return send_file(zpath, mimetype="application/zip", as_attachment=True,
                      download_name=f"{stem} pages.zip" if stem else "handwriting_pages.zip")

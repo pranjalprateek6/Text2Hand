@@ -46,13 +46,17 @@ from PIL import Image, ImageChops, ImageDraw
 # --------------------------------------------------------------------------- #
 # Config -- tweak these to taste
 # --------------------------------------------------------------------------- #
-FONT_DIR = "myfont"                     # folder of glyph images
-WORD_DIR = "wordfont"                   # whole-word images, used in preference to letters
+# The bundled assets are found next to this file, not in whatever directory the
+# process happened to start in: a server launched from elsewhere used to find
+# no glyphs at all and die.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+FONT_DIR = os.path.join(_HERE, "myfont")    # folder of glyph images
+WORD_DIR = os.path.join(_HERE, "wordfont")  # whole-word images, used in preference to letters
 USE_WORDS = True                        # False renders everything letter by letter
 WORD_SCALE: float | None = None          # None derives it from the glyphs at runtime
 BG_PATH = os.path.join(FONT_DIR, "bg.png")
 OUT_DIR = "out"
-DEFAULT_INPUT = "dummy.txt"
+DEFAULT_INPUT = os.path.join(_HERE, "dummy.txt")
 
 # Page margins (px)
 MARGIN_L, MARGIN_T, MARGIN_R, MARGIN_B = 150, 100, 150, 100
@@ -240,7 +244,7 @@ def glyph_variants(ch: str) -> list[Image.Image] | None:
 
     scode = str(ord(GLYPH_ALIASES.get(ch, ch)))
     variants: list[Image.Image] = []
-    for path in sorted(glob.glob(os.path.join(FONT_DIR, scode + "*.png"))):
+    for path in sorted(glob.glob(os.path.join(glob.escape(FONT_DIR), scode + "*.png"))):
         stem = os.path.splitext(os.path.basename(path))[0]
         rest = stem[len(scode):]
         # accept "65", "65_1", "65a"  -- reject "650" (a different code)
@@ -347,14 +351,65 @@ def word_image(word: str) -> tuple[Image.Image, int] | None:
 
 
 def measure(word: str, scale: float = 1.0) -> int:
-    """Width of a word before jitter, used to decide where lines break."""
+    """Width of a word before jitter, used to decide where lines break.
+
+    Includes the average of the kerning jitter, which every glyph adds as it
+    is drawn. Leaving it out undercounted a full line by thirty pixels or so,
+    which is a good part of how text came to run past the right margin.
+    """
+    kern = sum(KERN_JITTER) / 2
     head, core, tail = split_token(word)
     hit = word_image(core) if core else None
     if hit:
-        width = int(hit[0].width * WORD_SCALE)
-        width += sum(char_advance(c) for c in head + tail)
+        width = hit[0].width * WORD_SCALE + kern
+        width += sum(char_advance(c) + kern for c in head + tail)
         return int(width * scale)
-    return int(sum(char_advance(c) for c in word) * scale)
+    return int(sum(char_advance(c) + kern for c in word) * scale)
+
+
+def _break_token(word: str, width: int, scale: float) -> tuple[str, str]:
+    """Split a token too wide for a whole line: the part that fits, and the rest.
+
+    Only ever needed for something with no spaces to break at, a URL or a
+    long identifier, which used to run straight off the edge of the paper.
+    """
+    for cut in range(len(word) - 1, 0, -1):
+        if measure(word[:cut], scale) <= width:
+            return word[:cut], word[cut:]
+    return word[:1], word[1:]
+
+
+def lines_for(sheet: "Sheet", words: list[str], width: int, scale: float = 1.0):
+    """Wrap words a line at a time, each line measured for where it will land.
+
+    Fatigue grows the hand toward the foot of a page, so a line that fits at
+    the top is too long at the bottom. Wrapping a whole paragraph up front
+    could not know that, and the lower lines ran past the margin. This yields
+    one line, waits for it to be written, then measures the next at the hand
+    size the sheet has reached by then. Room is also left for the ragged left
+    margin, which shifts every line right by up to MARGIN_JITTER.
+    """
+    words = list(words)
+    space = int(SPACE_WIDTH * scale)
+    room = width - MARGIN_JITTER
+    i = 0
+    while i < len(words):
+        grown = scale * (1 + FATIGUE_GROWTH * sheet._fatigue())
+        line: list[str] = []
+        used = 0
+        while i < len(words):
+            ww = measure(words[i], grown)
+            add = ww if not line else space + ww
+            if used + add <= room:
+                line.append(words[i])
+                used += add
+                i += 1
+                continue
+            if not line:                      # one token wider than the line
+                head, words[i] = _break_token(words[i], room, grown)
+                line.append(head)
+            break
+        yield line
 
 
 def wrap(words: list[str], width: int, scale: float = 1.0) -> list[list[str]]:
@@ -664,7 +719,7 @@ def _raw_x_height() -> int:
     """x-height of the glyph files themselves, before GLYPH_SCALE is applied."""
     found = []
     for code in (97, 99, 101, 109, 110, 111, 114, 115, 117, 118, 119, 120, 122):
-        for path in sorted(glob.glob(os.path.join(FONT_DIR, "{}*.png".format(code)))):
+        for path in sorted(glob.glob(os.path.join(glob.escape(FONT_DIR), "{}*.png".format(code)))):
             rest = os.path.splitext(os.path.basename(path))[0][len(str(code)):]
             if rest and rest[0].isdigit():
                 continue
@@ -678,6 +733,9 @@ def _raw_x_height() -> int:
 def px_per_mm() -> float:
     with Image.open(BG_PATH) as page:
         return page.width / PAGE_WIDTH_MM
+
+
+_word_scale_derived = False             # WORD_SCALE was worked out, not configured
 
 
 def derive_metrics() -> None:
@@ -731,8 +789,14 @@ def derive_metrics() -> None:
     # Word images and letter glyphs come from different sheets, written at
     # different sizes, so match them on x-height. For a word with no ascender
     # or descender the baseline offset is the x-height.
-    global WORD_SCALE
-    if WORD_SCALE is None:
+    #
+    # Recomputed whenever it was derived rather than set, because X_HEIGHT
+    # follows the chosen hand size. Computing it once froze the words at the
+    # first size used, so on a small or large hand a third of the words came
+    # out a different size from the letters around them.
+    global WORD_SCALE, _word_scale_derived
+    if WORD_SCALE is None or _word_scale_derived:
+        _word_scale_derived = True
         flat = ("on", "one", "or", "no", "so", "we", "as", "is", "in", "are",
                 "was", "us", "an", "a", "our", "see", "some", "were", "new")
         # Use the image height, not the baseline offset. With no ascender or
@@ -1240,7 +1304,7 @@ def render(text: str, on_page=None) -> Sheet:
         if not words:
             sheet.newline()                        # blank line from the source
             continue
-        for wrapped in wrap(words, column):
+        for wrapped in lines_for(sheet, words, column):
             sheet.put_line(wrapped, MARGIN_L, column)
 
     sheet.missing = sorted(missing)
@@ -1323,7 +1387,7 @@ def render_markdown(md_text: str, on_page=None) -> Sheet:
                 missing.add(ch)
 
     def flow(words: list[str], left: int, width: int, scale: float = 1.0) -> None:
-        for line in wrap(words, width, scale):
+        for line in lines_for(sheet, words, width, scale):
             sheet.put_line(line, left, width, scale=scale)
 
     blocks = to_blocks(md_text)
@@ -1377,7 +1441,7 @@ def render_markdown(md_text: str, on_page=None) -> Sheet:
             track(block.text)
             sheet.gap(HEADING_GAP_BEFORE)
             align = "center" if level == 1 else "left"
-            for line in wrap(block.text.split(), column, scale):
+            for line in lines_for(sheet, block.text.split(), column, scale):
                 sheet.put_line(line, MARGIN_L, column, align=align,
                                underline=True, scale=scale)
             sheet.gap(HEADING_GAP_AFTER)
@@ -1387,10 +1451,10 @@ def render_markdown(md_text: str, on_page=None) -> Sheet:
             track(block.text + block.marker)
             indent = MARGIN_L + INDENT_STEP * block.level
             hang = indent + measure(block.marker) + SPACE_WIDTH
-            lines = wrap(block.text.split(), sheet.right - hang)
+            lines = lines_for(sheet, block.text.split(), sheet.right - hang)
             # marker sits on the first line, wrapped lines align under the text
-            sheet.put_line([block.marker] + lines[0], indent, sheet.right - indent)
-            for line in lines[1:]:
+            sheet.put_line([block.marker] + next(lines), indent, sheet.right - indent)
+            for line in lines:
                 sheet.put_line(line, hang, sheet.right - hang)
             continue
 
@@ -1405,7 +1469,7 @@ def render_markdown(md_text: str, on_page=None) -> Sheet:
             track(block.text)
             left = MARGIN_L + INDENT_STEP
             if block.text.strip():
-                sheet.put_line(block.text.split(), left, sheet.right - left)
+                flow(block.text.split(), left, sheet.right - left)
             else:
                 sheet.newline()
             continue
