@@ -12,7 +12,11 @@ import logging
 import os
 import threading
 
-from app import RENDER_ROOT, app, warm
+# Renders run in this many worker processes, side by side (see
+# render_pool.py). Set before the app is imported, which reads it.
+os.environ.setdefault("T2H_RENDER_PROCS", "2")
+
+from app import RENDER_ROOT, app, warm  # noqa: E402
 
 logging.basicConfig(level=os.environ.get("T2H_LOG_LEVEL", "INFO"),
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
