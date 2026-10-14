@@ -79,6 +79,22 @@ The output pane is a viewer, not a wall of images:
 
 Rendering runs locally on the machine hosting the app. The cloud PDF converters are the one exception, and are clearly marked.
 
+### Running it for other people
+
+`python app.py` is the Flask development server. It listens on this machine only and the debugger is off; for anything public, run the app under a real WSGI server and call `app.warm()` once after importing it, so the first visitor does not pay for loading the hand. These environment variables tune it:
+
+| Variable | Default | Effect |
+|---|---|---|
+| `T2H_HOST`, `T2H_PORT` | `127.0.0.1`, `5000` | where `python app.py` listens |
+| `T2H_DEBUG` | off | `1` turns on the Werkzeug debugger. Never on a public host: it runs code for anyone who can reach it |
+| `T2H_RENDER_ROOT` | system temp | where renders and equation crops are written |
+| `T2H_RENDER_TTL_MIN` | `120` | how long a render stays downloadable |
+| `T2H_KEEP_RENDERS` | `40` | most renders kept on disk at once, however recent |
+| `T2H_MAX_UPLOAD_MB` | `50` | largest PDF accepted |
+| `T2H_MAX_ACTIVE_JOBS` | `4` | renders and conversions running or waiting before new ones get a 429 |
+
+Markdown images on the server can only come from the equation crops it made itself, so a pasted `![x](C:/some/file.png)` draws a figure box instead of reading the disk.
+
 ## PDF input
 
 Upload a PDF, pick a converter, optionally give a page range like `1-10`, and hit **Convert**. The PDF becomes Markdown *in the text box* rather than going straight to handwriting, so you can fix what the extractor got wrong. Review it, then Generate.
@@ -127,7 +143,7 @@ Output goes to the `out` folder:
 
 Handwriting is far less dense than print, so a modest PDF becomes a lot of pages. How much text fits on one depends on how large the hand is, so it is measured from the glyphs rather than assumed: the bundled hand fits roughly 1,290 characters a page.
 
-- Rendering stops at **80 output pages**. That is the real cost, since each page is about 9 MB and a second of work, and the character equivalent is derived from the current handwriting.
+- Rendering stops at **80 output pages**. That is the real cost, since each page is a 2632 x 3722 image, about 2.5 MB on disk and 100 to 250 ms of work, and the character equivalent is derived from the current handwriting at the chosen size.
 - Conversion stops at **50 PDF pages**, or sooner if the text would exceed that render limit. It stops on a page boundary and says how many pages it got through, so what comes out of Convert can always be rendered.
 - After converting, the app reports the character count and an estimated page count, accurate to within a few percent.
 
@@ -230,7 +246,7 @@ Text To Handwriting.py    the original minimal version, kept for reference
 - **Cloud converters are untested.** The adapters are written and the UI disables them with a reason, but they have not been run against a live key.
 - **Running headers and footers leak in.** A repeated "Company Confidential" becomes body text. This is what the review step is for.
 - **Drawn symbols are not your handwriting.** The technical symbols and the Greek/maths set are approximations, unlike the composed punctuation.
-- **Full-res pages are large.** Roughly 9 MB each, so a ZIP of a long document gets big. The PDF is far smaller.
+- **Full-res pages are large.** About 2.5 MB each as JPEG, so a ZIP of a long document gets big. A PNG of a page, built on request, is nearer 5 MB.
 
 ## Notes
 

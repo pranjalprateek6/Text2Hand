@@ -572,6 +572,34 @@ if _job and _job["state"] == "done":
     check("zip holds every page and the PDF",
           "page_1.jpg" in _names and "handwriting.pdf" in _names, str(_names))
 
+# --- through the app, equations keep working with relative asset paths -----
+if _PAPER:
+    import time as _time
+    with open(_PAPER, "rb") as _fh:
+        _r = _client.post("/api/convert", data={"file": (_fh, "paper.pdf"), "pages": "5"},
+                          content_type="multipart/form-data")
+    _jid = _r.get_json()["job"]
+    for _ in range(1200):
+        _job = _client.get(f"/api/job/{_jid}").get_json()
+        if _job["state"] != "running":
+            break
+        _time.sleep(0.1)
+    _md = _job.get("markdown", "")
+    _srcs = _re.findall(r"!\[[^\]]*\]\(([^)]+)\)", _md)
+    check("converted Markdown names crops by relative path only",
+          _srcs and all(s.startswith("eq_") and ":" not in s for s in _srcs),
+          str(_srcs[:2]) or _job.get("error", ""))
+    _rend, _err = _app_render({"text": _md, "markdown": True, "skew": False})
+    _ok = _rend is not None and _rend["state"] == "done"
+    if _ok:
+        _pg = _client.get(f"/preview/{_rend['id']}/2.jpg")
+        with Image.open(_io.BytesIO(_pg.data)) as _im:
+            _dark = int((_np.asarray(_im.convert("L")) < 120).sum())
+    check("app traces the crops onto the page", _ok and _dark > 15_000,
+          f"{_dark:,} dark px in the preview" if _ok else str(_err))
+else:
+    skip("app equation round trip", "million-step paper not found")
+
 bad = [n for n, ok, _ in results if not ok]
 print(f"\n{len(results) - len(bad)}/{len(results)} passed"
       + (f", {len(skipped)} skipped" if skipped else ""))
