@@ -29,6 +29,7 @@
     <div class="nav__cta">
       <a class="linkish" href="https://github.com/pranjalprateek6/Text2Hand"
          target="_blank" rel="noreferrer noopener">GitHub</a>
+      <a class="btn btn--sm" href="{{ url_for('studio') }}">Open the studio</a>
     </div>
   </div>
 </header>
@@ -221,9 +222,9 @@
           </div>
           <div class="step" data-step>
             <span class="step__n">III</span>
-            <h3 class="step__t">Render and hand it in</h3>
-            <p class="step__d">Pages as PNG, the document as a PDF, or everything zipped.
-              Every render is different: no two letters are the same image.</p>
+            <h3 class="step__t">Render and export</h3>
+            <p class="step__d">The document as an A4 PDF, any page as a PNG, or every page
+              zipped. Every render is different: no two letters are the same image.</p>
           </div>
         </div>
 
@@ -256,7 +257,7 @@ pen: blue-black &middot; paper: ruled</pre>
 &rarr; 1,290 characters a page
 
 handwriting.pdf &middot; 4 pages
-pages.zip &middot; full-size PNGs</pre>
+pages.zip &middot; full-size pages</pre>
         </figure>
       </div>
     </div>
@@ -302,14 +303,17 @@ pages.zip &middot; full-size PNGs</pre>
     <div class="wrap">
       <div class="cta__box rv" data-spotlight>
         <p class="eyebrow">Ready when you are</p>
-        <h2 class="display" style="margin-top: 20px" aria-label="Stop writing it out.">Stop writing<br />it out.</h2>
+        <h2 class="display" style="margin-top: 20px" aria-label="Put it on paper.">Put it<br />on paper.</h2>
+        <p class="cta__for">For notes you would rather read in a hand, letters and cards that
+          should feel written, mockups that need real handwriting, and anyone for whom
+          writing by hand is slow or painful.</p>
         <div class="cta__row">
           <a class="btn btn--lg" href="{{ url_for('studio') }}">
             Open the studio
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
           </a>
-          <span class="hero__note" style="width:auto">A page takes about a second</span>
+          <span class="hero__note" style="width:auto">A page in a fraction of a second</span>
         </div>
       </div>
     </div>
