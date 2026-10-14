@@ -781,6 +781,11 @@ if _job and _job["state"] == "done":
 else:
     check("a transparent render downloads as a PNG with alpha", False, str(_err))
 
+# --- the studio's structure for assistive technology ------------------------
+_sb = _client.get("/studio").get_data(as_text=True)
+check("the studio has a main landmark, a heading and a labelled editor",
+      "<main" in _sb and "<h1" in _sb and 'id="text" spellcheck="false" aria-label=' in _sb)
+
 _h = _client.get("/healthz")
 check("health check answers", _h.status_code == 200 and _h.get_json()["ok"], str(_h.get_json()))
 
