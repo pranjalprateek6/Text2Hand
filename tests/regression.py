@@ -644,6 +644,18 @@ check("cancel stops the render part way", _cj["state"] == "cancelled" and (_cj.g
 check("a cancelled render leaves no folder behind",
       not (_cj.get("id") and (app.RENDER_ROOT / _cj["id"]).exists()))
 
+# --- rendering in worker processes ------------------------------------------
+# A spawned worker re-imports the main module, so those checks run as their own
+# guarded script; its PASS/FAIL lines are folded into this suite.
+_pool = _sp.run([sys.executable, os.path.join(ROOT, "tests", "pool_check.py")],
+                capture_output=True, text=True, timeout=600)
+for _line in _pool.stdout.splitlines():
+    _m = _re.match(r"\s+(PASS|FAIL)\s+(.*?)(?:\s+\[(.*)\])?$", _line)
+    if _m:
+        check("pool: " + _m.group(2), _m.group(1) == "PASS", _m.group(3) or "")
+if _pool.returncode and "FAIL" not in _pool.stdout:
+    check("pool checks ran", False, (_pool.stderr or _pool.stdout)[-300:])
+
 _h = _client.get("/healthz")
 check("health check answers", _h.status_code == 200 and _h.get_json()["ok"], str(_h.get_json()))
 

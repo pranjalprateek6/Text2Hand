@@ -3,8 +3,10 @@
 #   docker build -t text2hand .
 #   docker run -p 8000:8000 text2hand
 #
-# One process, several threads: jobs live in that process's memory (see
-# wsgi.py). Give the container 2 GB; a long render peaks around 1 GB.
+# One web process, several threads: jobs live in that process's memory (see
+# wsgi.py). It starts T2H_RENDER_PROCS render workers (2 by default), each of
+# which can peak near 1 GB on a long document, so give the container 3 GB, or
+# set T2H_RENDER_PROCS=1 to fit in 2 GB.
 FROM python:3.12-slim
 
 # Tesseract for the local OCR converter, which reads scanned PDFs

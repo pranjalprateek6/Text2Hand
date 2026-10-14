@@ -82,4 +82,32 @@ status, ctype, body = get(f"/preview/{job['id']}/1.jpg")
 if status != 200 or "jpeg" not in ctype:
     fail(f"preview -> {status} {ctype}")
 print("ok   preview")
+
+# two at once: renders run in worker processes, and both must finish
+import threading
+
+results = {}
+
+
+def render_one(key):
+    _, started = post("/api/render", {"text": "Side by side. " * 300, "ink": key})
+    end = time.time() + 120
+    while time.time() < end:
+        _, _, raw = get(f"/api/job/{started['job']}")
+        state = json.loads(raw)
+        if state["state"] != "running":
+            results[key] = state["state"]
+            return
+        time.sleep(0.5)
+    results[key] = "timeout"
+
+
+pair = [threading.Thread(target=render_one, args=(k,)) for k in ("red", "blue")]
+for t in pair:
+    t.start()
+for t in pair:
+    t.join()
+if results != {"red": "done", "blue": "done"}:
+    fail(f"concurrent renders: {results}")
+print("ok   two renders at once")
 print("smoke test passed")

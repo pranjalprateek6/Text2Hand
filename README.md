@@ -88,7 +88,7 @@ docker build -t text2hand .
 docker run -p 8000:8000 -v t2h-data:/data text2hand
 ```
 
-Without Docker, serve `wsgi:app` as **one process with several threads**, because jobs and their progress live in that process's memory:
+Without Docker, serve `wsgi:app` as **one process with several threads**, because jobs and their progress live in that process's memory. Renders themselves run in a small pool of worker processes that this process starts, so several documents render at once:
 
 ```
 gunicorn wsgi:app --workers 1 --threads 8 --timeout 180 --bind 0.0.0.0:8000   # Linux, macOS
@@ -108,6 +108,7 @@ waitress-serve --listen=0.0.0.0:8000 --threads=8 wsgi:app                      #
 | `T2H_RENDER_TTL_MIN` | `120` | how long a render stays downloadable |
 | `T2H_KEEP_RENDERS` | `40` | most renders kept on disk at once, however recent |
 | `T2H_MAX_UPLOAD_MB` | `50` | largest PDF accepted |
+| `T2H_RENDER_PROCS` | `2` | worker processes rendering side by side; `0` renders in the web process, one at a time. Each worker holds its own copy of the hand and can peak near 1 GB on a long document |
 | `T2H_LOG_LEVEL` | `INFO` | logging level; each finished job logs one line with its time and size |
 | `T2H_MAX_ACTIVE_JOBS` | `4` | renders and conversions running or waiting before new ones get a 429 |
 
