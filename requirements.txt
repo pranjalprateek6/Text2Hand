@@ -18,5 +18,6 @@ pytesseract>=0.3.10
 # llama-parse       # LLAMA_CLOUD_API_KEY
 # mistralai         # MISTRAL_API_KEY
 
-# The regression suite measures pages as arrays; the app itself never needs it.
+# The capture tools and the regression suite work on images as arrays; the
+# web app itself never needs it.
 numpy>=1.26

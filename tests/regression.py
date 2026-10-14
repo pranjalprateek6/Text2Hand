@@ -685,6 +685,13 @@ _u = converters._unwrap("It is a well-\nknown result, accord-\ning to plan; it i
 check("OCR keeps compound hyphens and rejoins split words",
       "well-known" in _u and "according" in _u, _u)
 
+# --- a photo of a filled-in capture sheet reads back -----------------------
+sys.path.insert(0, os.path.join(ROOT, "tests"))
+import capture_check as _cap
+
+for _name, _ok, _detail in _cap.run():
+    check("capture: " + _name, _ok, _detail)
+
 _h = _client.get("/healthz")
 check("health check answers", _h.status_code == 200 and _h.get_json()["ok"], str(_h.get_json()))
 
