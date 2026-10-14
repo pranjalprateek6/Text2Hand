@@ -749,6 +749,13 @@ finally:
         for _k in _mine:
             app.JOBS.pop(_k, None)
 
+# --- the seeded reference page still looks the same --------------------------
+_gold = _sp.run([sys.executable, os.path.join(ROOT, "tests", "golden_check.py")],
+                capture_output=True, text=True, timeout=300)
+_gm = _re.search(r"(PASS|FAIL)\s+(.*?)\s+\[(.*)\]", _gold.stdout)
+check("rendering matches the reference picture", bool(_gm) and _gm.group(1) == "PASS",
+      _gm.group(3) if _gm else (_gold.stderr or _gold.stdout)[-300:])
+
 _h = _client.get("/healthz")
 check("health check answers", _h.status_code == 200 and _h.get_json()["ok"], str(_h.get_json()))
 

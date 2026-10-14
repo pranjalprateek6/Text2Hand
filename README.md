@@ -240,6 +240,12 @@ All of the controls are plain constants near the top of `text_to_handwriting.py`
 python tests/regression.py
 ```
 
+One check renders `tests/fixture.md` with a fixed seed and compares it with the picture in `tests/golden/`. Any change that is meant to alter how pages look will fail it; look at the new output, then accept it as the reference:
+
+```
+python tests/golden_check.py --update
+```
+
 A few checks want a real paper, which is too big to keep in the repository. Those are skipped rather than failed when the file is not there. It looks in `tests/fixtures/`, in your Downloads, or wherever you point it:
 
 ```
