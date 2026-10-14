@@ -219,6 +219,7 @@ All of the controls are plain constants near the top of `text_to_handwriting.py`
 | Setting | Effect |
 |---|---|
 | `ROT_JITTER`, `SCALE_JITTER`, `BASELINE_WOBBLE`, `KERN_JITTER` | how messy the writing looks |
+| `INK_MIN`, `INK_MAX`, `GLYPH_PRESSURE` | pen pressure: chosen per word, with a little variation per letter |
 | `RULED`, `MARGIN_RULE`, `RULE_COLOR` | the notebook lines |
 | `GRID` | squared paper instead of ruled, two squares to a writing line |
 | `PAPER_SIZE` | `"a4"` or `"letter"`; the hand keeps its size and the sheet changes |

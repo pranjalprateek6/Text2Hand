@@ -92,7 +92,8 @@ WORD_WOBBLE_SHARE = 0.6                 # of BASELINE_WOBBLE, moved per word
 GLYPH_WOBBLE_SHARE = 0.45               # of BASELINE_WOBBLE, left to each letter
 KERN_JITTER = (-3, 4)                   # extra space between letters (min, max) px
 MARGIN_JITTER = 6                        # ragged left margin, px of random indent
-INK_MIN, INK_MAX = 0.78, 1.0            # per-glyph opacity (pen-pressure) range
+INK_MIN, INK_MAX = 0.78, 1.0            # pen pressure (opacity) range, set per word
+GLYPH_PRESSURE = 0.06                   # how much one letter may differ from its word
 
 # Letters with an x-height body and a tail under it. These are placed by the
 # body, not by a fraction of their height: see _drop_below_line. The Greek
@@ -664,12 +665,6 @@ def _jitter_word(im: Image.Image, base: int, size: float, boost: float,
         grown = im.rotate(angle, resample=Image.BICUBIC, expand=True)
         base += (grown.height - im.height) // 2
         im = grown
-    if INK_MIN < 1.0:
-        factor = random.uniform(INK_MIN, INK_MAX)
-        if factor < 1.0:
-            im = im.copy()
-            im.putalpha(im.getchannel("A").point(lambda v: int(v * factor)))
-
     pool.append((im, base))
     _jitter_pooled += 1
     return im, base
@@ -690,13 +685,16 @@ def _jitter(im: Image.Image, scale: float = 1.0, boost: float = 1.0) -> Image.Im
         rot = ROT_JITTER * boost
         g = g.rotate(random.uniform(-rot, rot),
                      resample=Image.BICUBIC, expand=True)
-    if INK_MIN < 1.0:
-        factor = random.uniform(INK_MIN, INK_MAX)
-        if factor < 1.0:
-            a = g.getchannel("A").point(lambda v: int(v * factor))
-            g = g.copy()
-            g.putalpha(a)
     return g
+
+
+def _pressed(im: Image.Image, factor: float) -> Image.Image:
+    """A copy of a piece of ink at a lighter pressure, or itself at full."""
+    if factor >= 0.995:
+        return im
+    out = im.copy()
+    out.putalpha(im.getchannel("A").point([int(v * factor) for v in range(256)]))
+    return out
 
 
 _NOISE_PAD = 48                         # slack in a cached field, for offset cuts
@@ -954,6 +952,7 @@ class Sheet:
         self.page = None
         self._skew_pool = None
         self._line_x0, self._slope, self._word_shift = 0, 0.0, 0
+        self._pressure = 1.0
         self._drift_step = 0.06
         self._new_page()
 
@@ -1222,7 +1221,7 @@ class Sheet:
                                     boost >= _TIRED_AT))
 
         y = self.baseline - base + self._word_shift + self._drift()
-        self._stamp(image, int(self.x), int(y))
+        self._stamp(_pressed(image, self._pressure), int(self.x), int(y))
         self.x += image.width + random.randint(*KERN_JITTER)
         self._last = core[-1]                 # a whole word skips put(), so record it here
 
@@ -1361,10 +1360,17 @@ class Sheet:
         self._word_shift = 0
 
     def _new_word(self) -> None:
-        """Set how far the next word sits off the line, as one piece."""
+        """Set how far the next word sits off the line, and how hard it is pressed.
+
+        Pressure belongs to the word for the same reason the baseline shift
+        does: a pen presses harder or lighter through a word, not letter by
+        letter. Drawn per letter, the ink flickered light and dark along
+        every word.
+        """
         boost = 1 + FATIGUE_JITTER * self._fatigue()
         sway = int(BASELINE_WOBBLE * WORD_WOBBLE_SHARE * boost)
         self._word_shift = random.randint(-sway, sway) if sway else 0
+        self._pressure = random.uniform(INK_MIN, INK_MAX) if INK_MIN < INK_MAX else INK_MAX
 
     def _drift(self) -> int:
         # a gentle sine drift so the writing line is never laser-straight,
@@ -1421,7 +1427,8 @@ class Sheet:
             lift = int(RAISE_FRAC * LINE_HEIGHT) if ch in RAISED else 0
             y = self.baseline - g.height + drop - lift + wobble
 
-        self._stamp(g, x, y)
+        own = self._pressure * random.uniform(1 - GLYPH_PRESSURE, 1.0)
+        self._stamp(_pressed(g, max(INK_MIN * 0.9, own)), x, y)
         self.x += advance + random.randint(*KERN_JITTER)
         self._last = ch
 
