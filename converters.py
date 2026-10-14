@@ -283,6 +283,26 @@ EQ_DPI = 300            # render resolution for the crops; the renderer assumes 
 _EQ_PAD = 3             # points of padding around a crop
 _EQ_JOIN = 6            # equation lines closer than this merge into one region
 
+# A PDF page declares its own size, and nothing stops one declaring itself
+# 200 inches square: rasterised at 300 dpi that is billions of pixels, and the
+# process dies before anything can report it. A real page at 300 dpi is about
+# 9 megapixels (A4) or 17 (A3), so 40 leaves room for posters and drawings.
+MAX_RASTER_PIXELS = 40_000_000
+
+
+def _safe_dpi(rect, dpi: int) -> int:
+    """The highest dpi up to `dpi` at which `rect` stays inside the pixel cap.
+
+    Raises for a region so large that even a thumbnail of it would be absurd,
+    which only a hostile or broken file produces.
+    """
+    w_in, h_in = rect.width / 72.0, rect.height / 72.0
+    area = max(w_in * h_in, 1e-6)
+    fit = int((MAX_RASTER_PIXELS / area) ** 0.5)
+    if fit < 36:
+        raise ValueError("That PDF has a page far too large to read.")
+    return min(dpi, fit)
+
 
 def _equation_regions(page) -> list:
     """Bounding boxes of display-equation lines on a page, merged into groups.
@@ -358,13 +378,18 @@ def _equation_regions(page) -> list:
     return kept, prose_rows, tags
 
 
-def _excise_equations(doc, number: int, assets_dir: str) -> dict[str, str]:
+def _excise_equations(doc, number: int, assets_dir: str,
+                      asset_ref: str | None = None) -> dict[str, str]:
     """Crop each display equation to a file and stamp a token where it was.
 
     The token is drawn into the page by a redaction, so the Markdown extractor
     places it exactly where the equation sat in reading order. No text
     matching against scrambled glyphs is involved. Returns token -> Markdown
     replacement.
+
+    `asset_ref` is what the Markdown calls the folder, when that is not its
+    path. A server passes a bare folder name, so the Markdown it hands to a
+    browser never carries the host's filesystem layout.
     """
     import pymupdf
 
@@ -392,9 +417,10 @@ def _excise_equations(doc, number: int, assets_dir: str) -> dict[str, str]:
                 pad.y1 = row.y0 - 0.5
         # forward slashes even on Windows: they read better in the editor, and
         # a backslash path inside a regex replacement is an escape sequence
-        crop = os.path.join(assets_dir,
-                            f"eq{number + 1}_{idx + 1}.png").replace("\\", "/")
-        page.get_pixmap(clip=pad, dpi=EQ_DPI).save(crop)
+        name = f"eq{number + 1}_{idx + 1}.png"
+        crop = os.path.join(assets_dir, name).replace("\\", "/")
+        ref = f"{asset_ref}/{name}" if asset_ref else crop
+        page.get_pixmap(clip=pad, dpi=_safe_dpi(pad, EQ_DPI)).save(crop)
 
         # the paper's own tags make a better caption than "equation", and the
         # tag lines must go with their equation or they survive as orphans
@@ -414,7 +440,7 @@ def _excise_equations(doc, number: int, assets_dir: str) -> dict[str, str]:
         # digit with the equation number moved table columns around, which made
         # the parse depend on how many equations came before it.
         token = f"T2HEQ{k:05d}Z"
-        replacements[token] = f"\n\n![{alt}]({crop})\n\n"
+        replacements[token] = f"\n\n![{alt}]({ref})\n\n"
         # shrink the redaction below the padded crop, or it eats neighbours
         page.add_redact_annot(rect, text=token, fontsize=7)
     page.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_NONE)
@@ -426,7 +452,8 @@ def _page_pymupdf(doc, number: int, ctx: dict | None = None) -> str:
 
     replacements = {}
     if ctx and ctx.get("assets_dir"):
-        replacements = _excise_equations(doc, number, ctx["assets_dir"])
+        replacements = _excise_equations(doc, number, ctx["assets_dir"],
+                                         ctx.get("asset_ref"))
 
     md = pymupdf4llm.to_markdown(doc, pages=[number], show_progress=False)
     return _restore_equations(md, replacements)
@@ -514,7 +541,8 @@ def _page_ocr(doc, number: int, ctx: dict | None = None) -> str:
     if binary:
         pytesseract.pytesseract.tesseract_cmd = binary
 
-    pix = doc.load_page(number).get_pixmap(dpi=OCR_DPI)
+    page = doc.load_page(number)
+    pix = page.get_pixmap(dpi=_safe_dpi(page.rect, OCR_DPI))
     image = Image.open(io.BytesIO(pix.tobytes("png")))
     return _unwrap(pytesseract.image_to_string(image, lang=OCR_LANG).strip())
 
@@ -546,9 +574,17 @@ def _mistral(path: str, pages: list[int]) -> str:
     with open(path, "rb") as fh:
         uploaded = client.files.upload(
             file={"file_name": os.path.basename(path), "content": fh}, purpose="ocr")
-    url = client.files.get_signed_url(file_id=uploaded.id).url
-    result = client.ocr.process(model="mistral-ocr-latest",
-                                document={"type": "document_url", "document_url": url})
+    # The upload is someone's document sitting in our account at the provider,
+    # so it is removed as soon as it has been read, whether or not that worked.
+    try:
+        url = client.files.get_signed_url(file_id=uploaded.id).url
+        result = client.ocr.process(model="mistral-ocr-latest",
+                                    document={"type": "document_url", "document_url": url})
+    finally:
+        try:
+            client.files.delete(file_id=uploaded.id)
+        except Exception:
+            pass                        # a failed cleanup must not hide the result
     keep = set(pages)
     return "\n\n".join(p.markdown for i, p in enumerate(result.pages) if i in keep)
 
@@ -563,7 +599,8 @@ _CONVERTERS = {**_PAGE_CONVERTERS, **_WHOLE_CONVERTERS}
 
 def _convert_by_page(path: str, pages: list[int], converter: str,
                      budget: int | None, progress,
-                     assets_dir: str | None = None) -> tuple[str, int, bool]:
+                     assets_dir: str | None = None,
+                     asset_ref: str | None = None) -> tuple[str, int, bool]:
     """Convert page by page, stopping once the budget is spent.
 
     Returns the Markdown, how many pages were actually converted, and whether
@@ -576,7 +613,7 @@ def _convert_by_page(path: str, pages: list[int], converter: str,
     chunks: list[str] = []
     used = 0
     converted = 0
-    ctx = {"assets_dir": assets_dir} if assets_dir else None
+    ctx = {"assets_dir": assets_dir, "asset_ref": asset_ref} if assets_dir else None
 
     # A page costs about a second, nearly all of it inside the extractor's own
     # C and ONNX code, which lets other threads run. Pages do not depend on
@@ -636,7 +673,8 @@ def _convert_by_page(path: str, pages: list[int], converter: str,
 
 def to_markdown(path: str, converter: str = "pymupdf", page_spec: str = "",
                 progress=None, max_chars: int | None = None,
-                assets_dir: str | None = None) -> Result:
+                assets_dir: str | None = None,
+                asset_ref: str | None = None) -> Result:
     if converter not in _CONVERTERS:
         raise ValueError(f"Unknown converter {converter!r}")
     ready = {c["name"]: c for c in available()}[converter]
@@ -664,7 +702,8 @@ def to_markdown(path: str, converter: str = "pymupdf", page_spec: str = "",
 
     if converter in _PAGE_CONVERTERS:
         md, converted, stopped = _convert_by_page(path, pages, converter, max_chars,
-                                                  progress, assets_dir=assets_dir)
+                                                  progress, assets_dir=assets_dir,
+                                                  asset_ref=asset_ref)
     else:
         # A cloud converter returns the whole document in one call, so the
         # budget can only be applied after the fact.

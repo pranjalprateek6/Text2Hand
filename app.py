@@ -36,8 +36,18 @@ app = Flask(__name__)
 # Never cache static assets. Otherwise an edited CSS or JS file can leave a
 # stale front end talking to a newer server, which looks like a broken app.
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
+# Without a cap an upload of any size is written to disk in full before a
+# single line of this code runs. 50 MB is a very long scanned PDF.
+MAX_UPLOAD_MB = int(os.environ.get("T2H_MAX_UPLOAD_MB", "50"))
+app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
 
-RENDER_ROOT = Path(tempfile.gettempdir()) / "text2hand_web"
+RENDER_ROOT = Path(os.environ.get("T2H_RENDER_ROOT")
+                   or Path(tempfile.gettempdir()) / "text2hand_web")
+# Equation crops live apart from the renders, in the one folder Markdown images
+# are allowed to come from. The Markdown names them by a relative path inside
+# it, so nothing a browser sees or sends is a path on this machine.
+ASSET_ROOT = RENDER_ROOT / "assets"
+t2h.IMAGE_ROOT = str(ASSET_ROOT)
 # A full-res page is roughly 9 MB, and a long document can be 50+ pages, so
 # keeping many old renders around costs gigabytes. Keep only a few.
 KEEP_RENDERS = 5
@@ -73,15 +83,14 @@ def _prune() -> None:
     it, so tying their lifetime to the render count would break the images out
     from under an edit session five renders in.
     """
-    if not RENDER_ROOT.exists():
-        return
-    folders = sorted(
-        (p for p in RENDER_ROOT.iterdir() if p.is_dir()),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
-    renders = [p for p in folders if not p.name.startswith("eq_")]
-    assets = [p for p in folders if p.name.startswith("eq_")]
+    def newest_first(root: Path, keep) -> list[Path]:
+        if not root.exists():
+            return []
+        return sorted((p for p in root.iterdir() if p.is_dir() and keep(p)),
+                      key=lambda p: p.stat().st_mtime, reverse=True)
+
+    renders = newest_first(RENDER_ROOT, lambda p: p.name.isalnum())
+    assets = newest_first(ASSET_ROOT, lambda p: p.name.startswith("eq_"))
     for old in renders[KEEP_RENDERS:] + assets[KEEP_EQ_ASSETS:]:
         shutil.rmtree(old, ignore_errors=True)
 
@@ -246,6 +255,15 @@ def _render(text: str, ruled: bool, texture: bool, skew: bool, as_markdown: bool
 JOBS: dict[str, dict] = {}
 JOBS_LOCK = threading.Lock()
 KEEP_JOBS = 40
+# Every job is a thread, and renders queue behind one lock at up to a gigabyte
+# each, so an unbounded queue is a way to take the host down with a loop of
+# requests. Past this many unfinished jobs a new one is refused with a 429
+# rather than accepted and left to wait.
+MAX_ACTIVE_JOBS = int(os.environ.get("T2H_MAX_ACTIVE_JOBS", "4"))
+
+
+class Busy(Exception):
+    """Too many jobs are already running or waiting."""
 
 
 def _job_set(jid: str, **fields) -> None:
@@ -257,10 +275,27 @@ def _job_set(jid: str, **fields) -> None:
 def _job_start(message: str) -> str:
     jid = uuid.uuid4().hex[:12]
     with JOBS_LOCK:
+        active = sum(1 for j in JOBS.values() if j["state"] == "running")
+        if active >= MAX_ACTIVE_JOBS:
+            raise Busy()
         JOBS[jid] = {"state": "running", "message": message, "error": None}
-        for old in list(JOBS)[:-KEEP_JOBS]:
+        # only finished jobs are forgotten: dropping a running one leaves its
+        # browser polling a job that no longer exists
+        finished = [k for k, j in JOBS.items() if j["state"] != "running"]
+        for old in finished[:max(0, len(JOBS) - KEEP_JOBS)]:
             JOBS.pop(old, None)
     return jid
+
+
+@app.errorhandler(Busy)
+def _busy(_exc):
+    return jsonify(error="The server is busy with other documents. "
+                         "Try again in a minute."), 429
+
+
+@app.errorhandler(413)
+def _too_large(_exc):
+    return jsonify(error=f"That file is over the {MAX_UPLOAD_MB} MB upload limit."), 413
 
 
 class JobCancelled(Exception):
@@ -290,7 +325,10 @@ def _job_spawn(jid: str, work, failure: str) -> None:
             _job_set(jid, state="cancelled", message="Cancelled")
         except (ValueError, RuntimeError) as exc:
             _job_set(jid, state="error", error=str(exc))     # expected, already readable
-        except Exception as exc:
+        except BaseException as exc:
+            # BaseException, not Exception: the renderer raises SystemExit when
+            # it finds no glyphs, and anything that escaped here would leave
+            # the job reading "running" forever, holding a slot in the queue
             app.logger.exception("%s job failed", failure)
             _job_set(jid, state="error", error=f"{failure}: {exc}")
 
@@ -400,6 +438,13 @@ def api_convert():
         return jsonify(error="Choose a PDF first."), 400
     if not upload.filename.lower().endswith(".pdf"):
         return jsonify(error="Only PDF files are supported."), 400
+    # The extension is only what the file is called. A PDF announces itself
+    # within its first kilobyte, and anything that does not is refused before
+    # it reaches a parser.
+    head = upload.stream.read(1024)
+    upload.stream.seek(0)
+    if b"%PDF-" not in head:
+        return jsonify(error="That file is not really a PDF."), 400
 
     name = converters_safe_name(upload.filename)
     folder = RENDER_ROOT / f"upload_{uuid.uuid4().hex[:12]}"
@@ -424,14 +469,15 @@ def api_convert():
 
         # Display equations are cropped into this folder and referenced from
         # the Markdown; it lives beyond the upload so the render can find them.
-        eq_dir = RENDER_ROOT / f"eq_{uuid.uuid4().hex[:12]}"
+        eq_dir = ASSET_ROOT / f"eq_{uuid.uuid4().hex[:12]}"
         try:
             # Hand the renderer's own limit down, so conversion can never
             # produce more text than Generate would accept.
             result = converters.to_markdown(str(path), converter=converter,
                                             page_spec=page_spec, progress=progress,
                                             max_chars=render_limit(),
-                                            assets_dir=str(eq_dir))
+                                            assets_dir=str(eq_dir),
+                                            asset_ref=eq_dir.name)
         finally:
             shutil.rmtree(folder, ignore_errors=True)
 
@@ -462,7 +508,11 @@ def api_convert():
                 _conversions.pop(next(iter(_conversions)))
         return response
 
-    jid = _job_start("Opening the PDF")
+    try:
+        jid = _job_start("Opening the PDF")
+    except Busy:
+        shutil.rmtree(folder, ignore_errors=True)     # nothing will ever read it
+        raise
     _job_spawn(jid, work, "Could not convert")
     return jsonify(job=jid), 202
 
@@ -619,4 +669,9 @@ def download_page(rid: str, n: int):
 
 if __name__ == "__main__":
     RENDER_ROOT.mkdir(parents=True, exist_ok=True)
-    app.run(debug=True)
+    # The Werkzeug debugger runs arbitrary code for anyone who can reach it, so
+    # it is opt-in, and the server listens on this machine only unless told
+    # otherwise. Anything public belongs behind a real WSGI server anyway.
+    app.run(host=os.environ.get("T2H_HOST", "127.0.0.1"),
+            port=int(os.environ.get("T2H_PORT", "5000")),
+            debug=os.environ.get("T2H_DEBUG") == "1")

@@ -171,6 +171,12 @@ FIGURE_LINES = 3                        # height of a figure box, in ruled lines
 EQ_DPI = 300                            # what converters render the crops at
 EQ_SOURCE_X_PT = 4.5                    # x-height of 10pt Computer Modern, in points
 EQ_MAX_WIDTH = 0.86                     # of the writing column
+# Where Markdown images may be read from. None, for the command line, means any
+# file the person running it can already open. A server sets this, because there
+# the Markdown is someone else's text, and "![x](C:/anything.png)" would
+# otherwise draw any image on the host's disk onto their page, or on Windows
+# reach out over SMB to a \\host\share they named.
+IMAGE_ROOT: str | None = None
 
 # --------------------------------------------------------------------------- #
 # Glyph loading  (prepare once, cache, discover variants)
@@ -1175,6 +1181,31 @@ class Sheet:
         return not self._in_quote
 
 
+def resolve_image(src: str) -> str | None:
+    """The file a Markdown image refers to, or None if it may not be read.
+
+    With IMAGE_ROOT set, only a relative path that lands inside it is allowed.
+    Anything absolute, any drive or UNC prefix, any URL and any ../ escape is
+    refused before the filesystem is touched, since even checking whether a
+    UNC path exists is enough to make Windows open a connection to it.
+    """
+    if not src:
+        return None
+    if IMAGE_ROOT is None:
+        return src if os.path.isfile(src) else None
+    if ("://" in src or ":" in src or src.startswith(("/", "\\"))
+            or os.path.isabs(src)):
+        return None
+    root = os.path.realpath(IMAGE_ROOT)
+    path = os.path.realpath(os.path.join(root, src))
+    try:
+        if os.path.commonpath([root, path]) != root:
+            return None
+    except ValueError:                    # different drives on Windows
+        return None
+    return path if os.path.isfile(path) else None
+
+
 def _drop_below_line(ch: str, height: int) -> int:
     """How far a glyph hangs below the writing line.
 
@@ -1335,8 +1366,8 @@ def render_markdown(md_text: str, on_page=None) -> Sheet:
             track(block.text)
             # An image whose source is a real file gets traced onto the page;
             # anything else keeps the drawn stand-in box.
-            src = block.marker
-            if not (src and os.path.exists(src) and sheet.paste_equation(src)):
+            src = resolve_image(block.marker)
+            if not (src and sheet.paste_equation(src)):
                 sheet.figure_box(block.text or "figure")
             continue
 

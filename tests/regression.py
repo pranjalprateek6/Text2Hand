@@ -420,6 +420,70 @@ finally:
     t2h.SCAN_SKEW = _skew
     t2h.PAPER_TEXTURE = True
 
+# --- Markdown images cannot reach outside the asset folder -----------------
+# On a server the Markdown is someone else's text. An image path must not be
+# able to name any file on the host, a UNC share, or a URL.
+_root = _tf.mkdtemp(prefix="t2h_assets_")
+os.makedirs(os.path.join(_root, "eq_abc"))
+Image.new("L", (40, 20), 0).save(os.path.join(_root, "eq_abc", "eq1_1.png"))
+_outside = os.path.join(_tf.mkdtemp(prefix="t2h_secret_"), "secret.png")
+Image.new("L", (40, 20), 0).save(_outside)
+_saved_root, t2h.IMAGE_ROOT = t2h.IMAGE_ROOT, _root
+try:
+    _refused = [s for s in (_outside, _outside.replace("\\", "/"), "../" + os.path.basename(_outside),
+                            "eq_abc/../../secret.png", r"\\host\share\x.png", "//host/share/x.png",
+                            "http://example.com/x.png", "C:x.png", "file:///etc/passwd")
+                if t2h.resolve_image(s) is not None]
+    check("image paths outside the asset folder are refused", not _refused, str(_refused))
+    check("an image inside the asset folder resolves",
+          t2h.resolve_image("eq_abc/eq1_1.png") is not None)
+finally:
+    t2h.IMAGE_ROOT = _saved_root
+    _sh.rmtree(_root, ignore_errors=True)
+    _sh.rmtree(os.path.dirname(_outside), ignore_errors=True)
+
+# --- the server refuses what it should, as JSON the studio can show -------
+_client = app.app.test_client()
+import io as _io
+_r = _client.post("/api/convert", data={"file": (_io.BytesIO(b"not a pdf at all"), "x.pdf")},
+                  content_type="multipart/form-data")
+check("upload without PDF magic is refused", _r.status_code == 400 and _r.is_json,
+      f"{_r.status_code}")
+_limit = app.app.config["MAX_CONTENT_LENGTH"]
+app.app.config["MAX_CONTENT_LENGTH"] = 1024
+try:
+    _r = _client.post("/api/convert", data={"file": (_io.BytesIO(b"%PDF-" + b"0" * 4096), "x.pdf")},
+                      content_type="multipart/form-data")
+    check("oversized upload is refused as JSON", _r.status_code == 413 and _r.is_json,
+          f"{_r.status_code}")
+finally:
+    app.app.config["MAX_CONTENT_LENGTH"] = _limit
+
+with app.JOBS_LOCK:
+    _fake = [f"fake{i}" for i in range(app.MAX_ACTIVE_JOBS)]
+    for _k in _fake:
+        app.JOBS[_k] = {"state": "running", "message": "", "error": None}
+try:
+    _r = _client.post("/api/render", json={"text": "hello"})
+    check("a full job queue answers 429", _r.status_code == 429 and _r.is_json, f"{_r.status_code}")
+finally:
+    with app.JOBS_LOCK:
+        for _k in _fake:
+            app.JOBS.pop(_k, None)
+
+import converters as _cv
+import pymupdf as _pm
+_dpi = _cv._safe_dpi(_pm.Rect(0, 0, 3600, 3600), 300)        # a 50 inch poster
+check("a large PDF page is rasterised under the pixel cap",
+      (50 * _dpi) ** 2 <= _cv.MAX_RASTER_PIXELS, f"{_dpi} dpi, {(50 * _dpi) ** 2:,} px")
+try:
+    _cv._safe_dpi(_pm.Rect(0, 0, 14400, 14400), 300)          # 200 inches, PDF's maximum
+    check("an absurd PDF page is refused", False, "was accepted")
+except ValueError:
+    check("an absurd PDF page is refused", True)
+check("an ordinary page keeps full resolution",
+      _cv._safe_dpi(_pm.Rect(0, 0, 595, 842), 300) == 300)
+
 bad = [n for n, ok, _ in results if not ok]
 print(f"\n{len(results) - len(bad)}/{len(results)} passed"
       + (f", {len(skipped)} skipped" if skipped else ""))
