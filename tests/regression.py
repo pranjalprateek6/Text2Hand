@@ -656,6 +656,35 @@ for _line in _pool.stdout.splitlines():
 if _pool.returncode and "FAIL" not in _pool.stdout:
     check("pool checks ran", False, (_pool.stderr or _pool.stdout)[-300:])
 
+# --- Markdown that used to vanish on the way to the page --------------------
+def _kinds(md):
+    return [(b.kind, b.text, b.marker, b.level) for b in markdown_blocks.to_blocks(md)]
+
+
+_q = _kinds("> Intro\n>\n> - one\n> - two\n")
+check("a list inside a quote is kept", ("item", "one", "-", 1) in _q, str(_q))
+_h5 = _kinds("<div>Some <b>raw</b>, html</div>\n")
+check("raw HTML blocks keep their text", _h5 == [("para", "Some raw, html", "", 0)], str(_h5))
+_ol = _kinds("3. third\n4. fourth\n")
+check("an ordered list keeps its starting number", [m for _, _, m, _ in _ol] == ["3.", "4."], str(_ol))
+_im = _kinds("See ![a chart](c.png) here.\n")
+check("an inline image keeps its description", _im[0][1] == "See [a chart] here.", str(_im))
+_fn = _kinds("Text[^1].\n\n[^1]: The note.\n")
+check("footnotes are written as notes", ("item", "The note.", "1.", 0) in _fn
+      and _fn[0][1] == "Text [1].", str(_fn))
+_br = _kinds("12 Rose Lane  \nBristol\n")
+check("hard line breaks keep their lines", [k for k, *_ in _br] == ["line", "para"], str(_br))
+_th = [b.level for b in markdown_blocks.to_blocks("| A | B |\n|---|---|\n| 1 | 2 |\n")]
+check("table header rows are marked", _th == [1, 0], str(_th))
+_pg, _ms = t2h.render_pages("| A | B |\n|---|---|\n| 1 | 2 |\n\n```\ndef f():\n    return 1\n```\n",
+                            as_markdown=True)
+check("a table with a header and indented code render", len(_pg) == 1 and not _ms)
+
+# --- OCR keeps real hyphens at a line end ---------------------------------
+_u = converters._unwrap("It is a well-\nknown result, accord-\ning to plan; it is known well.")
+check("OCR keeps compound hyphens and rejoins split words",
+      "well-known" in _u and "according" in _u, _u)
+
 _h = _client.get("/healthz")
 check("health check answers", _h.status_code == 200 and _h.get_json()["ok"], str(_h.get_json()))
 

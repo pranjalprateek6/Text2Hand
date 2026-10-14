@@ -173,6 +173,7 @@ CORRECTION_RATE = 0.012                 # chance per eligible word
 TABLES_RULED = True                     # draw a ruled grid; False lists the rows
 TABLE_PAD = 16                          # px of padding inside each cell
 TABLE_MIN_COL = 110                     # a column never squeezes below this
+TABLE_CAP_ROOM = 1.5                    # room above the baseline in a cell, in x-heights
 FIGURE_LINES = 3                        # height of a figure box, in ruled lines
 
 # Cropped display equations arrive as images rendered from the PDF, and are
@@ -1181,8 +1182,13 @@ class Sheet:
                 self._last = " "
         self.scale = 1.0
 
-    def draw_table(self, grid: list[list[str]], widths: list[int]) -> None:
-        """Draw a hand-ruled table: cells wrap inside their column."""
+    def draw_table(self, grid: list[list[str]], widths: list[int],
+                   header_rows: int = 0) -> None:
+        """Draw a hand-ruled table: cells wrap inside their column.
+
+        The first `header_rows` rows are a header, closed off by a second rule
+        under them, the way a table is ruled by hand.
+        """
         pad = TABLE_PAD
         col_w = [w + 2 * pad for w in widths]
         rule = max(2, UNDERLINE_WIDTH - 1)
@@ -1190,34 +1196,49 @@ class Sheet:
         for w in col_w:
             edges.append(edges[-1] + w)
 
-        for row in grid:
+        # A row's box runs from just above its capitals down to where the next
+        # row's box begins, so the rows join into one grid. Boxed from the
+        # x-height with a gap below each, capitals poked through the top rule
+        # and the table read as a stack of separate boxes.
+        cap = int(X_HEIGHT * TABLE_CAP_ROOM) + pad // 2
+        bottom = None                            # the open edge of the last row drawn
+
+        def close(y: float) -> None:
+            self._pen_stroke(edges[0], y, edges[-1], rule)
+
+        for row_no, row in enumerate(grid):
             cells = [wrap(cell.split(), widths[i]) or [[]] for i, cell in enumerate(row)]
             tall = max(len(c) for c in cells)
             height = tall * LINE_HEIGHT
 
             if self.baseline + height > self.height - MARGIN_B:
+                if bottom is not None:
+                    close(bottom)                # finish this page's part of the grid
                 self._new_page()
 
-            top = self.baseline - X_HEIGHT - pad // 2
+            top = self.baseline - cap
             first = self.baseline
             for line_no in range(tall):
                 self.baseline = first + line_no * LINE_HEIGHT
                 for i, lines in enumerate(cells):
                     if line_no < len(lines):
                         self.put_words(lines[line_no], edges[i] + pad)
-            self.baseline = first + (tall - 1) * LINE_HEIGHT
-            bottom = self.baseline + pad
-
-            self._pen_stroke(edges[0], top, edges[-1], rule)        # rule above the row
-            for x in edges:
-                self.vrule(x, top, bottom, rule)
             # whole lines, so rows keep sitting on the page ruling
             self.baseline = first + tall * LINE_HEIGHT
+            bottom = self.baseline - cap
+
+            close(top)                                              # rule above the row
+            for x in edges:
+                self.vrule(x, top, bottom, rule)
+            if row_no == header_rows - 1:
+                close(bottom - 8)                                   # header's double rule
             if self.baseline + LINE_HEIGHT > self.height - MARGIN_B:
+                close(bottom)
+                bottom = None
                 self._new_page()
 
-        self._pen_stroke(edges[0], self.baseline - LINE_HEIGHT + pad,
-                         edges[-1], rule)                           # close the last row
+        if bottom is not None:
+            close(bottom)                                           # close the last row
         self.snap_to_rule()
 
     def put_line(self, words: list[str], left: int, width: int,
@@ -1516,15 +1537,17 @@ def render_markdown(md_text: str, on_page=None) -> Sheet:
 
         # Consecutive table rows belong to one grid, so gather them up first.
         if block.kind == "table" and TABLES_RULED:
-            rows = []
+            rows, header = [], 0
             while index < len(blocks) and blocks[index].kind == "table":
                 rows.append(blocks[index].cells)
+                if blocks[index].level == 1 and header == len(rows) - 1:
+                    header += 1                 # header rows lead the table
                 index += 1
             for row in rows:
                 track(" ".join(row))
             sheet.gap(0.3)
             grid, widths = table_layout(rows, column)
-            sheet.draw_table(grid, widths)
+            sheet.draw_table(grid, widths, header_rows=header)
             sheet.gap(0.4)
             previous = "table"
             continue
@@ -1573,6 +1596,13 @@ def render_markdown(md_text: str, on_page=None) -> Sheet:
                 sheet.put_line(line, hang, sheet.right - hang)
             continue
 
+        if block.kind == "line":
+            # a line of a paragraph that was broken by hand: the next one
+            # follows straight on, without the paragraph gap
+            track(block.text)
+            flow(block.text.split(), MARGIN_L, column)
+            continue
+
         if block.kind == "quote":
             track(block.text)
             left = MARGIN_L + INDENT_STEP
@@ -1582,7 +1612,10 @@ def render_markdown(md_text: str, on_page=None) -> Sheet:
 
         if block.kind == "code":
             track(block.text)
-            left = MARGIN_L + INDENT_STEP
+            # leading spaces are the structure of code, so they become indent:
+            # half a word gap each, the way two spaces read on a typed line
+            lead = len(block.text) - len(block.text.lstrip(" "))
+            left = MARGIN_L + INDENT_STEP + min(lead * SPACE_WIDTH // 2, column // 2)
             if block.text.strip():
                 flow(block.text.split(), left, sheet.right - left)
             else:

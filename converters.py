@@ -528,6 +528,27 @@ def _unwrap(text: str) -> str:
     handwriting. Join lines inside a paragraph, keep blank lines as paragraph
     breaks, and stitch words that were hyphenated across a line break.
     """
+    # A hyphen at a line end is either the typesetter splitting one word
+    # ("accord-ing") or a real hyphen in a compound that happened to fall
+    # there ("well-known"). Dropping it always turned every such compound into
+    # nonsense. The page itself is the dictionary: a join the page uses
+    # elsewhere is a split word; two halves that are both words on the page,
+    # joined into something it never writes, are a compound.
+    # the fragments either side of a break are left out, or "accord" and "ing"
+    # would vouch for themselves
+    unbroken = re.sub(r"[A-Za-z]+-[ \t]*\n\s*[A-Za-z]+", " ", text)
+    seen = {w.lower() for w in re.findall(r"[A-Za-z]+", unbroken)}
+
+    def keeps_hyphen(head: str, tail: str) -> bool:
+        a = re.search(r"([A-Za-z]+)-$", head)
+        b = re.match(r"[A-Za-z]+", tail)
+        if not a or not b:
+            return False
+        first, second = a.group(1).lower(), b.group(0).lower()
+        if first + second in seen:
+            return False
+        return first in seen and second in seen
+
     out = []
     for para in re.split(r"\n\s*\n", text):
         joined = ""
@@ -535,7 +556,10 @@ def _unwrap(text: str) -> str:
             if not line:
                 continue
             if joined.endswith("-"):
-                joined = joined[:-1] + line           # re-join a split word
+                if keeps_hyphen(joined, line):
+                    joined = joined + line            # a compound: keep its hyphen
+                else:
+                    joined = joined[:-1] + line       # re-join a split word
             else:
                 joined = (joined + " " + line).strip()
         if joined:

@@ -136,10 +136,14 @@ Tick **Markdown** in the web app, or pass a `.md` file on the command line. Stru
 | `## Heading`, `### Heading` | underlined, progressively smaller |
 | `- item` | indented with a drawn marker, one indent per nesting level |
 | `1. item` | the same, numbered |
-| `> quote` | indented from the margin |
+| `> quote` | indented from the margin, with any list inside it indented a step further |
 | `---` | a drawn pen rule |
-| `![alt](img)` | a hand-drawn box captioned with the alt text |
-| table | a hand-ruled grid, cells wrapping inside their column |
+| `![alt](img)` | a hand-drawn box captioned with the alt text; inside a sentence, the alt text in brackets |
+| table | a hand-ruled grid, cells wrapping inside their column, the header row closed by a double rule |
+| line break (two trailing spaces) | the next line starts below, without a paragraph gap, so addresses and verse keep their lines |
+| footnote `[^1]` | written as `[1]` in the text, with the notes listed under a Notes heading |
+| code block | indented, keeping its own indentation |
+| raw HTML | its text, as a paragraph |
 
 Inline bold and italic are dropped on purpose. Converted PDFs barely use them (33 bold spans in 16,000 lines of a real converted report) and handwriting has no bold to map them onto.
 
