@@ -1,0 +1,10 @@
+.git
+.github
+.claude
+.remember
+**/__pycache__
+out
+tests/fixtures
+sample/scans
+dummy_original_bio.txt
+*.pyc

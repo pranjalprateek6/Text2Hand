@@ -53,7 +53,7 @@ It also saves its output, keeps real line breaks, word wraps, spills onto new pa
 
 ## Requirements
 
-Python 3.9 or newer. Developed and tested on 3.14.
+Python 3.10 or newer. Developed on 3.14; CI runs 3.10, 3.12 and 3.13.
 
 ```
 pip install -r requirements.txt
@@ -81,7 +81,24 @@ Rendering runs locally on the machine hosting the app. The cloud PDF converters 
 
 ### Running it for other people
 
-`python app.py` is the Flask development server. It listens on this machine only and the debugger is off; for anything public, run the app under a real WSGI server and call `app.warm()` once after importing it, so the first visitor does not pay for loading the hand. These environment variables tune it:
+The repository ships a `Dockerfile` that serves the app with gunicorn on port 8000, Tesseract included, as a non-root user:
+
+```
+docker build -t text2hand .
+docker run -p 8000:8000 -v t2h-data:/data text2hand
+```
+
+Without Docker, serve `wsgi:app` as **one process with several threads**, because jobs and their progress live in that process's memory:
+
+```
+gunicorn wsgi:app --workers 1 --threads 8 --timeout 180 --bind 0.0.0.0:8000   # Linux, macOS
+waitress-serve --listen=0.0.0.0:8000 --threads=8 wsgi:app                      # Windows
+```
+
+`GET /healthz` reports whether the server is up and how many jobs it is running, and `python tests/smoke.py http://host:port` drives a live server through a render and a download. `requirements.lock` pins the exact versions the image installs.
+
+
+`python app.py` is the Flask development server. It listens on this machine only and the debugger is off; for anything public, use `wsgi.py` as above, which also warms the caches so the first visitor does not pay for loading the hand. These environment variables tune it:
 
 | Variable | Default | Effect |
 |---|---|---|
@@ -91,6 +108,7 @@ Rendering runs locally on the machine hosting the app. The cloud PDF converters 
 | `T2H_RENDER_TTL_MIN` | `120` | how long a render stays downloadable |
 | `T2H_KEEP_RENDERS` | `40` | most renders kept on disk at once, however recent |
 | `T2H_MAX_UPLOAD_MB` | `50` | largest PDF accepted |
+| `T2H_LOG_LEVEL` | `INFO` | logging level; each finished job logs one line with its time and size |
 | `T2H_MAX_ACTIVE_JOBS` | `4` | renders and conversions running or waiting before new ones get a 429 |
 
 Markdown images on the server can only come from the equation crops it made itself, so a pasted `![x](C:/some/file.png)` draws a figure box instead of reading the disk.

@@ -760,9 +760,7 @@ def derive_metrics() -> None:
         raise SystemExit("No glyph images found in '{}'.".format(FONT_DIR))
 
     heights.sort()
-    widths.sort()
     tall = heights[int(len(heights) * 0.95)]        # ~tallest, ignoring outliers
-    med_w = widths[len(widths) // 2]
 
     if LINE_HEIGHT is None:
         if LINE_HEIGHT_MM:
