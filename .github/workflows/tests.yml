@@ -8,6 +8,9 @@ name: tests
 # else's writing), so those checks skip here: the suite prints them as
 # skipped and still exits by the checks it did run.
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
@@ -66,3 +69,39 @@ jobs:
       - name: Logs
         if: always()
         run: docker logs t2h
+
+  # Every change that lands on main, once everything above has passed on it,
+  # is published to GitHub's container registry as
+  #   ghcr.io/<owner>/text2hand:latest   and   :sha-<commit>
+  # so any host can run the exact build that passed. It lives in this
+  # workflow, gated on a push to this repository's main, rather than in a
+  # workflow_run trigger: that one matches on branch name alone, and a fork's
+  # pull request can call its branch main too. Third-party actions are pinned
+  # to commits because this job holds a token that can write packages.
+  publish:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository_owner == 'pranjalprateek6'
+    needs: [lint, suite, docker]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Name the image
+        id: name
+        run: echo "repo=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/text2hand" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.name.outputs.repo }}:latest
+            ${{ steps.name.outputs.repo }}:sha-${{ github.sha }}
