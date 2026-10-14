@@ -346,6 +346,8 @@ function cancelJob() {
 // threw away the page someone was reading. The skeleton is only for when
 // there is nothing to show yet.
 function setBusy(on, stage) {
+  // on a phone, a render you started is something you want to watch
+  if (on && narrow.matches) showPane("preview");
   state.busy = on;
   state.live = null;
   state.cancelPending = false;
@@ -378,6 +380,7 @@ function showLive(job) {
   $("loading").hidden = true;
   $("live").hidden = false;
   $("pager").hidden = true;
+  $("strip").hidden = true;
   $("pages").classList.remove("is-working", "is-stale");
 }
 
@@ -446,6 +449,40 @@ function after() {
   markStale();
 }
 
+// A strip of page thumbnails under the preview, for a document of more than
+// one page: where you are, and a click to anywhere else. Built once per
+// render, lazily loaded, and only marked as the page changes.
+function drawStrip() {
+  const strip = $("strip");
+  if (state.pages < 2 || !state.id) { strip.hidden = true; strip.dataset.id = ""; return; }
+  strip.hidden = false;
+  if (strip.dataset.id !== state.id) {
+    strip.dataset.id = state.id;
+    strip.textContent = "";
+    for (let i = 1; i <= state.pages; i++) {
+      const b = document.createElement("button");
+      b.className = "strip__page";
+      b.setAttribute("aria-label", `Page ${i}`);
+      const img = document.createElement("img");
+      img.loading = "lazy";
+      img.alt = "";
+      img.src = `/thumb/${state.id}/${i}.jpg`;
+      const n = document.createElement("span");
+      n.textContent = i;
+      b.append(img, n);
+      b.addEventListener("click", () => show(i));
+      strip.append(b);
+    }
+  }
+  [...strip.children].forEach((b, i) => {
+    const on = i + 1 === state.page;
+    b.classList.toggle("is-on", on);
+    if (on) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
+  });
+  const current = strip.children[state.page - 1];
+  if (current) current.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+
 function show(n) {
   state.page = Math.min(Math.max(n, 1), state.pages);
   $("page").src = `/preview/${state.id}/${state.page}.jpg`;
@@ -473,8 +510,25 @@ function show(n) {
   $("dlZip").hidden = !many;
   $("dlPagePdf").hidden = !many;
   document.querySelector("#exportPop .pop__rule").hidden = !many;
+  drawStrip();
   markStale();
 }
+
+/* ----------------------------------------------------------- phone tabs */
+
+// Below the width where the panes stack, they take turns instead: one tab
+// to write in and one to see the page, rather than a long scroll between.
+function showPane(which) {
+  $("viewWrite").dataset.show = which;
+  [["mtabWrite", "write"], ["mtabPreview", "preview"]].forEach(([id, name]) => {
+    $(id).classList.toggle("is-on", name === which);
+    $(id).setAttribute("aria-selected", String(name === which));
+  });
+  if (which === "preview") fitZoom();
+}
+$("mtabWrite").addEventListener("click", () => showPane("write"));
+$("mtabPreview").addEventListener("click", () => showPane("preview"));
+const narrow = window.matchMedia("(max-width: 1024px)");
 
 // While busy, the Render button is the way out: its label is the progress.
 $("render").addEventListener("click", () => (state.busy ? cancelJob() : render()));

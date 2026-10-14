@@ -72,10 +72,18 @@
     </header>
 
     <!-- ----------------------------------------------------- compose view -->
-    <div class="split" id="viewWrite">
+    <!-- on a phone the two panes take turns instead of stacking -->
+    <div class="mtabs" role="tablist" aria-label="Show">
+      <button class="mtab is-on" id="mtabWrite" role="tab" aria-selected="true"
+              aria-controls="paneSource">Write</button>
+      <button class="mtab" id="mtabPreview" role="tab" aria-selected="false"
+              aria-controls="paneOutput">Preview</button>
+    </div>
+
+    <div class="split" id="viewWrite" data-show="write">
 
       <!-- source -->
-      <section class="pane">
+      <section class="pane pane--source" id="paneSource">
         <div class="pane__bar">
           <span class="pane__label">01 / Source</span>
           <span class="pane__gap"></span>
@@ -174,7 +182,7 @@
       </section>
 
       <!-- output -->
-      <section class="pane">
+      <section class="pane pane--output" id="paneOutput">
         <div class="pane__bar">
           <span class="pane__label" id="previewLabel">02 / Output</span>
           <button class="stale" id="stale" hidden
@@ -233,6 +241,7 @@
           <div class="notecard" id="note" hidden aria-live="polite"></div>
           <img class="page" id="page" alt="" hidden />
         </div>
+        <nav class="strip" id="strip" hidden aria-label="Pages"></nav>
       </section>
     </div>
 
