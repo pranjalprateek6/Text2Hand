@@ -692,6 +692,30 @@ import capture_check as _cap
 for _name, _ok, _detail in _cap.run():
     check("capture: " + _name, _ok, _detail)
 
+# --- paper styles and sizes ----------------------------------------------
+_job, _err = _app_render({"text": "Squared paper on a Letter page.", "paper": "grid",
+                          "sheet": "letter", "skew": False})
+if _job and _job["state"] == "done":
+    _pdf = _client.get(f"/download/{_job['id']}/handwriting.pdf")
+    with _pm.open(stream=_pdf.data, filetype="pdf") as _doc:
+        _w, _h = _doc[0].rect.width, _doc[0].rect.height
+        _meta = _doc.metadata
+    check("a Letter render exports Letter pages", abs(_w - 612) < 6 and abs(_h - 792) < 8,
+          f"{_w:.0f} x {_h:.0f} pt")
+    check("exported PDFs say they were made by Text2Hand",
+          "Text2Hand" in (_meta.get("creator") or "") and "Text2Hand" in (_meta.get("subject") or ""),
+          str({k: _meta.get(k) for k in ("creator", "producer", "subject")}))
+    _pv = _client.get(f"/preview/{_job['id']}/1.jpg")
+    with Image.open(_io.BytesIO(_pv.data)) as _im:
+        _g = _np.asarray(_im.convert("L"))[300:600, 200:700]
+    # squared paper has as many light vertical lines as horizontal ones
+    _cols = int((_np.abs(_np.diff(_g.astype(int), axis=1)) > 6).mean(axis=0).max() > 0.5)
+    check("squared paper prints a grid", _cols == 1, "vertical rules found" if _cols else "none")
+else:
+    check("a Letter render exports Letter pages", False, str(_err))
+check("page limits are measured per page size", app.page_size("normal", "letter") != app.page_size(),
+      f"A4 {app.page_size()}, Letter {app.page_size('normal', 'letter')}")
+
 _h = _client.get("/healthz")
 check("health check answers", _h.status_code == 200 and _h.get_json()["ok"], str(_h.get_json()))
 

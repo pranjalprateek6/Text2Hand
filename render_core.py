@@ -35,6 +35,12 @@ INKS = {
 }
 
 
+# Said in every PDF's properties. A page that looks handwritten should not be
+# able to pass as handwritten to anyone who checks how it was made.
+PDF_INFO = {"title": "Handwritten pages", "creator": "Text2Hand",
+            "producer": "Text2Hand", "subject": "Rendered by Text2Hand from typed text"}
+
+
 def pdf_dpi() -> float:
     """The resolution that makes a page come out A4 in a PDF.
 
@@ -99,7 +105,8 @@ def write_streaming(text: str, folder: Path, as_markdown: bool, on_progress,
             while next_up[0] != i:
                 turn.wait()
             try:
-                page.convert("RGB").save(pdf_path, append=i > 1, resolution=dpi)
+                page.convert("RGB").save(pdf_path, append=i > 1, resolution=dpi,
+                                         **({} if i > 1 else PDF_INFO))
             finally:
                 # advanced even if this page failed, or every page behind it
                 # would wait for a turn that never comes
@@ -156,11 +163,23 @@ def write_streaming(text: str, folder: Path, as_markdown: bool, on_progress,
 
 
 
+PAPERS = ("ruled", "grid", "plain")
+SHEETS = ("a4", "letter")
+
+
 def apply_options(ruled: bool = True, texture: bool = True, skew: bool = True,
-                  ink: str = "blue-black", size: str = "normal") -> None:
-    """Set the renderer up for one render. The caller must own the renderer."""
-    t2h.RULED = ruled
-    t2h.MARGIN_RULE = ruled
+                  ink: str = "blue-black", size: str = "normal",
+                  paper: str | None = None, sheet: str = "a4") -> None:
+    """Set the renderer up for one render. The caller must own the renderer.
+
+    `paper` is ruled, grid or plain; without it the older `ruled` flag
+    decides between ruled and plain.
+    """
+    paper = paper if paper in PAPERS else ("ruled" if ruled else "plain")
+    t2h.RULED = paper == "ruled"
+    t2h.MARGIN_RULE = paper == "ruled"
+    t2h.GRID = paper == "grid"
+    t2h.PAPER_SIZE = sheet if sheet in SHEETS else "a4"
     t2h.PAPER_TEXTURE = texture
     t2h.SCAN_SKEW = 0.7 if skew else 0
     # derive_metrics() rescales the glyphs from this and flushes every
