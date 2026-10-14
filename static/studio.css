@@ -448,6 +448,9 @@ select.mini {
   .bar__doc { order: 5; width: 100%; }
   .bar__acts { width: 100%; }
   .split { grid-template-columns: minmax(0, 1fr); padding: 12px; gap: 12px; }
+  .split[data-show="write"] .pane--output,
+  .split[data-show="preview"] .pane--source { display: none; }
+  .split[data-show="preview"] .pages { min-height: 70vh; }
   #text { min-height: 220px; }
   .pages { min-height: 340px; }
   .library { padding: 24px 16px 40px; }
@@ -504,6 +507,44 @@ select.mini {
   background: var(--secondary); color: var(--foreground); cursor: pointer;
 }
 .live__stop:hover { background: var(--muted); }
+
+/* ------------------------------------------------------------ phone tabs */
+.mtabs {
+  display: none;                          /* shown below the stacking width */
+  gap: 2px; margin: 12px 12px 0; padding: 3px;
+  background: var(--muted); border-radius: 999px;
+}
+.mtab {
+  flex: 1; appearance: none; border: 0; padding: 8px 0; border-radius: 999px;
+  background: none; color: var(--muted-foreground); font-size: 14px; cursor: pointer;
+}
+.mtab.is-on { background: var(--card); color: var(--foreground); box-shadow: 0 2px 8px rgba(30, 25, 10, 0.08); }
+/* after the base rule, which would otherwise win at equal specificity */
+@media (max-width: 1024px) { .mtabs { display: flex; } }
+
+/* ------------------------------------------------------------ page strip */
+.strip {
+  flex: none;
+  display: flex; gap: 8px; overflow-x: auto;
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--border);
+  scrollbar-width: thin;
+}
+.strip__page {
+  flex: none; position: relative;
+  width: 54px; padding: 0;
+  border: 1px solid var(--border); border-radius: 3px;
+  background: var(--card); cursor: pointer; overflow: hidden;
+  transition: border-color 160ms var(--ease), transform 160ms var(--ease);
+}
+.strip__page img { display: block; width: 100%; aspect-ratio: 2632 / 3722; object-fit: cover; }
+.strip__page span {
+  position: absolute; right: 3px; bottom: 2px;
+  font-family: var(--font-mono); font-size: 10px; color: var(--muted-foreground);
+  background: color-mix(in oklch, var(--card) 85%, transparent); padding: 0 3px; border-radius: 3px;
+}
+.strip__page:hover { transform: translateY(-2px); }
+.strip__page.is-on { border-color: var(--foreground); box-shadow: 0 0 0 1px var(--foreground); }
 
 /* ------------------------------------------------------------- dark mode */
 /* The interface goes dark with the system; the pages stay paper, since they
