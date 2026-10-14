@@ -203,10 +203,23 @@ _live_sheet = None
 _progress = None
 
 
+class RenderStopped(Exception):
+    """Raised by a progress callback to stop a render between pages.
+
+    The one exception a progress callback may let out. Anything else it
+    raises is swallowed, since a broken progress display must never cost a
+    render; swallowing this one too is what made Cancel do nothing at all
+    for years: the job drew every remaining page and only then said it had
+    stopped.
+    """
+
+
 def _report(stage: str, count: int = 0) -> None:
     if _progress is not None:
         try:
             _progress(stage, count)
+        except RenderStopped:
+            raise
         except Exception:
             pass                              # progress must never break a render
 
