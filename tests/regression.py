@@ -628,6 +628,22 @@ for _ in range(6):
 _sh_.close()
 check("each line gets its own drift and slope", len(_shapes) == 6, f"{len(_shapes)} of 6 distinct")
 
+# --- Cancel stops the render, rather than letting it finish ----------------
+# The renderer swallowed every exception from its progress hook, the
+# cancellation included, so a cancelled job used to draw every remaining page.
+import time as _tm
+_r = _client.post("/api/render", json={"text": "A long document to cancel part way through. " * 1800})
+_jid = _r.get_json()["job"]
+_tm.sleep(0.8)
+_client.post(f"/api/job/{_jid}/cancel")
+while _client.get(f"/api/job/{_jid}").get_json()["state"] == "running":
+    _tm.sleep(0.05)
+_cj = _client.get(f"/api/job/{_jid}").get_json()
+check("cancel stops the render part way", _cj["state"] == "cancelled" and (_cj.get("ready") or 0) < 30,
+      f"{_cj['state']} after {_cj.get('ready')} of ~57 pages")
+check("a cancelled render leaves no folder behind",
+      not (_cj.get("id") and (app.RENDER_ROOT / _cj["id"]).exists()))
+
 _h = _client.get("/healthz")
 check("health check answers", _h.status_code == 200 and _h.get_json()["ok"], str(_h.get_json()))
 

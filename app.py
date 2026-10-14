@@ -306,9 +306,14 @@ def _render(text: str, ruled: bool, texture: bool, skew: bool, as_markdown: bool
         rid = uuid.uuid4().hex[:12]
         folder = RENDER_ROOT / rid
         folder.mkdir(parents=True, exist_ok=True)
-        count, missing = _write_streaming(
-            text, folder, as_markdown, on_progress,
-            on_ready=(lambda n: on_ready(rid, n)) if on_ready else None)
+        try:
+            count, missing = _write_streaming(
+                text, folder, as_markdown, on_progress,
+                on_ready=(lambda n: on_ready(rid, n)) if on_ready else None)
+        except BaseException:
+            # a stopped or failed render leaves nothing anyone can download
+            shutil.rmtree(folder, ignore_errors=True)
+            raise
 
     if on_progress:
         on_progress("previews", count)
@@ -367,8 +372,12 @@ def _too_large(_exc):
     return jsonify(error=f"That file is over the {MAX_UPLOAD_MB} MB upload limit."), 413
 
 
-class JobCancelled(Exception):
-    """Raised inside a worker when its job has been asked to stop."""
+class JobCancelled(t2h.RenderStopped):
+    """Raised inside a worker when its job has been asked to stop.
+
+    A RenderStopped, so the renderer lets it through its progress hook and
+    the render really ends at the next page instead of running to the end.
+    """
 
 
 def _job_spawn(jid: str, work, failure: str) -> None:
