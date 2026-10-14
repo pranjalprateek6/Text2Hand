@@ -131,6 +131,10 @@ SEED: int | None = None                 # set an int for repeatable output
 #     skew together with the writing -- that's what sells a scanned sheet. -----
 RULED = True                            # draw notebook rule lines
 GRID = False                            # squared paper instead: a light grid, no margin
+# No paper at all: the ink alone on a transparent sheet, for laying the writing
+# over a design. Texture, ruling and the scan's corner fill are all paper, so
+# none of them apply.
+TRANSPARENT = False
 # The sheet's size. The hand is measured against A4 (PAGE_WIDTH_MM), and that
 # scale is kept for every size, so a Letter page is the same writing on a
 # slightly wider, shorter sheet rather than a rescaled hand.
@@ -882,7 +886,7 @@ _BLANK_LOOKS = 2
 
 
 def _blank_pool() -> list[Image.Image]:
-    key = (BG_PATH, PAPER_SIZE, GRID, PAPER_TEXTURE, RULED, MARGIN_RULE, LINE_HEIGHT,
+    key = (BG_PATH, PAPER_SIZE, TRANSPARENT, GRID, PAPER_TEXTURE, RULED, MARGIN_RULE, LINE_HEIGHT,
            MARGIN_T, MARGIN_B, MARGIN_L, RULE_COLOR, RULE_WIDTH, RULE_OFFSET,
            MARGIN_RULE_COLOR, PAPER_TINT, PAPER_NOISE,
            PAPER_GRAIN_ALPHA, PAPER_MOTTLE_ALPHA)
@@ -933,7 +937,8 @@ class Sheet:
         # otherwise outlive the render that made them.
         global _live_sheet
         _live_sheet = self
-        self.template = _template()
+        self.template = (Image.new("RGBA", _template().size, (255, 255, 255, 0))
+                         if TRANSPARENT else _template())
         self.width, self.height = self.template.size
         # With an on_page sink a finished page is handed over and forgotten, so
         # only the one being written is held. Without one they pile up here,
@@ -971,7 +976,8 @@ class Sheet:
         if SCAN_SKEW:
             if self._skew_pool is None:
                 self._skew_pool = ThreadPoolExecutor(max_workers=_workers())
-            fill = PAPER_FILL if PAPER_TEXTURE else (255, 255, 255)
+            fill = ((255, 255, 255, 0) if TRANSPARENT
+                    else PAPER_FILL if PAPER_TEXTURE else (255, 255, 255))
             # Drawn here, one page at a time in page order, so the sequence of
             # angles does not depend on thread scheduling.
             angle = random.uniform(-SCAN_SKEW, SCAN_SKEW)
@@ -996,9 +1002,9 @@ class Sheet:
         # something a reader can find.
         if len(self._blanks) < self.PAGE_POOL:
             blank = self.template.copy()
-            if PAPER_TEXTURE:
+            if PAPER_TEXTURE and not TRANSPARENT:
                 blank = add_paper_texture(blank)
-            if RULED or GRID:
+            if (RULED or GRID) and not TRANSPARENT:
                 self._draw_ruling(blank)
             self._blanks.append(blank)
         else:
@@ -1040,6 +1046,22 @@ class Sheet:
             mx = MARGIN_L - 30
             draw.line([(mx, MARGIN_T - 40), (mx, self.height - MARGIN_B + 40)],
                       fill=MARGIN_RULE_COLOR, width=RULE_WIDTH)
+
+    def _stamp(self, im: Image.Image, x: int, y: int) -> None:
+        """Lay a piece of ink on the page.
+
+        On paper this is a masked paste. On a transparent sheet it has to be
+        compositing: a masked paste writes the stroke's alpha times itself
+        into the sheet, so a half-transparent edge came out a quarter, and
+        where two strokes overlapped the second one cut into the first.
+        """
+        if self.page.mode == "RGBA" and x >= 0 and y >= 0:
+            w = min(im.width, self.page.width - x)
+            h = min(im.height, self.page.height - y)
+            if w > 0 and h > 0:
+                self.page.alpha_composite(im, (x, y), (0, 0, w, h))
+        else:
+            self.page.paste(im, (x, y), im)
 
     @property
     def right(self) -> int:
@@ -1165,7 +1187,7 @@ class Sheet:
         x = MARGIN_L + (column - ink.width) // 2 + random.randint(-12, 12)
         top = self.baseline - X_HEIGHT
         y = top + (LINE_HEIGHT * lines - ink.height) // 2
-        self.page.paste(ink, (int(x), int(y)), ink)
+        self._stamp(ink, int(x), int(y))
         self.baseline += LINE_HEIGHT * lines
         self.gap(1)
         return True
@@ -1200,7 +1222,7 @@ class Sheet:
                                     boost >= _TIRED_AT))
 
         y = self.baseline - base + self._word_shift + self._drift()
-        self.page.paste(image, (int(self.x), int(y)), image)
+        self._stamp(image, int(self.x), int(y))
         self.x += image.width + random.randint(*KERN_JITTER)
         self._last = core[-1]                 # a whole word skips put(), so record it here
 
@@ -1399,7 +1421,7 @@ class Sheet:
             lift = int(RAISE_FRAC * LINE_HEIGHT) if ch in RAISED else 0
             y = self.baseline - g.height + drop - lift + wobble
 
-        self.page.paste(g, (x, y), g)
+        self._stamp(g, x, y)
         self.x += advance + random.randint(*KERN_JITTER)
         self._last = ch
 

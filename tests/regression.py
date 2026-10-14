@@ -756,6 +756,31 @@ _gm = _re.search(r"(PASS|FAIL)\s+(.*?)\s+\[(.*)\]", _gold.stdout)
 check("rendering matches the reference picture", bool(_gm) and _gm.group(1) == "PASS",
       _gm.group(3) if _gm else (_gold.stderr or _gold.stdout)[-300:])
 
+# --- transparent pages: ink alone, for laying over a design -----------------
+_job, _err = _app_render({"text": "Ink with no paper under it.", "paper": "none"})
+if _job and _job["state"] == "done":
+    _png = _client.get(f"/download/{_job['id']}/page_1.png")
+    with Image.open(_io.BytesIO(_png.data)) as _im:
+        _mode = _im.mode
+        _alpha = _np.asarray(_im.convert("RGBA"))[..., 3]
+    check("a transparent render downloads as a PNG with alpha",
+          _mode == "RGBA" and _alpha[10, 10] == 0 and _alpha.max() == 255,
+          f"{_mode}, corner alpha {_alpha[10, 10]}")
+    _pv = _client.get(f"/preview/{_job['id']}/1.jpg")
+    with Image.open(_io.BytesIO(_pv.data)) as _im:
+        _corner = _im.convert("L").getpixel((5, 5))
+    check("its preview is the ink on white", _corner > 245, f"corner {_corner}")
+    _z = _client.get(f"/download/{_job['id']}/pages.zip")
+    with _zf.ZipFile(_io.BytesIO(_z.data)) as _zip:
+        _zn = _zip.namelist()
+    check("its zip holds the transparent pages", "page_1.png" in _zn and "handwriting.pdf" in _zn,
+          str(_zn))
+    _single = _client.get(f"/download/{_job['id']}/page_1.pdf")
+    check("its single-page PDF still builds", _single.status_code == 200
+          and _single.data.startswith(b"%PDF-"), str(_single.status_code))
+else:
+    check("a transparent render downloads as a PNG with alpha", False, str(_err))
+
 _h = _client.get("/healthz")
 check("health check answers", _h.status_code == 200 and _h.get_json()["ok"], str(_h.get_json()))
 

@@ -175,8 +175,27 @@ def _prune() -> None:
 
 
 def _pages_on_disk(folder: Path) -> list[Path]:
-    """The full-size page images, in page order: page_10 after page_2."""
-    return sorted(folder.glob("page_*.jpg"), key=lambda p: int(p.stem.split("_")[1]))
+    """The full-size page images, in page order: page_10 after page_2.
+
+    A page on paper is kept as page_N.jpg; a transparent one as page_N.png,
+    since JPEG has no alpha. A PNG made later for download sits beside a JPEG
+    and is not a page of its own.
+    """
+    pages = {}
+    for p in folder.glob("page_*.*"):
+        if p.suffix in (".jpg", ".png") and p.stem.split("_")[1].isdigit():
+            n = int(p.stem.split("_")[1])
+            if p.suffix == ".jpg" or n not in pages:
+                pages[n] = p
+    return [pages[n] for n in sorted(pages)]
+
+
+def _page_source(folder: Path, n: int) -> Path | None:
+    """The full-size file for page n, whichever kind it is."""
+    for name in (f"page_{n}.jpg", f"page_{n}.png"):
+        if (folder / name).exists():
+            return folder / name
+    return None
 
 
 def _combine_pdf(folder: Path) -> Path:
@@ -196,9 +215,19 @@ def _combine_pdf(folder: Path) -> Path:
         pdf.unlink()                    # appending onto a stale file would grow it
     for n, path in enumerate(pngs):
         with Image.open(path) as page:
-            page.convert("RGB").save(pdf, append=n > 0, resolution=pdf_dpi(),
+            _on_white(page).save(pdf, append=n > 0, resolution=pdf_dpi(),
                                      **({} if n else PDF_INFO))
     return pdf
+
+
+def _on_white(page: Image.Image) -> Image.Image:
+    """A page as RGB, with any transparency laid on white paper."""
+    if page.mode in ("RGBA", "LA", "P"):
+        rgba = page.convert("RGBA")
+        flat = Image.new("RGB", rgba.size, (255, 255, 255))
+        flat.paste(rgba, (0, 0), rgba)
+        return flat
+    return page.convert("RGB")
 
 
 def _render(text: str, ruled: bool, texture: bool, skew: bool, as_markdown: bool,
@@ -698,13 +727,13 @@ def thumb(rid: str, n: int):
 def download_page_pdf(rid: str, n: int):
     """Single page as a PDF, built on first request and then cached."""
     folder = _safe(rid)
-    src = folder / f"page_{n}.jpg"
-    if not src.exists():
+    src = _page_source(folder, n)
+    if src is None:
         abort(404)
 
     def build(tmp: Path) -> None:
         with Image.open(src) as page:          # closed, or Windows cannot prune it
-            page.convert("RGB").save(tmp, "PDF", resolution=pdf_dpi(), **PDF_INFO)
+            _on_white(page).save(tmp, "PDF", resolution=pdf_dpi(), **PDF_INFO)
 
     pdf = _build_once(folder / f"page_{n}.pdf", build)
     stem = _dl_stem()
@@ -755,15 +784,16 @@ def download_pdf(rid: str):
 @app.get("/download/<rid>/page_<int:n>.png")
 def download_page(rid: str, n: int):
     folder = _safe(rid)
-    src = folder / f"page_{n}.jpg"
-    if not src.exists():
+    src = _page_source(folder, n)
+    if src is None:
         abort(404)
 
     def build(tmp: Path) -> None:
         with Image.open(src) as page:
             page.save(tmp, "PNG", compress_level=3, dpi=(pdf_dpi(),) * 2)
 
-    path = _build_once(folder / f"page_{n}.png", build)
+    # a transparent render already wrote its page as a PNG
+    path = src if src.suffix == ".png" else _build_once(folder / f"page_{n}.png", build)
     stem = _dl_stem()
     return send_file(path, mimetype="image/png", as_attachment=True,
                      download_name=f"{stem} page {n}.png" if stem else f"page_{n}.png")

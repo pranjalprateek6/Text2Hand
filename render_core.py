@@ -118,6 +118,14 @@ def write_streaming(text: str, folder: Path, as_markdown: bool, on_progress,
 
         def write(page=page, i=number):
             try:
+                # A transparent page keeps its alpha in the full-size file,
+                # which therefore has to be a PNG; everything shown on screen
+                # or put in the PDF is the ink on white, since neither has a
+                # use for transparency.
+                full = page
+                if page.mode == "RGBA":
+                    page = Image.new("RGB", full.size, (255, 255, 255))
+                    page.paste(full, (0, 0), full)
                 # JPEG for the preview: the paper grain makes PNG very
                 # inefficient here (roughly 5x larger) and this copy is only
                 # ever shown on screen.
@@ -142,7 +150,10 @@ def write_streaming(text: str, folder: Path, as_markdown: bool, on_progress,
                 # never download. This is 2.5 MB and 30 ms, with 4:4:4 colour
                 # so thin red ink keeps its edges. A PNG is made from it only
                 # when one is asked for.
-                page.save(folder / f"page_{i}.jpg", quality=95, subsampling=0)
+                if full.mode == "RGBA":
+                    full.save(folder / f"page_{i}.png", compress_level=3)
+                else:
+                    page.save(folder / f"page_{i}.jpg", quality=95, subsampling=0)
                 append_pdf(page, i)
             except Exception as exc:
                 failures.append(exc)
@@ -163,7 +174,7 @@ def write_streaming(text: str, folder: Path, as_markdown: bool, on_progress,
 
 
 
-PAPERS = ("ruled", "grid", "plain")
+PAPERS = ("ruled", "grid", "plain", "none")
 SHEETS = ("a4", "letter")
 
 
@@ -179,6 +190,7 @@ def apply_options(ruled: bool = True, texture: bool = True, skew: bool = True,
     t2h.RULED = paper == "ruled"
     t2h.MARGIN_RULE = paper == "ruled"
     t2h.GRID = paper == "grid"
+    t2h.TRANSPARENT = paper == "none"
     t2h.PAPER_SIZE = sheet if sheet in SHEETS else "a4"
     t2h.PAPER_TEXTURE = texture
     t2h.SCAN_SKEW = 0.7 if skew else 0
