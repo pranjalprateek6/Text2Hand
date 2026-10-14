@@ -84,7 +84,9 @@ section { position: relative; }
 /* padding-block, never the shorthand: this element is also a .wrap, and the
    shorthand's zero was silently erasing .wrap's inline padding, leaving the
    hero flush against the viewport edge while the stats under it kept theirs */
-.hero__in { position: relative; z-index: 10; padding-block: 150px 240px; }
+/* the top shrinks on short screens, so the studio button clears the fold on a
+   1366x768 laptop instead of showing its top 27px */
+.hero__in { position: relative; z-index: 10; padding-block: clamp(88px, 13vh, 150px) 240px; }
 .hero__title { font-size: clamp(3rem, 11vw, 9.5rem); }
 .hero__title .line { display: block; }
 .hero__word { position: relative; display: inline-block; }
@@ -255,3 +257,4 @@ section { position: relative; }
   .hero__art { opacity: 0.2; }
   .codecard { position: static; }
 }
+.cta__for { margin-top: 22px; max-width: 38rem; font-size: 17px; line-height: 1.55; color: var(--muted-foreground); }

@@ -34,7 +34,7 @@
         <span class="bar__title" id="docTitle" contenteditable="plaintext-only"
               spellcheck="false"
               title="Click to rename. Exported files are named after this.">Untitled</span>
-        <span class="bar__status" id="status">Ready</span>
+        <span class="bar__status" id="status" role="status" aria-live="polite">Ready</span>
       </div>
       <span class="bar__gap"></span>
 
@@ -56,7 +56,7 @@
           </button>
           <div class="pop" id="exportPop" hidden role="menu" aria-label="Export">
             <a class="pop__item" id="dlPdf" download><b>Whole document</b><i>PDF, every page</i></a>
-            <a class="pop__item" id="dlZip" download><b>All pages</b><i>ZIP of full-size PNGs</i></a>
+            <a class="pop__item" id="dlZip" download><b>All pages</b><i>ZIP of full-size pages</i></a>
             <div class="pop__rule"></div>
             <a class="pop__item" id="dlPagePng" download><b>This page</b><i>PNG at full size</i></a>
             <a class="pop__item" id="dlPagePdf" download><b>This page</b><i>PDF</i></a>
@@ -140,6 +140,10 @@
       <section class="pane">
         <div class="pane__bar">
           <span class="pane__label" id="previewLabel">02 / Output</span>
+          <button class="stale" id="stale" hidden
+                  title="The text or settings changed since this render (Ctrl+Enter)">
+            <span class="stale__dot" aria-hidden="true"></span>Out of date · Render again
+          </button>
           <span class="pane__gap"></span>
           <div class="zoom" role="group" aria-label="Zoom">
             <button class="iconbtn" id="zoomOut" aria-label="Zoom out" title="Zoom out">
@@ -185,7 +189,7 @@
             <button class="btn btn--outline btn--sm" id="cancelRender">Cancel</button>
           </div>
 
-          <div class="notecard" id="note" hidden></div>
+          <div class="notecard" id="note" hidden aria-live="polite"></div>
           <img class="page" id="page" alt="" hidden />
         </div>
       </section>

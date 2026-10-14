@@ -420,6 +420,186 @@ finally:
     t2h.SCAN_SKEW = _skew
     t2h.PAPER_TEXTURE = True
 
+# --- Markdown images cannot reach outside the asset folder -----------------
+# On a server the Markdown is someone else's text. An image path must not be
+# able to name any file on the host, a UNC share, or a URL.
+_root = _tf.mkdtemp(prefix="t2h_assets_")
+os.makedirs(os.path.join(_root, "eq_abc"))
+Image.new("L", (40, 20), 0).save(os.path.join(_root, "eq_abc", "eq1_1.png"))
+_outside = os.path.join(_tf.mkdtemp(prefix="t2h_secret_"), "secret.png")
+Image.new("L", (40, 20), 0).save(_outside)
+_saved_root, t2h.IMAGE_ROOT = t2h.IMAGE_ROOT, _root
+try:
+    _refused = [s for s in (_outside, _outside.replace("\\", "/"), "../" + os.path.basename(_outside),
+                            "eq_abc/../../secret.png", r"\\host\share\x.png", "//host/share/x.png",
+                            "http://example.com/x.png", "C:x.png", "file:///etc/passwd")
+                if t2h.resolve_image(s) is not None]
+    check("image paths outside the asset folder are refused", not _refused, str(_refused))
+    check("an image inside the asset folder resolves",
+          t2h.resolve_image("eq_abc/eq1_1.png") is not None)
+finally:
+    t2h.IMAGE_ROOT = _saved_root
+    _sh.rmtree(_root, ignore_errors=True)
+    _sh.rmtree(os.path.dirname(_outside), ignore_errors=True)
+
+# --- the server refuses what it should, as JSON the studio can show -------
+_client = app.app.test_client()
+import io as _io
+_r = _client.post("/api/convert", data={"file": (_io.BytesIO(b"not a pdf at all"), "x.pdf")},
+                  content_type="multipart/form-data")
+check("upload without PDF magic is refused", _r.status_code == 400 and _r.is_json,
+      f"{_r.status_code}")
+_limit = app.app.config["MAX_CONTENT_LENGTH"]
+app.app.config["MAX_CONTENT_LENGTH"] = 1024
+try:
+    _r = _client.post("/api/convert", data={"file": (_io.BytesIO(b"%PDF-" + b"0" * 4096), "x.pdf")},
+                      content_type="multipart/form-data")
+    check("oversized upload is refused as JSON", _r.status_code == 413 and _r.is_json,
+          f"{_r.status_code}")
+finally:
+    app.app.config["MAX_CONTENT_LENGTH"] = _limit
+
+with app.JOBS_LOCK:
+    _fake = [f"fake{i}" for i in range(app.MAX_ACTIVE_JOBS)]
+    for _k in _fake:
+        app.JOBS[_k] = {"state": "running", "message": "", "error": None}
+try:
+    _r = _client.post("/api/render", json={"text": "hello"})
+    check("a full job queue answers 429", _r.status_code == 429 and _r.is_json, f"{_r.status_code}")
+finally:
+    with app.JOBS_LOCK:
+        for _k in _fake:
+            app.JOBS.pop(_k, None)
+
+import converters as _cv
+import pymupdf as _pm
+_dpi = _cv._safe_dpi(_pm.Rect(0, 0, 3600, 3600), 300)        # a 50 inch poster
+check("a large PDF page is rasterised under the pixel cap",
+      (50 * _dpi) ** 2 <= _cv.MAX_RASTER_PIXELS, f"{_dpi} dpi, {(50 * _dpi) ** 2:,} px")
+try:
+    _cv._safe_dpi(_pm.Rect(0, 0, 14400, 14400), 300)          # 200 inches, PDF's maximum
+    check("an absurd PDF page is refused", False, "was accepted")
+except ValueError:
+    check("an absurd PDF page is refused", True)
+check("an ordinary page keeps full resolution",
+      _cv._safe_dpi(_pm.Rect(0, 0, 595, 842), 300) == 300)
+
+# --- writing stays inside the right margin ---------------------------------
+# Fatigue grows the hand down the page and every glyph adds kerning jitter, so
+# lines wrapped against the bare measurement used to run ~90px past the margin.
+# A long URL has no space to break at and ran clean off the paper.
+_skew, t2h.SCAN_SKEW = t2h.SCAN_SKEW, 0
+try:
+    _text = ("A line of ordinary prose that wraps several times across the page. " * 60
+             + "\n\nhttps://example.com/a/very/long/path/that/never/ends/and/keeps/"
+               "going/on/and/on/forever/index.html")
+    _over = -9999
+    for _p in t2h.render_pages(_text)[0]:
+        _a = _np.asarray(_p.convert("L"))
+        _cols = _np.where((_a[:, :_a.shape[1] - 60] < 110).any(axis=0))[0]
+        _over = max(_over, int(_cols.max()) - (_a.shape[1] - t2h.MARGIN_R))
+    check("no ink runs past the right margin", _over <= 20, f"furthest {_over}px past")
+finally:
+    t2h.SCAN_SKEW = _skew
+
+# --- word images follow the hand size --------------------------------------
+_ws = {}
+for _mm in (2.5, 3.5):
+    t2h.X_HEIGHT_MM = _mm
+    t2h.derive_metrics()
+    _ws[_mm] = t2h.WORD_SCALE
+t2h.X_HEIGHT_MM = 3.0
+t2h.derive_metrics()
+check("word images rescale with the hand size", _ws[2.5] < t2h.WORD_SCALE < _ws[3.5],
+      f"{_ws[2.5]:.3f} < {t2h.WORD_SCALE:.3f} < {_ws[3.5]:.3f}")
+
+# --- the renderer finds its glyphs from any working directory ---------------
+import subprocess as _sp
+_out = _sp.run([sys.executable, "-c",
+                "import sys; sys.path.insert(0, sys.argv[1]); import text_to_handwriting as t;"
+                " print(bool(t.glyph_variants('a')))", ROOT],
+               cwd=_tf.gettempdir(), capture_output=True, text=True)
+check("glyphs load from another working directory", _out.stdout.strip() == "True",
+      _out.stdout.strip() or _out.stderr.strip()[-120:])
+
+# --- typed text is normalised without changing what it says -----------------
+_n = converters.normalize("don’t café “quoted” x² H₂O 25°C a·b")
+check("typed typography folds to drawable text",
+      _n == "don't cafe \"quoted\" x^2 H_2O 25 deg C a*b", _n)
+
+
+def _app_render(payload):
+    """Run one render through the real endpoint and wait for it."""
+    import time as _time
+    r = _client.post("/api/render", json=payload)
+    if r.status_code != 202:
+        return None, r.get_json()
+    jid = r.get_json()["job"]
+    for _ in range(600):
+        job = _client.get(f"/api/job/{jid}").get_json()
+        if job["state"] != "running":
+            return job, None
+        _time.sleep(0.1)
+    return None, "timed out"
+
+
+_job, _err = _app_render({"text": "It’s a café, isn’t it?", "size": "large"})
+check("app render of pasted typography skips nothing",
+      _job is not None and _job["state"] == "done" and not _job["missing"],
+      str(_err or (_job and (_job.get("missing") or _job.get("error")))))
+check("a large render leaves the normal page size alone",
+      app.page_size() == app.page_size("normal") and app.page_size("large") < app.page_size(),
+      f"normal {app.page_size()}, large {app.page_size('large')}")
+if _job and _job["state"] == "done":
+    _pdf = _client.get(f"/download/{_job['id']}/handwriting.pdf")
+    with _pm.open(stream=_pdf.data, filetype="pdf") as _doc:
+        _w, _h = _doc[0].rect.width, _doc[0].rect.height
+    check("exported PDF pages are A4", abs(_w - 595) < 6 and abs(_h - 842) < 8,
+          f"{_w:.0f} x {_h:.0f} pt")
+    _single = _client.get(f"/download/{_job['id']}/page_1.pdf")
+    with _pm.open(stream=_single.data, filetype="pdf") as _doc:
+        _w = _doc[0].rect.width
+    check("single-page PDF is A4 too", abs(_w - 595) < 6, f"{_w:.0f} pt wide")
+    # full-size pages are kept as JPEG; a PNG is made only when asked for
+    _png = _client.get(f"/download/{_job['id']}/page_1.png")
+    check("page PNG export builds on demand",
+          _png.status_code == 200 and _png.data[:8] == b"\x89PNG\r\n\x1a\n",
+          f"{_png.status_code}, {len(_png.data):,} bytes")
+    import zipfile as _zf
+    _z = _client.get(f"/download/{_job['id']}/pages.zip")
+    with _zf.ZipFile(_io.BytesIO(_z.data)) as _zip:
+        _names = _zip.namelist()
+    check("zip holds every page and the PDF",
+          "page_1.jpg" in _names and "handwriting.pdf" in _names, str(_names))
+
+# --- through the app, equations keep working with relative asset paths -----
+if _PAPER:
+    import time as _time
+    with open(_PAPER, "rb") as _fh:
+        _r = _client.post("/api/convert", data={"file": (_fh, "paper.pdf"), "pages": "5"},
+                          content_type="multipart/form-data")
+    _jid = _r.get_json()["job"]
+    for _ in range(1200):
+        _job = _client.get(f"/api/job/{_jid}").get_json()
+        if _job["state"] != "running":
+            break
+        _time.sleep(0.1)
+    _md = _job.get("markdown", "")
+    _srcs = _re.findall(r"!\[[^\]]*\]\(([^)]+)\)", _md)
+    check("converted Markdown names crops by relative path only",
+          _srcs and all(s.startswith("eq_") and ":" not in s for s in _srcs),
+          str(_srcs[:2]) or _job.get("error", ""))
+    _rend, _err = _app_render({"text": _md, "markdown": True, "skew": False})
+    _ok = _rend is not None and _rend["state"] == "done"
+    if _ok:
+        _pg = _client.get(f"/preview/{_rend['id']}/2.jpg")
+        with Image.open(_io.BytesIO(_pg.data)) as _im:
+            _dark = int((_np.asarray(_im.convert("L")) < 120).sum())
+    check("app traces the crops onto the page", _ok and _dark > 15_000,
+          f"{_dark:,} dark px in the preview" if _ok else str(_err))
+else:
+    skip("app equation round trip", "million-step paper not found")
+
 bad = [n for n, ok, _ in results if not ok]
 print(f"\n{len(results) - len(bad)}/{len(results)} passed"
       + (f", {len(skipped)} skipped" if skipped else ""))

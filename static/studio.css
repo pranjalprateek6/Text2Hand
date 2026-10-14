@@ -452,3 +452,25 @@ select.mini {
   .pages { min-height: 340px; }
   .library { padding: 24px 16px 40px; }
 }
+
+/* ------------------------------------------------------------ out of date */
+/* The render on screen no longer matches the text or settings: dimmed, and a
+   chip in the pane bar says so and renders again when pressed. */
+.pages .page { transition: opacity 240ms var(--ease), filter 240ms var(--ease); }
+.pages.is-stale .page { opacity: 0.5; filter: saturate(0.6); }
+.stale {
+  appearance: none;
+  display: inline-flex; align-items: center; gap: 7px;
+  margin-left: 12px;
+  padding: 4px 11px;
+  font: inherit; font-size: 12px;
+  color: var(--foreground);
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 180ms var(--ease);
+}
+.stale:hover { background: var(--secondary); }
+.stale__dot { width: 7px; height: 7px; border-radius: 50%; background: var(--destructive); }
+@media (prefers-reduced-motion: reduce) { .pages .page { transition: none; } }
