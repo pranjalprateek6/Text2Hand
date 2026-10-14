@@ -110,6 +110,8 @@ waitress-serve --listen=0.0.0.0:8000 --threads=8 wsgi:app                      #
 | `T2H_MAX_UPLOAD_MB` | `50` | largest PDF accepted |
 | `T2H_RENDER_PROCS` | `2` | worker processes rendering side by side; `0` renders in the web process, one at a time. Each worker holds its own copy of the hand and can peak near 1 GB on a long document |
 | `T2H_LOG_LEVEL` | `INFO` | logging level; each finished job logs one line with its time and size |
+| `T2H_MAX_JOBS_PER_CLIENT` | `2` | renders and conversions one visitor may have running at once |
+| `T2H_TRUST_PROXY` | off | `1` behind a reverse proxy, so per-visitor limits see the visitor's address rather than the proxy's. Leave off otherwise, or a client can claim any address |
 | `T2H_MAX_ACTIVE_JOBS` | `4` | renders and conversions running or waiting before new ones get a 429 |
 
 Markdown images on the server can only come from the equation crops it made itself, so a pasted `![x](C:/some/file.png)` draws a figure box instead of reading the disk.

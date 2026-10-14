@@ -716,6 +716,39 @@ else:
 check("page limits are measured per page size", app.page_size("normal", "letter") != app.page_size(),
       f"A4 {app.page_size()}, Letter {app.page_size('normal', 'letter')}")
 
+# --- headers, caching, and per-visitor limits ------------------------------
+_st = _client.get("/studio")
+_csp = _st.headers.get("Content-Security-Policy", "")
+check("pages carry a content security policy", "script-src 'self'" in _csp
+      and "frame-ancestors 'none'" in _csp and _st.headers.get("X-Content-Type-Options") == "nosniff")
+_body = _st.get_data(as_text=True)
+check("the studio has no inline script for the policy to block",
+      not _re.search(r"<script(?![^>]*\bsrc=)[^>]*>", _body))
+_js = _re.search(r'src="(/static/app\.js\?v=\d+)"', _body)
+check("static links carry a version", bool(_js), "app.js?v=..." if _js else "unversioned")
+if _js:
+    _sr = _client.get(_js.group(1))
+    check("versioned static files cache for a year",
+          "max-age=31536000" in _sr.headers.get("Cache-Control", ""), _sr.headers.get("Cache-Control"))
+with app.JOBS_LOCK:
+    _mine = [f"mine{i}" for i in range(app.MAX_JOBS_PER_CLIENT)]
+    for _k in _mine:
+        app.JOBS[_k] = {"state": "running", "message": "", "error": None, "_client": "127.0.0.1"}
+try:
+    _r1 = _client.post("/api/render", json={"text": "hello"})
+    _r2 = _client.post("/api/render", json={"text": "hello"},
+                       environ_base={"REMOTE_ADDR": "10.9.8.7"})
+    check("one visitor cannot take every slot",
+          _r1.status_code == 429 and "already have" in _r1.get_json()["error"], f"{_r1.status_code}")
+    check("another visitor still gets one", _r2.status_code == 202, f"{_r2.status_code}")
+    if _r2.status_code == 202:
+        _jj = _client.get(f"/api/job/{_r2.get_json()['job']}").get_json()
+        check("a job never reveals who started it", "_client" not in _jj, str(sorted(_jj)))
+finally:
+    with app.JOBS_LOCK:
+        for _k in _mine:
+            app.JOBS.pop(_k, None)
+
 _h = _client.get("/healthz")
 check("health check answers", _h.status_code == 200 and _h.get_json()["ok"], str(_h.get_json()))
 

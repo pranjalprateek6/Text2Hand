@@ -289,10 +289,7 @@
 
 <input type="file" id="file" accept="application/pdf,.pdf" hidden />
 
-<script>
-  window.MAX_CHARS = {{ max_chars }};
-  window.PAGE_SIZE = {{ page_size }};
-</script>
-<script src="{{ url_for('static', filename='app.js') }}"></script>
+<script src="{{ url_for('static', filename='app.js') }}"
+        data-max-chars="{{ max_chars }}" data-page-size="{{ page_size }}"></script>
 </body>
 </html>

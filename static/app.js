@@ -10,8 +10,11 @@
 
 const $ = (id) => document.getElementById(id);
 
-const MAX_CHARS = window.MAX_CHARS || 60000;
-const PAGE_SIZE = window.PAGE_SIZE || 1200;
+// handed over on the script tag rather than in an inline script, which the
+// content security policy does not allow
+const CONFIG = document.currentScript ? document.currentScript.dataset : {};
+const MAX_CHARS = Number(CONFIG.maxChars) || 60000;
+const PAGE_SIZE = Number(CONFIG.pageSize) || 1200;
 
 const state = {
   id: null, pages: 0, page: 1,
@@ -728,6 +731,7 @@ $("exportBtn").addEventListener("keydown", (e) => {
 
 $("exportPop").addEventListener("keydown", (e) => {
   const items = menuItems();
+  if (!items.length) return;
   const at = items.indexOf(document.activeElement);
   const step = { ArrowDown: 1, ArrowUp: -1 }[e.key];
   if (step) {

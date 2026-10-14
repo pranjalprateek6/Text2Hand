@@ -38,9 +38,59 @@ from render_core import PDF_INFO, SIZES, pdf_dpi
 log = logging.getLogger("text2hand")
 
 app = Flask(__name__)
-# Never cache static assets. Otherwise an edited CSS or JS file can leave a
-# stale front end talking to a newer server, which looks like a broken app.
+# Nothing is cached by default. Static files are the exception, and only
+# because every link to one carries its version (see _static_version), so a
+# browser can keep it for a year and still never pair an old script with a
+# newer server.
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
+
+# Behind a reverse proxy (Fly, Render, nginx) every request arrives from the
+# proxy's address, so per-client limits would treat all visitors as one. Set
+# T2H_TRUST_PROXY=1 only when such a proxy is really in front: otherwise a
+# client could claim any address it liked in X-Forwarded-For.
+if os.environ.get("T2H_TRUST_PROXY") == "1":
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
+# What a page may load and run. Everything the app serves is its own, scripts
+# included (no inline script, no eval); styles may be inline because the
+# markup sets a few custom properties that way; fonts come from Google; images
+# may be data: URLs, which is how the library keeps its thumbnails.
+SECURITY_HEADERS = {
+    "Content-Security-Policy": (
+        "default-src 'self'; script-src 'self'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src https://fonts.gstatic.com; img-src 'self' data: blob:; "
+        "connect-src 'self'; object-src 'none'; base-uri 'self'; "
+        "form-action 'self'; frame-ancestors 'none'"),
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "same-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+}
+
+
+@app.after_request
+def _headers(response):
+    for name, value in SECURITY_HEADERS.items():
+        response.headers.setdefault(name, value)
+    if request.endpoint == "static" and request.args.get("v"):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    elif request.endpoint in ("preview", "thumb"):
+        # a render's pages never change once written; they only expire
+        response.headers["Cache-Control"] = "private, max-age=7200"
+    return response
+
+
+@app.url_defaults
+def _static_version(endpoint, values):
+    """Give every static link its file's version, so caching it is safe."""
+    if endpoint == "static" and "filename" in values and "v" not in values:
+        path = Path(app.static_folder) / values["filename"]
+        try:
+            values["v"] = int(path.stat().st_mtime)
+        except OSError:
+            pass
 # Without a cap an upload of any size is written to disk in full before a
 # single line of this code runs. 50 MB is a very long scanned PDF.
 MAX_UPLOAD_MB = int(os.environ.get("T2H_MAX_UPLOAD_MB", "50"))
@@ -213,10 +263,23 @@ KEEP_JOBS = 40
 # requests. Past this many unfinished jobs a new one is refused with a 429
 # rather than accepted and left to wait.
 MAX_ACTIVE_JOBS = int(os.environ.get("T2H_MAX_ACTIVE_JOBS", "4"))
+# And past this many from one visitor, so a single browser (or a script in a
+# loop) cannot take every slot and lock everyone else out.
+MAX_JOBS_PER_CLIENT = int(os.environ.get("T2H_MAX_JOBS_PER_CLIENT", "2"))
 
 
 class Busy(Exception):
     """Too many jobs are already running or waiting."""
+
+    def __init__(self, message: str = "The server is busy with other documents. "
+                                      "Try again in a minute.") -> None:
+        super().__init__(message)
+        self.message = message
+
+
+def _client() -> str:
+    """Who is asking, for per-client limits. The proxy's word only if trusted."""
+    return request.remote_addr or "unknown"
 
 
 def _job_set(jid: str, **fields) -> None:
@@ -227,11 +290,17 @@ def _job_set(jid: str, **fields) -> None:
 
 def _job_start(message: str) -> str:
     jid = uuid.uuid4().hex[:12]
+    client = _client()
     with JOBS_LOCK:
-        active = sum(1 for j in JOBS.values() if j["state"] == "running")
-        if active >= MAX_ACTIVE_JOBS:
+        running = [j for j in JOBS.values() if j["state"] == "running"]
+        if sum(1 for j in running if j.get("_client") == client) >= MAX_JOBS_PER_CLIENT:
+            raise Busy("You already have documents rendering. Wait for one to "
+                       "finish, or cancel it.")
+        if len(running) >= MAX_ACTIVE_JOBS:
             raise Busy()
-        JOBS[jid] = {"state": "running", "message": message, "error": None}
+        # who started it stays here: fields starting with _ are never sent
+        JOBS[jid] = {"state": "running", "message": message, "error": None,
+                     "_client": client}
         # only finished jobs are forgotten: dropping a running one leaves its
         # browser polling a job that no longer exists
         finished = [k for k, j in JOBS.items() if j["state"] != "running"]
@@ -241,9 +310,8 @@ def _job_start(message: str) -> str:
 
 
 @app.errorhandler(Busy)
-def _busy(_exc):
-    return jsonify(error="The server is busy with other documents. "
-                         "Try again in a minute."), 429
+def _busy(exc):
+    return jsonify(error=exc.message), 429
 
 
 @app.errorhandler(413)
@@ -604,7 +672,7 @@ def api_job_cancel(jid: str):
 def api_job(jid: str):
     with JOBS_LOCK:
         job = JOBS.get(jid)
-        snapshot = dict(job) if job else None
+        snapshot = {k: v for k, v in job.items() if not k.startswith("_")} if job else None
     if snapshot is None:
         return jsonify(error="No such job."), 404
     return jsonify(snapshot)
