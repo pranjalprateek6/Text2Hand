@@ -425,9 +425,13 @@ async function render() {
     $("status").textContent = state.statusLine;
     remember(done, body);
 
-    if (done.missing && done.missing.length) {
-      note("No glyph for: " + done.missing.join(" "));
+    const told = [];
+    if (done.missing && done.missing.length) told.push("No glyph for: " + done.missing.join(" ") + ".");
+    // words of the Markdown that nothing wrote out: rare, and worth saying
+    if (done.dropped && done.dropped.length) {
+      told.push("Some text could not be placed on the page: " + done.dropped.join(", ") + ".");
     }
+    if (told.length) note(told.join(" "));
   } catch (err) {
     setBusy(false);
     after();

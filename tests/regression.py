@@ -786,6 +786,18 @@ _sb = _client.get("/studio").get_data(as_text=True)
 check("the studio has a main landmark, a heading and a labelled editor",
       "<main" in _sb and "<h1" in _sb and 'id="text" spellcheck="false" aria-label=' in _sb)
 
+# --- nothing in the Markdown goes missing without a word about it ------------
+_dl = []
+markdown_blocks.to_blocks(open("tests/fixture.md", encoding="utf-8").read(), _dl)
+check("the Markdown fixture reaches the page whole", _dl == [], str(_dl))
+from bs4 import BeautifulSoup as _BS
+_lost = markdown_blocks._ledger(_BS("<p>kept words</p><p>lost words</p>", "html.parser"),
+                                [markdown_blocks.Block("para", "kept words")])
+check("words no block carries are reported", _lost == ["lost", "words"], str(_lost))
+_job, _err = _app_render({"text": "# Fine\n\nAll of this is written.", "markdown": True})
+check("a render reports its dropped words", _job is not None and _job.get("dropped") == [],
+      str(_job and _job.get("dropped")) if _job else str(_err))
+
 _h = _client.get("/healthz")
 check("health check answers", _h.status_code == 200 and _h.get_json()["ok"], str(_h.get_json()))
 

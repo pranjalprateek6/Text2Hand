@@ -13,6 +13,7 @@ show up in the documents people actually feed in.
 from __future__ import annotations
 
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 
 from bs4 import BeautifulSoup, NavigableString
@@ -57,7 +58,7 @@ def _text(node) -> str:
 BLOCKS = HEADINGS + ("p", "ul", "ol", "blockquote", "pre", "table", "hr", "dl") + CONTAINERS
 
 
-def to_blocks(md_text: str) -> list[Block]:
+def to_blocks(md_text: str, dropped: list[str] | None = None) -> list[Block]:
     # sane_lists matters more than it looks: without it an ordered list that
     # follows a bulleted one is merged into the same <ul>, so numbering is
     # silently lost. Converted PDFs mix the two constantly.
@@ -68,7 +69,28 @@ def to_blocks(md_text: str) -> list[Block]:
     out: list[Block] = []
     for node in list(soup.children):
         _walk(node, out, depth=0)
+    if dropped is not None:
+        dropped.extend(_ledger(soup, out))
     return out
+
+
+def _words(text: str) -> list[str]:
+    return [w.lower() for w in re.findall(r"[^\W_]+", text)]
+
+
+def _ledger(soup, blocks: list[Block]) -> list[str]:
+    """Words of the document that no block carries to the page.
+
+    Every word the parsed document holds is counted, and every word the
+    blocks will write is taken off that count; what is left was dropped
+    somewhere between the two. It should be nothing. When it is not, saying
+    so is far better than a page that quietly leaves part of the text out,
+    which is how a list inside a quotation went missing for so long.
+    """
+    have = Counter(_words(soup.get_text(" ")))
+    for b in blocks:
+        have.subtract(_words(" ".join([b.text, b.marker] + b.cells)))
+    return sorted(w for w, n in have.items() if n > 0)
 
 
 def _keep_links(soup) -> None:

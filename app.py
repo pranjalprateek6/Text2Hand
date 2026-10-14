@@ -243,11 +243,11 @@ def _render(text: str, ruled: bool, texture: bool, skew: bool, as_markdown: bool
     try:
         pool = _render_pool()
         if pool is not None:
-            count, missing = pool.render(text, opts, folder, on_progress, ready)
+            count, missing, dropped = pool.render(text, opts, folder, on_progress, ready)
         else:
             with _render_lock:
-                count, missing = render_core.render_into(folder, text, opts,
-                                                         on_progress, ready)
+                count, missing, dropped = render_core.render_into(folder, text, opts,
+                                                                  on_progress, ready)
     except BaseException:
         # a stopped or failed render leaves nothing anyone can download
         shutil.rmtree(folder, ignore_errors=True)
@@ -256,7 +256,7 @@ def _render(text: str, ruled: bool, texture: bool, skew: bool, as_markdown: bool
     if on_progress:
         on_progress("previews", count)
     _prune()
-    return rid, count, missing
+    return rid, count, missing, dropped
 
 
 # Worker processes that render side by side; see render_pool.py. Zero renders
@@ -677,8 +677,9 @@ def api_render():
         def on_ready(rid: str, n: int) -> None:
             progress(id=rid, ready=n)
 
-        rid, count, missing = _render(text, on_progress=on_stage, on_ready=on_ready, **opts)
-        return {"id": rid, "pages": count, "missing": missing}
+        rid, count, missing, dropped = _render(text, on_progress=on_stage,
+                                               on_ready=on_ready, **opts)
+        return {"id": rid, "pages": count, "missing": missing, "dropped": dropped[:30]}
 
     jid = _job_start("Laying out the text")
     _job_spawn(jid, work, "Could not render")

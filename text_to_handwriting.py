@@ -945,6 +945,7 @@ class Sheet:
         self.pages: list[Image.Image] = []
         self.count = 0                        # pages finished, kept or not
         self.missing: list[str] = []          # characters with no glyph
+        self.dropped: list[str] = []          # words of the source never written
         self.scale = 1.0                      # block-level glyph size
         self._last = ""                       # last character written, for quote direction
         self._in_quote = False                # inside a quotation, for quote direction
@@ -1595,7 +1596,9 @@ def render_markdown(md_text: str, on_page=None) -> Sheet:
         for line in lines_for(sheet, words, width, scale):
             sheet.put_line(line, left, width, scale=scale)
 
-    blocks = to_blocks(md_text)
+    dropped: list[str] = []
+    blocks = to_blocks(md_text, dropped)
+    sheet.dropped = dropped
     previous = ""
     index = 0
     while index < len(blocks):
@@ -1713,7 +1716,7 @@ def render_markdown(md_text: str, on_page=None) -> Sheet:
 
 
 def stream_pages(text: str, on_page, as_markdown: bool = False,
-                 on_progress=None) -> tuple[int, list[str]]:
+                 on_progress=None, dropped: list[str] | None = None) -> tuple[int, list[str]]:
     """Render text, handing each finished page to `on_page(number, image)`.
 
     The page is skewed before it is handed over, so what arrives is final, and
@@ -1722,7 +1725,9 @@ def stream_pages(text: str, on_page, as_markdown: bool = False,
     thirty page render used to carry 1.7 GB of pixels for no reason other than
     that the pages were all returned together at the end.
 
-    Returns how many pages were made and any characters with no glyph.
+    Returns how many pages were made and any characters with no glyph. A
+    list passed as `dropped` receives any words of a Markdown source that no
+    block wrote out.
     """
     global _progress
     _progress = on_progress
@@ -1734,6 +1739,8 @@ def stream_pages(text: str, on_page, as_markdown: bool = False,
         _progress = None
         if _live_sheet is not None:       # close() is safe to repeat
             _live_sheet.close()
+    if dropped is not None:
+        dropped.extend(sheet.dropped)
     return sheet.count, sheet.missing
 
 
