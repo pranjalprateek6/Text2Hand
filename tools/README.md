@@ -20,8 +20,30 @@ a pen is dark, so extraction drops the guide by brightness and keeps the ink.
 ## Extraction
 
 ```
-python tools/extract_glyphs.py     # letter sheet  -> myfont_new/<ascii>.png
-python tools/extract_words.py      # paragraph     -> wordfont/<n>.png + index.json
+python tools/extract_sheet.py photo.jpg --sheet letters_min            # -> myfont_new/
+python tools/extract_sheet.py scan.png --sheet letters --page 2        # -> myfont_new/ (variants)
+python tools/extract_sheet.py scan.png --sheet words_short --page 1    # -> wordfont_new/
+```
+
+This is the one to use for a new hand. Each printed sheet has a solid square
+in every corner; the extractor finds them, maps the photo back onto the
+printed layout with a perspective transform, and cuts each cell at the
+position `make_capture_sheets.layout()` gives it. The sheet generator and the
+extractor share that layout, so they cannot disagree about where a cell is.
+A cell's ink is judged against its own paper, and everything lighter than pen
+(the guide letter, the blue rule) is whitened. Empty cells are listed, not
+guessed at. Output is staged with a `review.png` contact sheet.
+`tests/capture_check.py` writes a sheet with the bundled glyphs, photographs it
+badly in software, and checks that every letter comes back from its own cell.
+
+The two scripts below are what the bundled hand was cut from. They read the
+original freehand scans in `sample/scans/`, which predate the corner squares
+and have their own row and line layout (`ROWS`, `WRITTEN`); they do not fit
+the printed sheets.
+
+```
+python tools/extract_glyphs.py     # original letter scan  -> myfont_new/<ascii>.png
+python tools/extract_words.py      # original paragraph    -> wordfont/<n>.png + index.json
 ```
 
 `extract_glyphs.py` stages into `myfont_new/` on purpose: the renderer reads

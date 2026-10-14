@@ -176,15 +176,19 @@ Text in scripts the handwriting has no glyphs for (Cyrillic, Arabic, CJK and so 
 
 The `myfont` folder holds one PNG per character, named by its ASCII code. For example `65.png` is `A`, `97.png` is `a`, and `46.png` is a full stop. `bg.png` is the blank page background.
 
-There is a supported pipeline for capturing a whole hand, and it is the same one the bundled font came from:
+To capture a whole hand, print the sheets, write on them, and scan or photograph them:
 
 ```
-python tools/make_capture_sheets.py    # print the sheets, write on them, scan at 300 dpi
-python tools/extract_glyphs.py         # letter sheet  -> myfont_new/<code>.png
-python tools/extract_words.py          # paragraph     -> wordfont/<n>.png + index.json
+python tools/make_capture_sheets.py                                   # print sample/letters_min.pdf (and words_short.pdf)
+python tools/extract_sheet.py photo.jpg --sheet letters_min           # -> myfont_new/<code>.png
+python tools/extract_sheet.py words1.jpg --sheet words_short --page 1 # -> wordfont_new/<n>.png + index.json
 ```
 
-`extract_glyphs.py` deliberately writes to `myfont_new/`, not `myfont/`, so a bad scan cannot silently replace the working font. Look the results over, then copy the ones you keep into `myfont/`. `salvage_letters.py` can recover a missed letter from a captured word, which is how the bundled `v` and `w` were made.
+Every sheet has a black square in each corner. `extract_sheet.py` finds the four squares in the picture, maps a tilted, angled or shrunken photo back onto the printed layout, and cuts each cell out where the layout says it is, so a phone photo works as well as a 300 dpi scan. Ink is judged against each cell's own paper, so uneven light is fine; the printed guide and rule are removed. `letters.pdf` has three boxes per letter, and repeats become variants (`97.png`, `97_1.png`, `97_2.png`).
+
+Results are staged in `myfont_new/` and `wordfont_new/`, never written over the working hand, with a `review.png` contact sheet of everything cut out. Look it over, then copy what you keep into `myfont/` and `wordfont/`.
+
+`extract_glyphs.py` and `extract_words.py` are the tools the bundled hand was cut from. They read the owner's original freehand scans in `sample/scans/`, which have no corner squares and their own line layout, and are kept so that capture can be reproduced. `salvage_letters.py` can recover a missed letter from a captured word, which is how the bundled `v` and `w` were made.
 
 You can also skip the pipeline entirely: replace any image in `myfont/` with a cropped photo of your own letter, named by the matching code. Add variants as `65_1.png`, `65_2.png` and so on, and the engine picks among them at random.
 
