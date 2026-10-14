@@ -121,13 +121,22 @@
               <option value="plain">Plain sheet</option>
               <option value="letter">Letter</option>
               <option value="clean">Clean scan</option>
+              <option value="lab">Lab notes</option>
               <option value="custom" hidden>Custom</option>
             </select>
           </div>
           <div class="grp">
             <span class="grp__cap" id="capPaper">Paper</span>
             <div class="opts" role="group" aria-labelledby="capPaper">
-              <button class="opt is-on" id="oRuled" aria-pressed="true" title="Ruled lines and a margin">Lines</button>
+              <select class="mini mini--look" id="paper" aria-label="Paper">
+                <option value="ruled">Ruled</option>
+                <option value="grid">Squared</option>
+                <option value="plain">Plain</option>
+              </select>
+              <select class="mini mini--look" id="sheet" aria-label="Page size">
+                <option value="a4">A4</option>
+                <option value="letter">Letter</option>
+              </select>
               <button class="opt is-on" id="oTexture" aria-pressed="true" title="Paper tint and grain">Texture</button>
               <button class="opt is-on" id="oSkew" aria-pressed="true" title="Tilt the page slightly, as if scanned">Tilt</button>
             </div>

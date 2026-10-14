@@ -41,9 +41,14 @@ $("navLibrary").addEventListener("click", () => showView("library"));
 
 /* ------------------------------------------------------------------ options */
 
-const OPTIONS = { markdown: false, ruled: true, texture: true, skew: true };
+const OPTIONS = { markdown: false, texture: true, skew: true };
 let INK = "blue-black";
 let SIZE = "normal";
+let PAPER = "ruled";      // ruled, grid or plain
+let SHEET = "a4";         // a4 or letter
+
+$("paper").addEventListener("change", () => { PAPER = $("paper").value; touched(); });
+$("sheet").addEventListener("change", () => { SHEET = $("sheet").value; touched(); });
 
 Object.keys(OPTIONS).forEach((key) => {
   const el = $("o" + key[0].toUpperCase() + key.slice(1));
@@ -103,16 +108,17 @@ document.querySelectorAll('[role="radiogroup"]').forEach((group) => {
 // cases. Any change by hand afterwards shows as Custom rather than leaving a
 // preset named that no longer describes the page.
 const LOOKS = {
-  notebook: { ruled: true, texture: true, skew: true, ink: "blue-black", size: "normal" },
-  plain: { ruled: false, texture: true, skew: true, ink: "black", size: "normal" },
-  letter: { ruled: false, texture: true, skew: false, ink: "blue", size: "large" },
-  clean: { ruled: true, texture: false, skew: false, ink: "blue-black", size: "normal" },
+  notebook: { paper: "ruled", texture: true, skew: true, ink: "blue-black", size: "normal" },
+  plain: { paper: "plain", texture: true, skew: true, ink: "black", size: "normal" },
+  letter: { paper: "plain", texture: true, skew: false, ink: "blue", size: "large" },
+  clean: { paper: "ruled", texture: false, skew: false, ink: "blue-black", size: "normal" },
+  lab: { paper: "grid", texture: true, skew: true, ink: "black", size: "small" },
 };
 
 function syncLook() {
   const match = Object.keys(LOOKS).find((k) => {
     const l = LOOKS[k];
-    return l.ruled === OPTIONS.ruled && l.texture === OPTIONS.texture &&
+    return l.paper === PAPER && l.texture === OPTIONS.texture &&
       l.skew === OPTIONS.skew && l.ink === INK && l.size === SIZE;
   });
   $("look").value = match || "custom";
@@ -121,11 +127,16 @@ function syncLook() {
 $("look").addEventListener("change", () => {
   const l = LOOKS[$("look").value];
   if (!l) return;
-  setOptions({ ...OPTIONS, ...l }, l.ink);
+  setOptions({ ...OPTIONS, ...l, sheet: SHEET }, l.ink);   // a look keeps the page size
   touched();
 });
 
 function setOptions(opts, ink) {
+  // entries saved before paper styles existed carry only "ruled"
+  PAPER = opts.paper || (opts.ruled === false ? "plain" : "ruled");
+  SHEET = opts.sheet || "a4";
+  $("paper").value = PAPER;
+  $("sheet").value = SHEET;
   Object.keys(OPTIONS).forEach((key) => {
     OPTIONS[key] = !!opts[key];
     const el = $("o" + key[0].toUpperCase() + key.slice(1));
@@ -305,7 +316,8 @@ async function poll(jobId, onStage) {
 function payload() {
   return {
     text: $("text").value,
-    ruled: OPTIONS.ruled, texture: OPTIONS.texture, skew: OPTIONS.skew,
+    paper: PAPER, sheet: SHEET, ruled: PAPER === "ruled",
+    texture: OPTIONS.texture, skew: OPTIONS.skew,
     markdown: OPTIONS.markdown, ink: INK, size: SIZE,
   };
 }
@@ -558,7 +570,8 @@ async function remember(done, body) {
     });
   } catch { /* a library entry without a picture still works */ }
 
-  const opts = { markdown: body.markdown, ruled: body.ruled, texture: body.texture,
+  const opts = { markdown: body.markdown, paper: body.paper, sheet: body.sheet,
+                 ruled: body.ruled, texture: body.texture,
                  skew: body.skew, size: body.size };
   const entries = lib().filter((e) =>
     e.text !== body.text || JSON.stringify(e.opts) !== JSON.stringify(opts) || e.ink !== body.ink);
@@ -825,7 +838,8 @@ const DRAFT_KEY = "t2h.draft";
 function saveDraft() {
   try {
     localStorage.setItem(DRAFT_KEY, JSON.stringify({
-      text: $("text").value, opts: { ...OPTIONS, size: SIZE }, ink: INK, title: state.title,
+      text: $("text").value, opts: { ...OPTIONS, size: SIZE, paper: PAPER, sheet: SHEET },
+      ink: INK, title: state.title,
       // enough to re-attach to the render after a reload, if it still exists
       id: state.id, pages: state.pages, page: state.page, rendered: state.rendered,
     }));

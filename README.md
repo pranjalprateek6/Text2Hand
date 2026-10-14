@@ -218,6 +218,8 @@ All of the controls are plain constants near the top of `text_to_handwriting.py`
 |---|---|
 | `ROT_JITTER`, `SCALE_JITTER`, `BASELINE_WOBBLE`, `KERN_JITTER` | how messy the writing looks |
 | `RULED`, `MARGIN_RULE`, `RULE_COLOR` | the notebook lines |
+| `GRID` | squared paper instead of ruled, two squares to a writing line |
+| `PAPER_SIZE` | `"a4"` or `"letter"`; the hand keeps its size and the sheet changes |
 | `INK_COLOR` | pen colour, or `None` to keep the original scan colour |
 | `PAPER_TEXTURE`, `PAPER_TINT`, `PAPER_NOISE` | the paper look |
 | `SCAN_SKEW` | page tilt in degrees, `0` for a flat scan |

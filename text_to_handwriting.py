@@ -130,6 +130,12 @@ SEED: int | None = None                 # set an int for repeatable output
 # --- Paper & scan realism. The rule lines are "printed" on the page, so they
 #     skew together with the writing -- that's what sells a scanned sheet. -----
 RULED = True                            # draw notebook rule lines
+GRID = False                            # squared paper instead: a light grid, no margin
+# The sheet's size. The hand is measured against A4 (PAGE_WIDTH_MM), and that
+# scale is kept for every size, so a Letter page is the same writing on a
+# slightly wider, shorter sheet rather than a rescaled hand.
+PAPER_SIZE = "a4"
+PAPER_SIZES_MM = {"a4": (210.0, 297.0), "letter": (215.9, 279.4)}
 RULE_COLOR = (170, 195, 225)            # faint blue horizontal rule
 RULE_WIDTH = 2
 RULE_OFFSET = 8                         # rule sits this many px below the baseline
@@ -876,7 +882,7 @@ _BLANK_LOOKS = 2
 
 
 def _blank_pool() -> list[Image.Image]:
-    key = (BG_PATH, PAPER_TEXTURE, RULED, MARGIN_RULE, LINE_HEIGHT,
+    key = (BG_PATH, PAPER_SIZE, GRID, PAPER_TEXTURE, RULED, MARGIN_RULE, LINE_HEIGHT,
            MARGIN_T, MARGIN_B, MARGIN_L, RULE_COLOR, RULE_WIDTH, RULE_OFFSET,
            MARGIN_RULE_COLOR, PAPER_TINT, PAPER_NOISE,
            PAPER_GRAIN_ALPHA, PAPER_MOTTLE_ALPHA)
@@ -890,9 +896,25 @@ def _blank_pool() -> list[Image.Image]:
 
 
 def _template() -> Image.Image:
-    if BG_PATH not in _templates:
-        _templates[BG_PATH] = Image.open(BG_PATH).convert("RGB")
-    return _templates[BG_PATH]
+    """The blank sheet for PAPER_SIZE, cut from the A4 paper scan.
+
+    Other sizes are taken from the same scan, scaled so the paper's grain
+    stays the size it is on A4 relative to the writing, then cropped.
+    """
+    key = (BG_PATH, PAPER_SIZE)
+    if key not in _templates:
+        base = Image.open(BG_PATH).convert("RGB")
+        w_mm, h_mm = PAPER_SIZES_MM.get(PAPER_SIZE, PAPER_SIZES_MM["a4"])
+        scale = base.width / PAGE_WIDTH_MM          # px per mm of the A4 scan
+        want = (round(w_mm * scale), round(h_mm * scale))
+        if want != base.size:
+            grow = max(want[0] / base.width, want[1] / base.height, 1.0)
+            if grow > 1.0:
+                base = base.resize((round(base.width * grow), round(base.height * grow)),
+                                   Image.BICUBIC)
+            base = base.crop((0, 0) + want)
+        _templates[key] = base
+    return _templates[key]
 
 
 class Sheet:
@@ -976,7 +998,7 @@ class Sheet:
             blank = self.template.copy()
             if PAPER_TEXTURE:
                 blank = add_paper_texture(blank)
-            if RULED:
+            if RULED or GRID:
                 self._draw_ruling(blank)
             self._blanks.append(blank)
         else:
@@ -991,6 +1013,25 @@ class Sheet:
         """Pre-print faint notebook rules (and a margin line) onto the page."""
         draw = ImageDraw.Draw(page)
         x0, x1 = 60, self.width - 60
+        if GRID:
+            # Squared paper, two squares to a writing line, with the
+            # horizontals placed so every writing line still has a rule
+            # under it. Printed lighter than ruling, as squared pads are.
+            step = LINE_HEIGHT / 2
+            colour = tuple(min(255, c + (255 - c) // 3) for c in RULE_COLOR)
+            y = MARGIN_T + LINE_HEIGHT + RULE_OFFSET
+            while y - step >= 60:
+                y -= step
+            top = y
+            while y <= self.height - 60:
+                draw.line([(x0, round(y)), (x1, round(y))], fill=colour, width=RULE_WIDTH)
+                y += step
+            x = x0
+            while x <= x1:
+                draw.line([(round(x), round(top)), (round(x), round(y - step))],
+                          fill=colour, width=RULE_WIDTH)
+                x += step
+            return
         y = MARGIN_T + LINE_HEIGHT + RULE_OFFSET      # aligned to the writing lines
         while y <= self.height - MARGIN_B + RULE_OFFSET:
             draw.line([(x0, y), (x1, y)], fill=RULE_COLOR, width=RULE_WIDTH)
@@ -1485,8 +1526,7 @@ def chars_per_page() -> int:
     large the handwriting is: swapping in a bigger hand halved it.
     """
     derive_metrics()
-    with Image.open(BG_PATH) as page:
-        width, height = page.size
+    width, height = _template().size
 
     lines = max(1, (height - MARGIN_T - MARGIN_B) // LINE_HEIGHT)
     widths = [v[0].width for v in (glyph_variants(chr(c)) for c in range(33, 127)) if v]

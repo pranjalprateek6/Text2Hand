@@ -33,7 +33,7 @@ from PIL import Image
 import converters
 import render_core
 import text_to_handwriting as t2h
-from render_core import SIZES, pdf_dpi
+from render_core import PDF_INFO, SIZES, pdf_dpi
 
 log = logging.getLogger("text2hand")
 
@@ -72,10 +72,10 @@ MAX_OUTPUT_PAGES = 80
 # time may touch them.
 _render_lock = threading.Lock()
 
-_page_sizes: dict[str, int] = {}
+_page_sizes: dict[tuple, int] = {}
 
 
-def page_size(size: str = "normal") -> int:
+def page_size(size: str = "normal", sheet: str = "a4") -> int:
     """Characters that fit on a page in this hand size, measured once.
 
     It used to be asked of the renderer on every call, which meant two things:
@@ -85,16 +85,19 @@ def page_size(size: str = "normal") -> int:
     request threads, underneath a render in progress.
     """
     size = size if size in SIZES else "normal"
-    if size not in _page_sizes:
+    sheet = sheet if sheet in render_core.SHEETS else "a4"
+    key = (size, sheet)
+    if key not in _page_sizes:
         with _render_lock:
-            if size not in _page_sizes:
-                t2h.X_HEIGHT_MM = SIZES[size]       # every render sets it again
-                _page_sizes[size] = max(1, t2h.chars_per_page())
-    return _page_sizes[size]
+            if key not in _page_sizes:
+                t2h.X_HEIGHT_MM = SIZES[size]       # every render sets these again
+                t2h.PAPER_SIZE = sheet
+                _page_sizes[key] = max(1, t2h.chars_per_page())
+    return _page_sizes[key]
 
 
-def render_limit(size: str = "normal") -> int:
-    return MAX_OUTPUT_PAGES * page_size(size)
+def render_limit(size: str = "normal", sheet: str = "a4") -> int:
+    return MAX_OUTPUT_PAGES * page_size(size, sheet)
 
 
 def _prune() -> None:
@@ -143,19 +146,20 @@ def _combine_pdf(folder: Path) -> Path:
         pdf.unlink()                    # appending onto a stale file would grow it
     for n, path in enumerate(pngs):
         with Image.open(path) as page:
-            page.convert("RGB").save(pdf, append=n > 0, resolution=pdf_dpi())
+            page.convert("RGB").save(pdf, append=n > 0, resolution=pdf_dpi(),
+                                     **({} if n else PDF_INFO))
     return pdf
 
 
 def _render(text: str, ruled: bool, texture: bool, skew: bool, as_markdown: bool,
             ink: str = "blue-black", size: str = "normal", on_progress=None,
-            on_ready=None):
+            on_ready=None, paper: str = "ruled", sheet: str = "a4"):
     """Render text to a fresh folder and return (render_id, page_count, missing)."""
     rid = uuid.uuid4().hex[:12]
     folder = RENDER_ROOT / rid
     folder.mkdir(parents=True, exist_ok=True)
     opts = {"ruled": ruled, "texture": texture, "skew": skew, "as_markdown": as_markdown,
-            "ink": ink, "size": size}
+            "ink": ink, "size": size, "paper": paper, "sheet": sheet}
     ready = (lambda n: on_ready(rid, n)) if on_ready else None
     try:
         pool = _render_pool()
@@ -530,6 +534,9 @@ def api_render():
         data = {}
     raw = data.get("text")
     size = str(data.get("size", "normal"))
+    sheet = str(data.get("sheet", "a4"))
+    ruled = bool(data.get("ruled", True))
+    paper = str(data.get("paper") or ("ruled" if ruled else "plain"))
     # Pasted text is the commonest input there is, and text from a word
     # processor is full of curly quotes, dashes and accents. Those used to be
     # folded only for PDFs, so typed "don’t" came out as "dont" and "café" as
@@ -537,17 +544,19 @@ def api_render():
     text = converters.normalize(raw if isinstance(raw, str) else "").strip()
     if not text:
         return jsonify(error="Write some text first."), 400
-    limit = render_limit(size)
+    limit = render_limit(size, sheet)
     if len(text) > limit:
         over = len(text)
         return jsonify(error=(
-            f"That is {over:,} characters, roughly {over // page_size(size)} handwritten "
+            f"That is {over:,} characters, roughly {over // page_size(size, sheet)} handwritten "
             f"pages, over the {MAX_OUTPUT_PAGES}-page limit. "
             "Convert a smaller page range, or trim the text."
         )), 400
 
     opts = {
-        "ruled": bool(data.get("ruled", True)),
+        "ruled": ruled,
+        "paper": paper,
+        "sheet": sheet,
         "texture": bool(data.get("texture", True)),
         "skew": bool(data.get("skew", True)),
         "as_markdown": bool(data.get("markdown", False)),
@@ -557,7 +566,7 @@ def api_render():
     # How many pages this is probably going to be, so a long render counts
     # itself against a visible total instead of just counting. The ~ is
     # honest: pagination is discovered as the text flows.
-    guess = max(1, round(len(text) / page_size(size)))
+    guess = max(1, round(len(text) / page_size(size, sheet)))
 
     def work(progress):
         def on_stage(stage: str, count: int) -> None:
@@ -627,7 +636,7 @@ def download_page_pdf(rid: str, n: int):
 
     def build(tmp: Path) -> None:
         with Image.open(src) as page:          # closed, or Windows cannot prune it
-            page.convert("RGB").save(tmp, "PDF", resolution=pdf_dpi())
+            page.convert("RGB").save(tmp, "PDF", resolution=pdf_dpi(), **PDF_INFO)
 
     pdf = _build_once(folder / f"page_{n}.pdf", build)
     stem = _dl_stem()
@@ -708,7 +717,7 @@ def warm() -> None:
         pool.warm()                         # each worker loads the hand itself
     else:
         with _render_lock:
-            t2h.X_HEIGHT_MM = SIZES["normal"]
+            render_core.apply_options()     # the defaults: A4, ruled, blue-black
             t2h.derive_metrics()
             t2h._load_words()
             t2h.Sheet().close()             # builds the default blank sheet
