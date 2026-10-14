@@ -17,7 +17,8 @@
 
 <div class="app">
 
-  <div class="main">
+  <main class="main">
+    <h1 class="sr-only">Text2Hand studio</h1>
 
     <!-- --------------------------------------------------------- top bar -->
     <header class="bar">
@@ -108,7 +109,7 @@
           </button>
         </div>
 
-        <textarea id="text" spellcheck="false"
+        <textarea id="text" spellcheck="false" aria-label="Text to write out by hand"
                   placeholder="Type or paste anything. Or drop a PDF anywhere on this window."></textarea>
 
         <div class="tries" id="tries">
@@ -284,7 +285,7 @@
       </div>
     </div>
 
-  </div>
+  </main>
 </div>
 
 <div class="veil" id="veil" hidden>
@@ -297,7 +298,7 @@
   </div>
 </div>
 
-<input type="file" id="file" accept="application/pdf,.pdf" hidden />
+<input type="file" id="file" accept="application/pdf,.pdf" hidden aria-label="Choose a PDF" />
 
 <script src="{{ url_for('static', filename='app.js') }}"
         data-max-chars="{{ max_chars }}" data-page-size="{{ page_size }}"></script>

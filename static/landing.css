@@ -235,7 +235,7 @@ section { position: relative; }
 @media (min-width: 800px) { .footer__grid { grid-template-columns: 1.4fr 1fr 1fr; } }
 .footer__brand .nav__name { font-size: 28px; }
 .footer__brand p { margin-top: 12px; font-size: 14px; color: var(--muted-foreground); max-width: 26rem; }
-.footer h4 { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted-foreground); margin-bottom: 14px; font-weight: 500; }
+.footer h3 { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted-foreground); margin-bottom: 14px; font-weight: 500; }
 .footer ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 .footer ul a {
   font-size: 14px; color: color-mix(in oklch, var(--foreground) 70%, transparent);
