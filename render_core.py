@@ -163,14 +163,15 @@ def write_streaming(text: str, folder: Path, as_markdown: bool, on_progress,
         pool.submit(write)
 
     pool = ThreadPoolExecutor(max_workers=t2h._workers())
+    dropped: list[str] = []
     try:
         count, missing = t2h.stream_pages(text, on_page, as_markdown=as_markdown,
-                                          on_progress=on_progress)
+                                          on_progress=on_progress, dropped=dropped)
     finally:
         pool.shutdown(wait=True)
     if failures:
         raise failures[0]
-    return count, missing
+    return count, missing, dropped
 
 
 
@@ -207,7 +208,7 @@ def apply_options(ruled: bool = True, texture: bool = True, skew: bool = True,
 
 
 def render_into(folder: Path, text: str, opts: dict, on_progress=None, on_ready=None):
-    """Render `text` with `opts` into `folder`; return (page_count, missing)."""
+    """Render `text` with `opts` into `folder`; return (pages, missing, dropped)."""
     opts = dict(opts)
     as_markdown = bool(opts.pop("as_markdown", False))
     apply_options(**opts)

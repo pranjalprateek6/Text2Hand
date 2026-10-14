@@ -71,7 +71,7 @@ class RenderPool:
             f.result()
 
     def render(self, text: str, opts: dict, folder: Path, on_progress=None, on_ready=None):
-        """Render in a worker; return (page_count, missing) as render_into does.
+        """Render in a worker; return what render_into does.
 
         `on_progress` runs here, in the calling thread, and may raise to stop
         the render: the worker is told, stops at its next page, and the same
