@@ -334,6 +334,51 @@ if _att:
 else:
     skip("equation token checks", "attention.pdf not found")
 
+# --- a two-column page reads down each column, equations in place ----------
+# Built here, so it runs anywhere: a full-width title and abstract, then two
+# columns of numbered lines with a display equation and its tag in each. The
+# equations are set in a font renamed CMMI10, which is how TeX's maths fonts
+# announce themselves. Equations used to be paired across the columns into
+# one page-wide crop, and the page came back read across both columns.
+import pymupdf as _pm  # noqa: E402
+
+_cols_pdf = os.path.join(_tf.mkdtemp(prefix="t2h_cols_"), "columns.pdf")
+_doc = _pm.open()
+_pg = _doc.new_page(width=612, height=792)
+_pg.insert_text((180, 70), "Columns Of A Test Paper", fontname="helv", fontsize=16)
+_pg.insert_text((72, 100), "An abstract that runs the full width of the page, above both "
+                "of the columns below it.", fontname="helv", fontsize=9)
+for _x, _side, _eq, _tag in ((72, "Left", "a + b = c", 1), (316, "Right", "x + y = z", 2)):
+    _y = 140
+    for _i in range(1, 17):
+        if _i == 9:
+            _y += 10
+            _pg.insert_text((_x + 80, _y), _eq, fontname="tiro", fontsize=11)
+            _pg.insert_text((_x + 178, _y), f"({_tag})", fontname="helv", fontsize=9)
+            _y += 22
+        _pg.insert_text((_x, _y), f"{_side} line {_i} of the column text, written out to fill it.",
+                        fontname="helv", fontsize=9)
+        _y += 12
+for _xr in range(1, _doc.xref_length()):
+    if _doc.xref_get_key(_xr, "BaseFont")[1] == "/Times-Roman":
+        _doc.xref_set_key(_xr, "BaseFont", "/CMMI10")
+_doc.save(_cols_pdf)
+_doc.close()
+_cd = os.path.join(os.path.dirname(_cols_pdf), "eq")
+_cmd = _conv.to_markdown(_cols_pdf, "pymupdf", "", assets_dir=_cd).markdown
+_seq = [m.group(0) for m in _re.finditer(
+    r"(Left|Right) line \d+ |!\[equation[^\]]*\]|Columns Of|An abstract", _cmd)]
+_want = (["Columns Of", "An abstract"]
+         + [f"Left line {i} " for i in range(1, 9)] + ["![equation (1)]"]
+         + [f"Left line {i} " for i in range(9, 17)]
+         + [f"Right line {i} " for i in range(1, 9)] + ["![equation (2)]"]
+         + [f"Right line {i} " for i in range(9, 17)])
+check("two columns: title, then down the left, then down the right, each "
+      "equation in its column", _seq == _want, " | ".join(_seq))
+check("two columns: one crop per equation, none spanning both",
+      sorted(os.listdir(_cd)) == ["eq1_1.png", "eq1_2.png"], str(sorted(os.listdir(_cd))))
+_sh.rmtree(os.path.dirname(_cols_pdf), ignore_errors=True)
+
 # --- full Greek coverage, drawn and aliased --------------------------------
 _drawn = "ζηικνξρτυχω" + "ΓΔΘΛΞΠΣΦΨΩ"
 _missing_files = [c for c in _drawn

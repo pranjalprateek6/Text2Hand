@@ -324,12 +324,78 @@ _MATH_SYMBOL_FONT = re.compile(r"^(CMMI|CMSY|CMEX|MS[AB]M)|Math", re.I)
 EQ_DPI = 300            # render resolution for the crops; the renderer assumes it
 _EQ_PAD = 3             # points of padding around a crop
 _EQ_JOIN = 6            # equation lines closer than this merge into one region
+_COLUMN_ROWS = 3        # lines needed on each side before a page counts as two columns
+_GUTTER_SLACK = 4       # points a line may reach into the gutter and still be one column's
 
 # A PDF page declares its own size, and nothing stops one declaring itself
 # 200 inches square: rasterised at 300 dpi that is billions of pixels, and the
 # process dies before anything can report it. A real page at 300 dpi is about
 # 9 megapixels (A4) or 17 (A3), so 40 leaves room for posters and drawings.
 MAX_RASTER_PIXELS = 40_000_000
+
+
+def _gutter(page, rows) -> float | None:
+    """Where the gap between two columns of text is, or None for one column.
+
+    A page has two columns when at least _COLUMN_ROWS lines of real length
+    (not page numbers or equation tags) lie wholly left of its middle and as
+    many wholly right of it, with clear space between the two groups. The
+    gutter is the middle of that space, which on an asymmetric layout is not
+    the middle of the page.
+    """
+    mid = page.rect.x0 + page.rect.width / 2
+    long = page.rect.width / 5
+    left = [r.x1 for r in rows if r.x1 < mid and r.width > long]
+    right = [r.x0 for r in rows if r.x0 > mid and r.width > long]
+    if len(left) < _COLUMN_ROWS or len(right) < _COLUMN_ROWS or max(left) >= min(right):
+        return None
+    return (max(left) + min(right)) / 2
+
+
+def _reading_pieces(page) -> list | None:
+    """A two-column page cut into the pieces it is read in, in that order.
+
+    Full-width text (a title, an abstract, a wide figure's caption) cuts the
+    page into bands, and each band between is read left column then right.
+    None for a page in one column, which is read whole.
+    """
+    import pymupdf
+
+    if page.rotation:
+        return None
+    rows = [pymupdf.Rect(line["bbox"])
+            for block in page.get_text("dict")["blocks"] if block["type"] == 0
+            for line in block["lines"]
+            if "".join(s["text"] for s in line["spans"]).strip()]
+    gutter = _gutter(page, rows)
+    if gutter is None:
+        return None
+    across = sorted((r for r in rows if r.x0 < gutter - _GUTTER_SLACK
+                     and r.x1 > gutter + _GUTTER_SLACK), key=lambda r: r.y0)
+    bands: list[list[float]] = []
+    for r in across:
+        if bands and r.y0 <= bands[-1][1] + 2:
+            bands[-1][1] = max(bands[-1][1], r.y1)
+        else:
+            bands.append([r.y0, r.y1])
+
+    box = page.rect
+    pieces, top, wide = [], box.y0, False
+    for y0, y1 in bands + [[box.y1, box.y1]]:
+        for clip in (pymupdf.Rect(box.x0, top, gutter, y0), pymupdf.Rect(gutter, top, box.x1, y0)):
+            if any(clip.contains((r.tl + r.br) / 2) for r in rows):
+                pieces.append(clip)
+                wide = False
+        if y1 > y0:
+            # full-width lines with no columns between them are one piece: a
+            # title cropped on its own reads to the extractor as a picture
+            if wide:
+                pieces[-1].y1 = y1 + 1
+            else:
+                pieces.append(pymupdf.Rect(box.x0, max(top, y0 - 1), box.x1, y1 + 1))
+                wide = True
+        top = max(top, y1 + 1)
+    return pieces
 
 
 def _safe_dpi(rect, dpi: int) -> int:
@@ -372,12 +438,37 @@ def _equation_regions(page) -> list:
             boxes.append((pymupdf.Rect(line["bbox"]),
                           any(_MATH_SYMBOL_FONT.match(s["font"]) for s in spans)))
 
+    # Everything below pairs things up by sharing a row. On a two-column page
+    # a row holds two unrelated lines, one per column, so an equation in the
+    # left column merged with one in the right into a single crop the width
+    # of the page; prose beside it in the other column made it count as
+    # inline; and its tag could be the other column's. That full-width crop
+    # then cut both columns in two, and the text came back read across them.
+    # So on such a page each thing has a side, and only things on the same
+    # side, or spanning both, are paired. A page with one column has one side
+    # and works as it always has.
+    gutter = _gutter(page, prose_rows)
+
+    def side(rect) -> int:
+        if gutter is None:
+            return 0
+        if rect.x1 < gutter + _GUTTER_SLACK and rect.x0 < gutter:
+            return -1
+        if rect.x0 > gutter - _GUTTER_SLACK and rect.x1 > gutter:
+            return 1
+        return 0
+
+    def beside(a, b) -> bool:
+        """Could a and b be on the same row of the same text, by their sides."""
+        sa, sb = side(a), side(b)
+        return sa == sb or sa == 0 or sb == 0
+
     # Inline maths sits on the same row as running prose, and cutting it out
     # tears a hole in the middle of a sentence. A maths line that shares most
     # of its height with a real prose line is inline, and stays text.
     def _inline(rect) -> bool:
         for row in prose_rows:
-            if row.width < 100:
+            if row.width < 100 or not beside(rect, row):
                 continue
             overlap = min(rect.y1, row.y1) - max(rect.y0, row.y0)
             if overlap > 0.5 * rect.height:
@@ -394,9 +485,11 @@ def _equation_regions(page) -> list:
     boxes.sort(key=lambda b: b[0].y0)
     regions: list[list] = []                 # [rect, has_symbol_font]
     for rect, symbolic in boxes:
-        if regions and rect.y0 <= regions[-1][0].y1 + _EQ_JOIN:
-            regions[-1][0] |= rect
-            regions[-1][1] = regions[-1][1] or symbolic
+        # the latest region on this side, which on one column is the latest
+        near = next((g for g in reversed(regions) if beside(g[0], rect)), None)
+        if near is not None and rect.y0 <= near[0].y1 + _EQ_JOIN:
+            near[0] |= rect
+            near[1] = near[1] or symbolic
         else:
             regions.append([pymupdf.Rect(rect), symbolic])
     # specks and stray operators are not display equations
@@ -417,7 +510,10 @@ def _equation_regions(page) -> list:
             rect = pymupdf.Rect(line["bbox"])
             if m and rect.width < 40:
                 tags.append((rect, m.group(1)))
-    return kept, prose_rows, tags
+    # the caller pairs these by row as well, so it gets them already sided
+    rows_for = {id(r): [p for p in prose_rows if beside(r, p)] for r in kept}
+    tags_for = {id(r): [t for t in tags if beside(r, t[0])] for r in kept}
+    return kept, rows_for, tags_for
 
 
 def _excise_equations(doc, number: int, assets_dir: str,
@@ -436,7 +532,7 @@ def _excise_equations(doc, number: int, assets_dir: str,
     import pymupdf
 
     page = doc.load_page(number)
-    regions, prose_rows, tags = _equation_regions(page)
+    regions, rows_for, tags_for = _equation_regions(page)
     if not regions:
         return {}
 
@@ -452,7 +548,7 @@ def _excise_equations(doc, number: int, assets_dir: str,
                            rect.x1 + _EQ_PAD, rect.y1 + _EQ_PAD) & page.rect
         # padding must not reach into the prose above or below, or the crop
         # carries the ascenders of a neighbouring line
-        for row in prose_rows:
+        for row in rows_for[id(rect)]:
             if row.y1 <= rect.y0 and row.y1 > pad.y0:
                 pad.y0 = row.y1 + 0.5
             if row.y0 >= rect.y1 and row.y0 < pad.y1:
@@ -466,7 +562,7 @@ def _excise_equations(doc, number: int, assets_dir: str,
 
         # the paper's own tags make a better caption than "equation", and the
         # tag lines must go with their equation or they survive as orphans
-        mine = [t for t in tags
+        mine = [t for t in tags_for[id(rect)]
                 if min(rect.y1, t[0].y1) - max(rect.y0, t[0].y0) > 0.5 * t[0].height]
         if len(mine) > 1:
             alt = f"equations ({mine[0][1]})-({mine[-1][1]})"
@@ -497,7 +593,33 @@ def _page_pymupdf(doc, number: int, ctx: dict | None = None) -> str:
         replacements = _excise_equations(doc, number, ctx["assets_dir"],
                                          ctx.get("asset_ref"))
 
-    md = pymupdf4llm.to_markdown(doc, pages=[number], show_progress=False)
+    # The extractor orders text with a learned layout model, and on two
+    # columns that order turned out to hang on details as small as a token
+    # standing in for an equation: the same page came back read across both
+    # columns or down each, depending on what had been cut out of it. So a
+    # two-column page is not left to it. It is cut into pieces in reading
+    # order, each a copy of the page cropped to that piece, and read in turn.
+    pieces = _reading_pieces(doc.load_page(number))
+    if pieces:
+        import pymupdf
+
+        cut = pymupdf.open()
+        for clip in pieces:
+            # Everything outside the piece is redacted rather than cropped
+            # away. The page keeps its size, which the layout model reads by:
+            # a title cropped to a strip of its own came back as a picture.
+            cut.insert_pdf(doc, from_page=number, to_page=number)
+            piece, box = cut[-1], cut[-1].rect
+            for rest in (pymupdf.Rect(box.x0, box.y0, box.x1, clip.y0),
+                         pymupdf.Rect(box.x0, clip.y1, box.x1, box.y1),
+                         pymupdf.Rect(box.x0, clip.y0, clip.x0, clip.y1),
+                         pymupdf.Rect(clip.x1, clip.y0, box.x1, clip.y1)):
+                if not rest.is_empty:
+                    piece.add_redact_annot(rest)
+            piece.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_PIXELS)
+        md = pymupdf4llm.to_markdown(cut, show_progress=False)
+    else:
+        md = pymupdf4llm.to_markdown(doc, pages=[number], show_progress=False)
     return _restore_equations(md, replacements)
 
 
