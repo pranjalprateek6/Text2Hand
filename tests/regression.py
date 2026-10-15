@@ -841,7 +841,10 @@ check("a render without a seed is given one", _ns is not None and isinstance(_ns
 _av = converters.available()
 check("converter choices are named in plain words",
       [c["name"] for c in _av][0] == "auto"
-      and not any("pip " in c["label"] + c["reason"] or "set " in c["reason"] for c in _av),
+      # no setup commands for the person in the studio: no pip install, no
+      # environment variable names; those go to the server's log instead
+      and not any(_re.search(r"pip |[A-Z_]{4,}_KEY|set [A-Z]", c["label"] + c["reason"])
+                  for c in _av),
       "; ".join(f"{c['label']} ({c['reason']})" for c in _av))
 _tmp_pdf = os.path.join(_tf.mkdtemp(prefix="t2h_pdf_"), "text.pdf")
 _doc = _pm.open()
