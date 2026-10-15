@@ -876,6 +876,10 @@ _bad = [_client.get(u).status_code for u in (
     "/asset/eq_000000000000/secret.txt", "/asset/eq_000000000000/eq1_1.png")]
 check("the asset route refuses anything but an existing crop", all(c == 404 for c in _bad), str(_bad))
 
+# --- the landing headline reads whole before any script runs ----------------
+_lp = _client.get("/").get_data(as_text=True)
+check("the hero's word is in the page itself", 'aria-label="handwriting">handwriting</span>' in _lp)
+
 _h = _client.get("/healthz")
 check("health check answers", _h.status_code == 200 and _h.get_json()["ok"], str(_h.get_json()))
 

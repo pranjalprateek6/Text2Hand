@@ -40,7 +40,9 @@ function wordRotator(host) {
     });
   };
 
-  swap(words[0]);
+  // The first word is already in the page, so the headline reads whole
+  // before this script runs; it is only redrawn letter by letter if not.
+  if (host.textContent.trim() !== words[0]) swap(words[0]);
   if (REDUCED || words.length < 2) return;
   let at = 0;
   setInterval(() => { at = (at + 1) % words.length; swap(words[at]); }, 2500);
