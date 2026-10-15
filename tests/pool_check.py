@@ -117,6 +117,15 @@ def main() -> int:
           seeded["a"]["state"] == seeded["b"]["state"] == "done"
           and grey(seeded["a"]) == grey(seeded["b"]))
 
+    # a worker can copy pages from a render another worker made
+    first: dict = {}
+    run({**same, "text": same["text"] * 6}, first, "a")
+    again: dict = {}
+    run({**same, "text": same["text"] * 6 + " end", "base": first["a"]["id"]}, again, "b")
+    check("a worker reuses pages from an earlier render",
+          again["b"]["state"] == "done" and again["b"].get("reused", 0) > 0,
+          f"{again['b'].get('reused')} of {again['b'].get('pages')} reused")
+
     # a worker failure arrives as an error, not a hang
     _job = client.post("/api/render", json={"text": "fine"}).get_json()
     check("worker still serves after a cancel", _job.get("job") is not None)
