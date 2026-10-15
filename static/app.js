@@ -15,6 +15,7 @@ const $ = (id) => document.getElementById(id);
 const CONFIG = document.currentScript ? document.currentScript.dataset : {};
 const MAX_CHARS = Number(CONFIG.maxChars) || 60000;
 const PAGE_SIZE = Number(CONFIG.pageSize) || 1200;
+const RENDER_TTL = Number(CONFIG.renderTtl) || 7200;   // seconds a render stays downloadable
 
 const state = {
   id: null, pages: 0, page: 1,
@@ -28,6 +29,7 @@ const state = {
   busy: false,
   queued: false,      // a change arrived while a render was running
   seed: null,         // this document's handwriting; see newSeed
+  doc: null,          // which document this is, so the library keeps one card for it
 };
 
 // A document keeps one handwriting from render to render: the same seed and
@@ -36,6 +38,12 @@ const state = {
 // handwriting button, draws a new one.
 function newSeed() {
   return Math.floor(Math.random() * 2 ** 31);
+}
+
+// A new document: a new hand, and an identity of its own in the library.
+function newDocument() {
+  state.seed = newSeed();
+  state.doc = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
 /* -------------------------------------------------------------------- views */
@@ -286,7 +294,7 @@ document.querySelectorAll(".try").forEach((btn) => {
     if ($("text").value.trim() &&
         !(await ask("Replace what you've written with the sample?", "Replace"))) return;
     $("text").value = SAMPLES[which] || "";
-    state.seed = newSeed();                 // a new document, a new hand
+    newDocument();                 // a new document, a new hand
     count();
     touched();
     $("text").focus();
@@ -737,11 +745,16 @@ async function remember(done, body) {
   const opts = { markdown: body.markdown, read: READ, paper: body.paper, sheet: body.sheet,
                  ruled: body.ruled, texture: body.texture,
                  skew: body.skew, size: body.size };
-  const entries = lib().filter((e) =>
-    e.text !== body.text || JSON.stringify(e.opts) !== JSON.stringify(opts) || e.ink !== body.ink);
+  // One card per document, showing its latest render: rendering a document
+  // again, after an edit or in a new hand, replaces its card rather than
+  // adding another, so the library reads as a list of documents. Cards from
+  // before documents had ids are matched the old way, by identical content.
+  const doc = state.doc;
+  const entries = lib().filter((e) => (e.doc ? e.doc !== doc :
+    e.text !== body.text || JSON.stringify(e.opts) !== JSON.stringify(opts) || e.ink !== body.ink));
   entries.unshift({
     id: done.id, title: title(), pages: done.pages, chars: body.text.length,
-    ts: Date.now(), text: body.text, ink: body.ink, opts, thumb, seed: body.seed,
+    ts: Date.now(), text: body.text, ink: body.ink, opts, thumb, seed: body.seed, doc,
   });
   try { localStorage.setItem(LIB_KEY, JSON.stringify(entries.slice(0, LIB_MAX))); }
   catch { /* quota: drop the oldest and try once more */
@@ -772,6 +785,15 @@ function drawLibrary() {
     if (h < 24) return h + "h ago";
     return Math.round(h / 24) + "d ago";
   };
+  // The server keeps a render for RENDER_TTL; past that, opening the card
+  // writes it again from the saved text, which the card says rather than
+  // leaving it to be discovered.
+  const life = (ts) => {
+    const left = Math.round((ts / 1000 + RENDER_TTL - Date.now() / 1000) / 60);
+    if (left <= 0) return "opens by writing it again";
+    if (left < 60) return `expires in ${left}m`;
+    return `expires in ${Math.floor(left / 60)}h ${String(left % 60).padStart(2, "0")}m`;
+  };
   entries.forEach((e, i) => {
     const card = document.createElement("button");
     card.className = "cardlet";
@@ -781,6 +803,7 @@ function drawLibrary() {
       `<span class="cardlet__meta">` +
       `<span class="cardlet__title"></span>` +
       `<span class="cardlet__sub"><span>${e.pages}p · ${ago(e.ts)}</span>` +
+      `<span class="cardlet__life">${life(e.ts)}</span>` +
       `<span class="cardlet__del" title="Remove" role="button" tabindex="0">` +
       `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>` +
       `</span></span></span>`;
@@ -828,6 +851,7 @@ async function openEntry(e) {
       !(await ask("Replace the unsaved text in the editor with this entry?", "Replace"))) return;
   $("text").value = e.text;
   state.seed = e.seed != null ? e.seed : newSeed();
+  state.doc = e.doc || `entry-${e.ts}`;
   // a card's name is kept only if it was really a rename; a title the text
   // would derive anyway stays live, following future edits
   state.title = e.title === titleOf(e.text) ? null : e.title;
@@ -1028,7 +1052,7 @@ async function readPdf(confirmed = false) {
     // Extraction is never perfect, so it lands in the editor for review.
     $("text").value = done.markdown;
     state.lastRead = done.markdown;
-    state.seed = newSeed();
+    newDocument();
     READ = "markdown";                      // a converted PDF is Markdown, whatever it looks like
     $("readAs").value = READ;
     count();
@@ -1096,7 +1120,7 @@ function saveDraft() {
   try {
     localStorage.setItem(DRAFT_KEY, JSON.stringify({
       text: $("text").value, opts: { ...OPTIONS, read: READ, size: SIZE, paper: PAPER, sheet: SHEET },
-      ink: INK, title: state.title, seed: state.seed,
+      ink: INK, title: state.title, seed: state.seed, doc: state.doc,
       // enough to re-attach to the render after a reload, if it still exists
       id: state.id, pages: state.pages, page: state.page, rendered: state.rendered,
     }));
@@ -1114,6 +1138,7 @@ try {
     $("text").value = draft.text;
     state.title = draft.title || null;
     state.seed = draft.seed != null ? draft.seed : null;
+    state.doc = draft.doc || null;
     setOptions(draft.opts || OPTIONS, draft.ink || "blue-black");
     // The render this draft came from may still be on the server; showing it
     // again beats a "Nothing rendered" pane over a full editor. Probed first,
@@ -1134,7 +1159,9 @@ try {
     }
   }
 } catch {}
-if (state.seed == null && !$("text").value.trim()) state.seed = newSeed();
+if (state.seed == null && !$("text").value.trim()) newDocument();
+// a draft from before documents had ids keeps its hand and gains an id
+if (!state.doc) state.doc = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
 /* ---------------------------------------------------------------- first run */
 
@@ -1153,7 +1180,7 @@ function firstRun() {
   } catch { seen = true; }                 // no storage: do not loop on it
   if (seen || $("text").value.trim()) return;
   $("text").value = SAMPLES.markdown;
-  state.seed = newSeed();
+  newDocument();
   count();
   clearTimeout(state.timer);                 // render now, not again a moment later
   $("welcome").hidden = false;
@@ -1167,7 +1194,7 @@ $("welcomeStart").addEventListener("click", () => {
   closeWelcome();
   $("text").value = "";
   state.title = null;
-  state.seed = newSeed();
+  newDocument();
   state.id = null; state.pages = 0; state.rendered = null; state.statusLine = null;
   $("page").hidden = true; $("pager").hidden = true; $("strip").hidden = true;
   $("empty").hidden = false;

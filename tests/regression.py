@@ -790,6 +790,8 @@ check("the studio has a main landmark, a heading and a labelled editor",
       "<main" in _sb and "<h1" in _sb and 'id="text" spellcheck="false" aria-label=' in _sb)
 check("the studio offers a one-click PDF and a Fit control",
       'id="dlMain"' in _sb and 'id="zoomFit"' in _sb)
+check("the studio knows how long renders are kept, for the library's expiry line",
+      f'data-render-ttl="{app.RENDER_TTL}"' in _sb)
 check("the studio carries its first-run example note",
       'id="welcome"' in _sb and 'id="welcomeStart"' in _sb)
 

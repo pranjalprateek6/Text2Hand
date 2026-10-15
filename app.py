@@ -526,7 +526,8 @@ def studio():
     # page_size goes down too, so the editor can say how much paper the text is
     # before anyone waits for a render.
     return render_template("studio.html", converters=converters.available(),
-                           max_chars=render_limit(), page_size=page_size())
+                           max_chars=render_limit(), page_size=page_size(),
+                           render_ttl=RENDER_TTL)
 
 
 @app.post("/api/convert")
