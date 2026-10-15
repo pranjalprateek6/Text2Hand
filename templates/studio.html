@@ -139,31 +139,24 @@
           <!-- every control carries a visible caption: the bare pills and dots
                read as decoration, and touch has no hover to explain them -->
           <div class="grp">
-            <label class="grp__cap" for="look">Look</label>
-            <select class="mini mini--look" id="look" aria-label="Look">
-              <option value="notebook">Notebook</option>
-              <option value="plain">Plain sheet</option>
-              <option value="letter">Letter</option>
-              <option value="clean">Clean scan</option>
-              <option value="lab">Lab notes</option>
-              <option value="custom" hidden>Custom</option>
-            </select>
-          </div>
-          <div class="grp">
-            <span class="grp__cap" id="capPaper">Paper</span>
-            <div class="opts" role="group" aria-labelledby="capPaper">
-              <select class="mini mini--look" id="paper" aria-label="Paper">
-                <option value="ruled">Ruled</option>
-                <option value="grid">Squared</option>
-                <option value="plain">Plain</option>
-                <option value="none">None (transparent PNG)</option>
-              </select>
-              <select class="mini mini--look" id="sheet" aria-label="Page size">
-                <option value="a4">A4</option>
-                <option value="letter">Letter</option>
-              </select>
-              <button class="opt is-on" id="oTexture" aria-pressed="true" title="Paper tint and grain">Texture</button>
-              <button class="opt is-on" id="oSkew" aria-pressed="true" title="Tilt the page slightly, as if scanned">Tilt</button>
+            <span class="grp__cap" id="capLook">Look <span class="grp__note" id="lookNote" hidden>· custom</span></span>
+            <!-- each look drawn as a tiny page: its paper, its pen, its size -->
+            <div class="looks" id="looks" role="radiogroup" aria-labelledby="capLook">
+              <button class="look" data-look="notebook" role="radio" aria-checked="false"
+                      aria-label="Notebook"><span class="look__page" aria-hidden="true"><i>Aa</i></span>
+                <span class="look__name">Notebook</span></button>
+              <button class="look" data-look="plain" role="radio" aria-checked="false"
+                      aria-label="Plain"><span class="look__page" aria-hidden="true"><i>Aa</i></span>
+                <span class="look__name">Plain</span></button>
+              <button class="look" data-look="letter" role="radio" aria-checked="false"
+                      aria-label="Letter"><span class="look__page" aria-hidden="true"><i>Aa</i></span>
+                <span class="look__name">Letter</span></button>
+              <button class="look" data-look="clean" role="radio" aria-checked="false"
+                      aria-label="Clean"><span class="look__page" aria-hidden="true"><i>Aa</i></span>
+                <span class="look__name">Clean</span></button>
+              <button class="look" data-look="lab" role="radio" aria-checked="false"
+                      aria-label="Lab"><span class="look__page" aria-hidden="true"><i>Aa</i></span>
+                <span class="look__name">Lab</span></button>
             </div>
           </div>
           <div class="grp">
@@ -187,16 +180,37 @@
                       role="radio" aria-checked="false">Aa</button>
             </div>
           </div>
-          <div class="grp">
-            <label class="grp__cap" for="readAs">Read as</label>
-            <select class="mini mini--look" id="readAs"
-                    title="Auto draws headings, lists and tables when the text is written in Markdown, and the text as it is otherwise">
-              <option value="auto">Auto</option>
-              <option value="markdown">Markdown</option>
-              <option value="plain">Plain text</option>
-            </select>
-          </div>
+          <!-- the rest, a click away: most people never need it -->
+          <button class="opt more" id="moreBtn" aria-expanded="false" aria-controls="adv">More</button>
           <span class="count" id="count">0</span>
+          <div class="adv" id="adv" hidden>
+            <div class="grp">
+              <span class="grp__cap" id="capPaper">Paper</span>
+              <div class="opts" role="group" aria-labelledby="capPaper">
+                <select class="mini mini--look" id="paper" aria-label="Paper">
+                  <option value="ruled">Ruled</option>
+                  <option value="grid">Squared</option>
+                  <option value="plain">Plain</option>
+                  <option value="none">None (transparent PNG)</option>
+                </select>
+                <select class="mini mini--look" id="sheet" aria-label="Page size">
+                  <option value="a4">A4</option>
+                  <option value="letter">Letter</option>
+                </select>
+                <button class="opt is-on" id="oTexture" aria-pressed="true" title="A warm paper tint with a fine grain">Paper grain</button>
+                <button class="opt is-on" id="oSkew" aria-pressed="true" title="Turn the page very slightly, as a scanner does">Scanned look</button>
+              </div>
+            </div>
+            <div class="grp">
+              <label class="grp__cap" for="readAs">Read as</label>
+              <select class="mini mini--look" id="readAs"
+                      title="Auto draws headings, lists and tables when the text is written in Markdown, and the text as it is otherwise">
+                <option value="auto">Auto</option>
+                <option value="markdown">Markdown</option>
+                <option value="plain">Plain text</option>
+              </select>
+            </div>
+          </div>
         </div>
       </section>
 

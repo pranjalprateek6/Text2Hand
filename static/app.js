@@ -164,21 +164,52 @@ const LOOKS = {
   lab: { paper: "grid", texture: true, skew: true, ink: "black", size: "small" },
 };
 
+// Paper style and size, grain, the scanned look and how the text is read sit
+// behind More: the look covers them for most people, and a bar of every
+// control was the first thing the review called noisy. Open or closed is
+// remembered.
+function setMore(open) {
+  $("adv").hidden = !open;
+  $("moreBtn").setAttribute("aria-expanded", String(open));
+  $("moreBtn").classList.toggle("is-on", open);
+  try { localStorage.setItem("t2h.more", open ? "1" : "0"); } catch {}
+}
+$("moreBtn").addEventListener("click", () => setMore($("adv").hidden));
+try { setMore(localStorage.getItem("t2h.more") === "1"); } catch { setMore(false); }
+
+// The swatches show each look as a tiny page, so the choice is made by eye:
+// ruled, squared or plain paper, warm or clean, tilted or square, in that
+// look's ink and at its size. A change by hand leaves none of them chosen and
+// the caption says Custom.
+const INK_HEX = { "blue-black": "#141a42", black: "#1a1a1d", blue: "#153c98", red: "#961c18" };
+document.querySelectorAll(".look").forEach((sw) => {
+  const l = LOOKS[sw.dataset.look];
+  const page = sw.querySelector(".look__page");
+  page.dataset.paper = l.paper;
+  page.classList.toggle("is-warm", l.texture);
+  page.classList.toggle("is-tilted", l.skew);
+  page.style.setProperty("--ink", INK_HEX[l.ink]);
+  page.dataset.size = l.size;
+  sw.addEventListener("click", () => {
+    setOptions({ ...OPTIONS, ...l, read: READ, sheet: SHEET }, l.ink);   // a look keeps size and reading
+    touched();
+  });
+});
+
 function syncLook() {
   const match = Object.keys(LOOKS).find((k) => {
     const l = LOOKS[k];
     return l.paper === PAPER && l.texture === OPTIONS.texture &&
       l.skew === OPTIONS.skew && l.ink === INK && l.size === SIZE;
   });
-  $("look").value = match || "custom";
+  document.querySelectorAll(".look").forEach((sw) => {
+    const on = sw.dataset.look === match;
+    sw.classList.toggle("is-on", on);
+    sw.setAttribute("aria-checked", String(on));
+    sw.tabIndex = on || (!match && sw === document.querySelector(".look")) ? 0 : -1;
+  });
+  $("lookNote").hidden = !!match;
 }
-
-$("look").addEventListener("change", () => {
-  const l = LOOKS[$("look").value];
-  if (!l) return;
-  setOptions({ ...OPTIONS, ...l, sheet: SHEET }, l.ink);   // a look keeps the page size
-  touched();
-});
 
 function setOptions(opts, ink) {
   // entries saved before "Read as" had three choices carry only markdown on/off

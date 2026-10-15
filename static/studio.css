@@ -667,3 +667,50 @@ select.mini {
   /* the bottom bar has these now */
   #render, #dlMain { display: none; }
 }
+
+/* ------------------------------------------------------------ look swatches */
+.grp__note { text-transform: none; letter-spacing: 0; }
+.looks { display: flex; gap: 6px; }
+.look {
+  appearance: none; display: grid; justify-items: center; gap: 3px;
+  padding: 3px 3px 2px; border: 1px solid transparent; border-radius: 8px;
+  background: none; cursor: pointer; color: var(--muted-foreground);
+  transition: border-color 160ms var(--ease), background 160ms var(--ease);
+}
+.look:hover { background: var(--secondary); }
+.look.is-on { border-color: var(--foreground); color: var(--foreground); }
+.look__page {
+  position: relative; display: grid; place-items: center;
+  width: 38px; height: 46px; border-radius: 3px; overflow: hidden;
+  background: #fff; border: 1px solid var(--border);
+  box-shadow: 0 2px 5px rgba(30, 25, 10, 0.08);
+}
+.look__page.is-warm { background: #f6f2e8; }
+.look__page.is-tilted { transform: rotate(-3deg); }
+.look__page[data-paper="ruled"] {
+  background-image: repeating-linear-gradient(to bottom, transparent 0 8px, rgba(110, 150, 210, 0.45) 8px 9px);
+}
+.look__page[data-paper="ruled"]::before {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 7px; width: 1px;
+  background: rgba(214, 120, 120, 0.6);
+}
+.look__page[data-paper="grid"] {
+  background-image:
+    repeating-linear-gradient(to bottom, transparent 0 6px, rgba(110, 150, 210, 0.35) 6px 7px),
+    repeating-linear-gradient(to right, transparent 0 6px, rgba(110, 150, 210, 0.35) 6px 7px);
+}
+.look__page i {
+  position: relative; font-family: var(--font-display); font-style: italic;
+  color: var(--ink); line-height: 1;
+}
+.look__page[data-size="small"] i { font-size: 13px; }
+.look__page[data-size="normal"] i { font-size: 16px; }
+.look__page[data-size="large"] i { font-size: 20px; }
+.look__name { font-size: 10.5px; line-height: 1; }
+
+/* ------------------------------------------------------------------ more */
+.adv { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 18px;
+       padding-top: 10px; border-top: 1px dashed var(--border); }
+.adv[hidden] { display: none; }
+.more::after { content: " ▾"; font-size: 10px; }
+.more[aria-expanded="true"]::after { content: " ▴"; }
