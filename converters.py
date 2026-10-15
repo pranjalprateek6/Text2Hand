@@ -190,34 +190,59 @@ def _key(env: str) -> str | None:
 
 
 def available() -> list[dict]:
-    """Every converter, whether it is usable right now, and why not."""
+    """Every converter, whether it is usable right now, and why not.
+
+    `label` and `reason` are shown to whoever is using the studio, so they
+    say what the choice does and why it is unavailable in plain words.
+    `setup` is the fix, for whoever runs the server: it is logged and
+    documented, not put in front of someone who cannot act on it.
+    """
     ocr_ok, ocr_why = _ocr_ready()
+    text_ok = _has("pymupdf4llm")
     out = [{
-        "name": "pymupdf",
-        "label": "Local (PyMuPDF)",
+        "name": "auto",
+        "label": "Automatic",
         "kind": "local",
-        "ready": _has("pymupdf4llm"),
-        "reason": "" if _has("pymupdf4llm") else "pip install pymupdf4llm",
+        "ready": text_ok,
+        "reason": "" if text_ok else "PDF reading is not installed on this server",
+        "setup": "" if text_ok else "pip install pymupdf4llm",
+    }, {
+        "name": "pymupdf",
+        "label": "Text PDF",
+        "kind": "local",
+        "ready": text_ok,
+        "reason": "" if text_ok else "not installed on this server",
+        "setup": "" if text_ok else "pip install pymupdf4llm",
     }, {
         "name": "ocr",
-        "label": "Local OCR (Tesseract)",
+        "label": "Scanned PDF (reads the image)",
         "kind": "local",
         "ready": ocr_ok,
-        "reason": ocr_why,
+        "reason": "" if ocr_ok else "not set up on this server",
+        "setup": ocr_why,
     }]
     for name, label, module, env in (
-        ("llamaparse", "Cloud (LlamaParse)", "llama_parse", "LLAMA_CLOUD_API_KEY"),
-        ("mistral", "Cloud (Mistral OCR)", "mistralai", "MISTRAL_API_KEY"),
+        ("llamaparse", "Cloud: LlamaParse (uploads your file)", "llama_parse",
+         "LLAMA_CLOUD_API_KEY"),
+        ("mistral", "Cloud: Mistral OCR (uploads your file)", "mistralai", "MISTRAL_API_KEY"),
     ):
         installed, keyed = _has(module), bool(_key(env))
-        reason = ""
+        setup = ""
         if not installed:
-            reason = f"pip install {module.replace('_', '-')}"
+            setup = f"pip install {module.replace('_', '-')}"
         elif not keyed:
-            reason = f"set {env}"
+            setup = f"set {env}"
         out.append({"name": name, "label": label, "kind": "cloud",
-                    "ready": installed and keyed, "reason": reason})
+                    "ready": installed and keyed,
+                    "reason": "" if installed and keyed else "not set up on this server",
+                    "setup": setup})
     return out
+
+
+def choose(path: str) -> str:
+    """The converter Automatic stands for: OCR for a scanned PDF, if it can."""
+    _, scanned = inspect(path)
+    return "ocr" if scanned and _ocr_ready()[0] else "pymupdf"
 
 
 # --------------------------------------------------------------------------- #
@@ -716,11 +741,13 @@ def to_markdown(path: str, converter: str = "pymupdf", page_spec: str = "",
                 progress=None, max_chars: int | None = None,
                 assets_dir: str | None = None,
                 asset_ref: str | None = None) -> Result:
+    if converter == "auto":
+        converter = choose(path)
     if converter not in _CONVERTERS:
         raise ValueError(f"Unknown converter {converter!r}")
     ready = {c["name"]: c for c in available()}[converter]
     if not ready["ready"]:
-        raise RuntimeError(f"{ready['label']} is not set up: {ready['reason']}")
+        raise RuntimeError(f"{ready['label']} is {ready['reason']}.")
 
     total, scanned = inspect(path)
     pages = parse_pages(page_spec, total)
@@ -737,8 +764,8 @@ def to_markdown(path: str, converter: str = "pymupdf", page_spec: str = "",
         notes.append(
             "This PDF has no text layer, so it is images of text and a text "
             "extractor will return little or nothing. "
-            + ("Switch the converter to Local OCR (Tesseract)."
-               if ocr_ok else f"Local OCR needs setting up first: {ocr_why}.")
+            + ("Choose Scanned PDF instead."
+               if ocr_ok else "Reading scanned PDFs is not set up on this server.")
         )
 
     if converter in _PAGE_CONVERTERS:

@@ -98,14 +98,15 @@
           <span class="pdfstrip__name" id="pdfName"></span>
           <select id="converter" class="mini" aria-label="How to read the PDF">
             {% for c in converters %}
-            <option value="{{ c.name }}" {% if not c.ready %}disabled{% endif %}>
-              {{ c.label }}{% if not c.ready %} - {{ c.reason }}{% endif %}
+            <option value="{{ c.name }}" {% if not c.ready %}disabled{% endif %}
+                    {% if c.name == "auto" %}selected{% endif %}>
+              {{ c.label }}{% if not c.ready %} ({{ c.reason }}){% endif %}
             </option>
             {% endfor %}
           </select>
-          <input type="text" id="pageRange" class="mini mini--slim" placeholder="all"
+          <input type="text" id="pageRange" class="mini mini--slim" placeholder="all pages"
                  aria-label="Page range, for example 1-10" />
-          <button class="btn btn--sm" id="read">Read it</button>
+          <button class="btn btn--sm" id="read">Read again</button>
           <button class="iconbtn" id="pdfClear" aria-label="Remove file">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                  stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>

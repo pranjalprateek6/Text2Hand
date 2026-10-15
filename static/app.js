@@ -342,6 +342,27 @@ function note(message, bad) {
 }
 function hush() { $("note").hidden = true; }
 
+// A note with a heading and a short list, for what is worth reading at a
+// glance rather than as a paragraph.
+function noteList(heading, items, bad) {
+  const el = $("note");
+  if (bad) el.setAttribute("role", "alert"); else el.removeAttribute("role");
+  el.textContent = "";
+  const h = document.createElement("b");
+  h.className = "notecard__head";
+  h.textContent = heading;
+  const ul = document.createElement("ul");
+  ul.className = "notecard__list";
+  items.filter(Boolean).forEach((text) => {
+    const li = document.createElement("li");
+    li.textContent = text;
+    ul.append(li);
+  });
+  el.append(h, ul);
+  el.classList.toggle("is-bad", !!bad);
+  el.hidden = false;
+}
+
 /* --------------------------------------------------------------------- jobs */
 
 async function poll(jobId, onStage) {
@@ -912,25 +933,75 @@ function takeFile(file) {
   $("pdf").hidden = false;
   showView("write");
   hush();
+  // Reading starts as soon as there is a file: choosing one is the decision.
+  // The page range and the way of reading can still be changed while it
+  // reads, which starts it again with the new choice.
+  readPdf();
 }
 
 $("pdfBtn").addEventListener("click", () => $("file").click());
 $("file").addEventListener("change", () => takeFile($("file").files[0]));
 $("pdfClear").addEventListener("click", () => {
+  if (state.reading) {
+    state.readAgain = false;
+    fetch(`/api/job/${state.reading}/cancel`, { method: "POST" }).catch(() => {});
+  }
   state.file = null;
   $("file").value = "";
   $("pdf").hidden = true;
 });
 
-$("read").addEventListener("click", async () => {
-  // a second press while reading is the way out
+// a press while reading is the way out; afterwards it reads the file again
+$("read").addEventListener("click", () => {
   if (state.reading) {
+    state.readAgain = false;
     fetch(`/api/job/${state.reading}/cancel`, { method: "POST" }).catch(() => {});
     return;
   }
-  if (!state.file) return;
-  // reading lands its Markdown in the editor, over whatever is there
-  if ($("text").value.trim() &&
+  readPdf();
+});
+
+// a change of pages or of reader while reading restarts it with the change
+let rangeTimer = null;
+function rereadSoon(delay) {
+  if (!state.reading) return;
+  clearTimeout(rangeTimer);
+  rangeTimer = setTimeout(() => {
+    state.readAgain = true;
+    fetch(`/api/job/${state.reading}/cancel`, { method: "POST" }).catch(() => {});
+  }, delay);
+}
+$("converter").addEventListener("change", () => rereadSoon(0));
+$("pageRange").addEventListener("input", () => rereadSoon(700));
+
+function readSummary(done) {
+  const f = done.found || {};
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  const kept = [
+    f.equations ? `${plural(f.equations, "equation", "equations")} kept as images` : "",
+    f.tables ? plural(f.tables, "table", "tables") : "",
+    f.headings ? plural(f.headings, "heading", "headings") : "",
+    f.figures ? `${plural(f.figures, "figure", "figures")}, drawn as labelled boxes` : "",
+  ].filter(Boolean).join(" · ");
+  const check = ["headings and lists"];
+  if (f.tables) check.push("table columns");
+  if (f.equations) check.push("where the equations sit");
+  return [
+    `Read ${done.pages_converted} of ${done.total_pages} page${done.total_pages === 1 ? "" : "s"}`
+      + (done.converter_label ? ` as a ${done.converter_label.split(" (")[0]}` : "") + ".",
+    kept,
+    `Worth a look before rendering: ${check.join(", ")}.`,
+    ...(done.notes || []),
+  ];
+}
+
+async function readPdf(confirmed = false) {
+  if (!state.file || state.reading) return;
+  // Reading lands its Markdown in the editor, over whatever is there. Only
+  // the person's own text is worth asking about: text an earlier read of the
+  // PDF put there is replaced by the new read without a question.
+  const own = $("text").value.trim() && $("text").value !== state.lastRead;
+  if (own && !confirmed &&
       !(await ask("Reading the PDF replaces the text in the editor. Continue?", "Read it"))) return;
 
   const body = new FormData();
@@ -939,6 +1010,7 @@ $("read").addEventListener("click", async () => {
   body.append("pages", $("pageRange").value);
 
   hush();
+  state.readAgain = false;
   $("read").textContent = "Cancel";
   $("status").textContent = "Opening the PDF…";
   $("status").classList.add("is-live");
@@ -950,32 +1022,31 @@ $("read").addEventListener("click", async () => {
     state.reading = started.job;
 
     const done = await poll(started.job, (m) => { $("status").textContent = m + "…"; });
-    if (done.cancelled) { $("status").textContent = "Cancelled"; return; }
+    if (done.cancelled) { if (!state.readAgain) $("status").textContent = "Cancelled"; return; }
     if (done.error) { note(done.error, true); return; }
 
     // Extraction is never perfect, so it lands in the editor for review.
     $("text").value = done.markdown;
+    state.lastRead = done.markdown;
     state.seed = newSeed();
     READ = "markdown";                      // a converted PDF is Markdown, whatever it looks like
     $("readAs").value = READ;
     count();
-    $("pdf").hidden = true;
-    state.file = null;
-    $("file").value = "";
     $("text").focus();
-    note(`Read ${done.pages_converted} of ${done.total_pages} pages. `
-         + "Check it over, then render. " + (done.notes || []).join(" "));
+    // the file stays, so a different page range or reader is one click away
+    noteList("The PDF is in the editor", readSummary(done));
     touched();
   } catch (err) {
     note("Could not reach the server. Is it still running?", true);
   } finally {
     state.reading = null;
-    $("read").textContent = "Read it";
+    $("read").textContent = "Read again";
     if ($("status").textContent !== "Cancelled")
       $("status").textContent = state.statusLine || "Ready";
     $("status").classList.remove("is-live");
+    if (state.readAgain) { state.readAgain = false; readPdf(true); }
   }
-});
+}
 
 /* a PDF can be dropped anywhere in the window */
 let depth = 0;

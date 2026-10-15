@@ -624,3 +624,7 @@ select.mini {
 @media (max-width: 600px) { #previewLabel { display: none; } .stale { margin-left: 0; } }
 /* and the page strip under the preview does the pager's job there */
 @media (max-width: 600px) { #pager { display: none; } }
+
+/* a note that is a heading and a short list */
+.notecard__head { display: block; color: var(--foreground); font-weight: 600; margin-bottom: 4px; }
+.notecard__list { margin: 0; padding-left: 18px; display: grid; gap: 2px; }
