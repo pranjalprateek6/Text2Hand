@@ -583,3 +583,16 @@ select.mini {
 /* one row height for every group, so the captions line up */
 .grp > :last-child { min-height: 36px; display: flex; align-items: center; }
 .grp > select:last-child { display: block; height: 36px; }
+
+/* ---------------------------------------------------------- new handwriting */
+.reroll {
+  appearance: none; display: inline-flex; align-items: center; gap: 6px;
+  margin-right: 10px; padding: 4px 11px;
+  font: inherit; font-size: 12px; color: var(--foreground);
+  background: var(--background); border: 1px solid var(--border); border-radius: 999px;
+  cursor: pointer; white-space: nowrap;
+  transition: background 180ms var(--ease);
+}
+.reroll:hover { background: var(--secondary); }
+.reroll svg { width: 13px; height: 13px; }
+@media (max-width: 600px) { .reroll__label { display: none; } .reroll { padding: 6px; } }

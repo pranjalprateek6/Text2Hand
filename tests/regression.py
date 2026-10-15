@@ -798,6 +798,33 @@ _job, _err = _app_render({"text": "# Fine\n\nAll of this is written.", "markdown
 check("a render reports its dropped words", _job is not None and _job.get("dropped") == [],
       str(_job and _job.get("dropped")) if _job else str(_err))
 
+# --- a document keeps its handwriting from render to render ----------------
+def _gray(job, n):
+    with Image.open(_io.BytesIO(_client.get(f"/preview/{job['id']}/{n}.jpg").data)) as _im:
+        return _np.asarray(_im.convert("L"), dtype=_np.int16)
+
+
+_seedtext = "The same text in the same hand, every time it is written. " * 110
+_base = {"text": _seedtext, "seed": 4242, "texture": False}
+_s1, _ = _app_render(_base)
+_app_render({"text": "Something else in between, in red.", "seed": 7, "ink": "red", "texture": False})
+_s2, _ = _app_render(_base)
+_s3, _ = _app_render({**_base, "seed": 4243})
+_s4, _ = _app_render({**_base, "text": _seedtext + " One more word."})
+if all(j and j["state"] == "done" for j in (_s1, _s2, _s3, _s4)):
+    _n = _s1["pages"]
+    _same = max(int(_np.abs(_gray(_s1, i) - _gray(_s2, i)).max()) for i in range(1, _n + 1))
+    check("the same seed writes the same pages", _same == 0 and _s1["seed"] == 4242,
+          f"largest pixel difference {_same} over {_n} pages")
+    _other = float(_np.abs(_gray(_s1, 1) - _gray(_s3, 1)).mean())
+    check("a new seed is a new hand", _other > 5, f"mean difference {_other:.1f}")
+    _early = max(float(_np.abs(_gray(_s1, i) - _gray(_s4, i)).mean()) for i in range(1, _n))
+    check("an edit at the end leaves earlier pages alone", _early == 0, f"{_early:.2f}")
+else:
+    check("the same seed writes the same pages", False, "a render failed")
+_ns, _ = _app_render({"text": "No seed given."})
+check("a render without a seed is given one", _ns is not None and isinstance(_ns.get("seed"), int))
+
 _h = _client.get("/healthz")
 check("health check answers", _h.status_code == 200 and _h.get_json()["ok"], str(_h.get_json()))
 

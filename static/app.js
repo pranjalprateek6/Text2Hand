@@ -27,7 +27,16 @@ const state = {
   timer: null,        // auto-render debounce
   busy: false,
   queued: false,      // a change arrived while a render was running
+  seed: null,         // this document's handwriting; see newSeed
 };
+
+// A document keeps one handwriting from render to render: the same seed and
+// the same text write the same letters, so fixing a word on page six changes
+// that word, not every letter on every page. A new document, or the New
+// handwriting button, draws a new one.
+function newSeed() {
+  return Math.floor(Math.random() * 2 ** 31);
+}
 
 /* -------------------------------------------------------------------- views */
 
@@ -243,6 +252,7 @@ document.querySelectorAll(".try").forEach((btn) => {
     if ($("text").value.trim() &&
         !(await ask("Replace what you've written with the sample?", "Replace"))) return;
     $("text").value = SAMPLES[which] || "";
+    state.seed = newSeed();                 // a new document, a new hand
     if (OPTIONS.markdown !== (which === "markdown")) $("oMarkdown").click();
     count();
     touched();
@@ -320,7 +330,7 @@ function payload() {
   return {
     text: $("text").value,
     paper: PAPER, sheet: SHEET, ruled: PAPER === "ruled",
-    texture: OPTIONS.texture, skew: OPTIONS.skew,
+    texture: OPTIONS.texture, skew: OPTIONS.skew, seed: state.seed,
     markdown: OPTIONS.markdown, ink: INK, size: SIZE,
   };
 }
@@ -334,6 +344,12 @@ function markStale() {
   $("stale").hidden = !stale;
 }
 $("stale").addEventListener("click", () => render());
+
+$("reroll").addEventListener("click", () => {
+  state.seed = newSeed();
+  if (state.busy) { touched(); return; }    // Auto picks it up, or the queue does
+  render();
+});
 
 function cancelJob() {
   // a press before the server has named the job is remembered, not lost
@@ -415,6 +431,11 @@ async function render() {
 
     state.id = done.id;
     state.pages = done.pages;
+    if (done.seed != null && body.seed == null) {
+      // an old draft rendered before documents had seeds: adopt the server's
+      state.seed = done.seed;
+      body.seed = done.seed;
+    }
     state.rendered = JSON.stringify(body);
     // Keep the reader's place: proofreading page 6, fixing a word and
     // re-rendering used to bounce back to page 1. show() clamps, so a render
@@ -638,7 +659,7 @@ async function remember(done, body) {
     e.text !== body.text || JSON.stringify(e.opts) !== JSON.stringify(opts) || e.ink !== body.ink);
   entries.unshift({
     id: done.id, title: title(), pages: done.pages, chars: body.text.length,
-    ts: Date.now(), text: body.text, ink: body.ink, opts, thumb,
+    ts: Date.now(), text: body.text, ink: body.ink, opts, thumb, seed: body.seed,
   });
   try { localStorage.setItem(LIB_KEY, JSON.stringify(entries.slice(0, LIB_MAX))); }
   catch { /* quota: drop the oldest and try once more */
@@ -724,6 +745,7 @@ async function openEntry(e) {
       !lib().some((x) => x.text === current) &&
       !(await ask("Replace the unsaved text in the editor with this entry?", "Replace"))) return;
   $("text").value = e.text;
+  state.seed = e.seed != null ? e.seed : newSeed();
   // a card's name is kept only if it was really a rename; a title the text
   // would derive anyway stays live, following future edits
   state.title = e.title === titleOf(e.text) ? null : e.title;
@@ -872,6 +894,7 @@ $("read").addEventListener("click", async () => {
 
     // Extraction is never perfect, so it lands in the editor for review.
     $("text").value = done.markdown;
+    state.seed = newSeed();
     if (!OPTIONS.markdown) $("oMarkdown").click();
     count();
     $("pdf").hidden = true;
@@ -940,7 +963,7 @@ function saveDraft() {
   try {
     localStorage.setItem(DRAFT_KEY, JSON.stringify({
       text: $("text").value, opts: { ...OPTIONS, size: SIZE, paper: PAPER, sheet: SHEET },
-      ink: INK, title: state.title,
+      ink: INK, title: state.title, seed: state.seed,
       // enough to re-attach to the render after a reload, if it still exists
       id: state.id, pages: state.pages, page: state.page, rendered: state.rendered,
     }));
@@ -957,6 +980,7 @@ try {
   if (draft && draft.text) {
     $("text").value = draft.text;
     state.title = draft.title || null;
+    state.seed = draft.seed != null ? draft.seed : null;
     setOptions(draft.opts || OPTIONS, draft.ink || "blue-black");
     // The render this draft came from may still be on the server; showing it
     // again beats a "Nothing rendered" pane over a full editor. Probed first,
@@ -977,6 +1001,7 @@ try {
     }
   }
 } catch {}
+if (state.seed == null && !$("text").value.trim()) state.seed = newSeed();
 
 count();
 syncLook();
