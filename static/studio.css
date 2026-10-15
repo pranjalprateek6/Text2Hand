@@ -624,3 +624,46 @@ select.mini {
 @media (max-width: 600px) { #previewLabel { display: none; } .stale { margin-left: 0; } }
 /* and the page strip under the preview does the pager's job there */
 @media (max-width: 600px) { #pager { display: none; } }
+
+/* a note that is a heading and a short list */
+.notecard__head { display: block; color: var(--foreground); font-weight: 600; margin-bottom: 4px; }
+.notecard__list { margin: 0; padding-left: 18px; display: grid; gap: 2px; }
+
+/* a library card says how long its render will stay */
+.cardlet__sub { flex-wrap: wrap; row-gap: 2px; }
+.cardlet__life { order: 3; flex-basis: 100%; font-size: 10.5px; color: color-mix(in oklch, var(--muted-foreground) 80%, transparent); }
+
+/* --------------------------------------------------------------- phone bar */
+.mbar { display: none; }
+.sheet { position: fixed; inset: 0; z-index: 120; }
+.sheet__veil { position: absolute; inset: 0; background: rgba(20, 16, 8, 0.35); }
+.sheet__box {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  max-height: 82vh; overflow: auto;
+  background: var(--card); border-radius: 16px 16px 0 0;
+  box-shadow: 0 -12px 40px rgba(20, 16, 8, 0.2);
+  padding-bottom: env(safe-area-inset-bottom);
+  animation: sheet-up 260ms var(--ease) both;
+}
+.sheet__head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 14px 6px 18px;
+}
+.sheet__head b { font-family: var(--font-display); font-size: 20px; font-weight: 400; }
+.sheet__body .pane__foot { border-top: 0; background: none; padding: 6px 18px 18px; }
+@keyframes sheet-up { from { transform: translateY(100%); } to { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .sheet__box { animation: none; } }
+
+@media (max-width: 600px) {
+  .mbar {
+    display: flex; align-items: center; gap: 8px;
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 90;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    background: var(--background); border-top: 1px solid var(--border);
+  }
+  .mbar__gap { flex: 1; }
+  .mbar .btn { height: 42px; padding: 0 18px; font-size: 14px; }
+  .app { padding-bottom: 72px; }
+  /* the bottom bar has these now */
+  #render, #dlMain { display: none; }
+}

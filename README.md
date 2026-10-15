@@ -118,11 +118,12 @@ Markdown images on the server can only come from the equation crops it made itse
 
 ## PDF input
 
-Upload a PDF, pick a converter, optionally give a page range like `1-10`, and hit **Convert**. The PDF becomes Markdown *in the text box* rather than going straight to handwriting, so you can fix what the extractor got wrong. Review it, then Generate.
+Drop a PDF on the studio, or choose one, and it is read straight away. The PDF becomes Markdown *in the text box* rather than going straight to handwriting, so you can fix what the extractor got wrong; a short checklist says what was found (equations, tables, headings) and what is worth checking. Change the page range (like `1-10`) or the way of reading while it reads and it starts again with the change; afterwards **Read again** reads it once more.
 
-- **Local (PyMuPDF)** is the default and the file never leaves your machine.
-- **Local OCR (Tesseract)** reads scanned PDFs, also without uploading anything. Needs `pip install pytesseract` plus the Tesseract binary (`winget install UB-Mannheim.TesseractOCR`, `apt install tesseract-ocr`, or `brew install tesseract`).
-- **Cloud (LlamaParse, Mistral OCR)** are opt-in, need their own API key in the environment, and upload the file to that provider. They are disabled in the UI until installed and keyed.
+- **Automatic** is the default: a PDF with a text layer is read as a Text PDF, and a scanned one with OCR when that is set up.
+- **Text PDF** (PyMuPDF): the file never leaves your machine.
+- **Scanned PDF** (Tesseract OCR) reads pictures of text, also without uploading anything. Needs `pip install pytesseract` plus the Tesseract binary (`winget install UB-Mannheim.TesseractOCR`, `apt install tesseract-ocr`, or `brew install tesseract`).
+- **Cloud** (LlamaParse, Mistral OCR) are opt-in, need their own API key in the environment, and upload the file to that provider. They are shown as not set up until installed and keyed; the server logs what each one needs.
 
 **Display equations survive.** Text extraction reads a PDF in stream order, which scrambles anything laid out in two dimensions, so fractions and stacked notation used to come out as word soup. The converter now finds display equations by font signature (they are set entirely in maths fonts, prose is not), crops each one from the rendered page, and carries it through the Markdown as an image reference captioned with the paper's own tag, such as `equations (5)-(7)`. The renderer traces those crops onto the page as ink, the way a person copies an equation carefully into notes. Inline maths inside a sentence stays text, which the Greek and maths glyphs cover.
 

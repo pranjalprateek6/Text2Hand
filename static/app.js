@@ -15,6 +15,7 @@ const $ = (id) => document.getElementById(id);
 const CONFIG = document.currentScript ? document.currentScript.dataset : {};
 const MAX_CHARS = Number(CONFIG.maxChars) || 60000;
 const PAGE_SIZE = Number(CONFIG.pageSize) || 1200;
+const RENDER_TTL = Number(CONFIG.renderTtl) || 7200;   // seconds a render stays downloadable
 
 const state = {
   id: null, pages: 0, page: 1,
@@ -28,6 +29,7 @@ const state = {
   busy: false,
   queued: false,      // a change arrived while a render was running
   seed: null,         // this document's handwriting; see newSeed
+  doc: null,          // which document this is, so the library keeps one card for it
 };
 
 // A document keeps one handwriting from render to render: the same seed and
@@ -36,6 +38,12 @@ const state = {
 // handwriting button, draws a new one.
 function newSeed() {
   return Math.floor(Math.random() * 2 ** 31);
+}
+
+// A new document: a new hand, and an identity of its own in the library.
+function newDocument() {
+  state.seed = newSeed();
+  state.doc = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
 /* -------------------------------------------------------------------- views */
@@ -286,7 +294,7 @@ document.querySelectorAll(".try").forEach((btn) => {
     if ($("text").value.trim() &&
         !(await ask("Replace what you've written with the sample?", "Replace"))) return;
     $("text").value = SAMPLES[which] || "";
-    state.seed = newSeed();                 // a new document, a new hand
+    newDocument();                 // a new document, a new hand
     count();
     touched();
     $("text").focus();
@@ -342,6 +350,27 @@ function note(message, bad) {
 }
 function hush() { $("note").hidden = true; }
 
+// A note with a heading and a short list, for what is worth reading at a
+// glance rather than as a paragraph.
+function noteList(heading, items, bad) {
+  const el = $("note");
+  if (bad) el.setAttribute("role", "alert"); else el.removeAttribute("role");
+  el.textContent = "";
+  const h = document.createElement("b");
+  h.className = "notecard__head";
+  h.textContent = heading;
+  const ul = document.createElement("ul");
+  ul.className = "notecard__list";
+  items.filter(Boolean).forEach((text) => {
+    const li = document.createElement("li");
+    li.textContent = text;
+    ul.append(li);
+  });
+  el.append(h, ul);
+  el.classList.toggle("is-bad", !!bad);
+  el.hidden = false;
+}
+
 /* --------------------------------------------------------------------- jobs */
 
 async function poll(jobId, onStage) {
@@ -381,7 +410,59 @@ function markStale() {
   $("dlMain").hidden = !state.id;
   $("dlMain").classList.toggle("btn--outline", !current);
   $("render").classList.toggle("btn--outline", current);
+  syncPhoneBar();
 }
+
+/* --------------------------------------------------------------- phone bar */
+
+// On a phone the top bar is out of reach and the settings bar sat below the
+// editor, a scroll away. The next action (Render, or the PDF once the page
+// is current) sits in a bar at the bottom of the screen, and Look, Pen and
+// Size open as a sheet over whichever tab is showing. Both mirror the
+// controls they stand for rather than duplicating their logic.
+const phone = window.matchMedia("(max-width: 600px)");
+
+function syncPhoneBar() {
+  $("mRender").textContent = $("renderLabel").textContent;
+  $("mRender").classList.toggle("btn--outline", $("render").classList.contains("btn--outline"));
+  $("mDownload").hidden = $("dlMain").hidden;
+  $("mDownload").href = $("dlMain").href || "#";
+  $("mDownload").classList.toggle("btn--outline", $("dlMain").classList.contains("btn--outline"));
+}
+$("mRender").addEventListener("click", () => $("render").click());
+
+const settings = document.querySelector(".pane__foot");
+const settingsHome = { parent: settings.parentNode, next: settings.nextSibling };
+function placeSettings() {
+  // safe to call any number of times: it only moves the settings if they
+  // are on the wrong side of the phone width
+  const inSheet = $("sheetBody").contains(settings);
+  if (phone.matches && !inSheet) $("sheetBody").append(settings);
+  else if (!phone.matches && inSheet) {
+    settingsHome.parent.insertBefore(settings, settingsHome.next);
+    closeSheet();
+  }
+}
+function openSheet() {
+  $("settingsSheet").hidden = false;
+  $("mSettings").setAttribute("aria-expanded", "true");
+  $("sheetClose").focus();
+}
+function closeSheet() {
+  if ($("settingsSheet").hidden) return;
+  $("settingsSheet").hidden = true;
+  $("mSettings").setAttribute("aria-expanded", "false");
+  if (phone.matches) $("mSettings").focus();
+}
+$("mSettings").addEventListener("click", openSheet);
+$("sheetClose").addEventListener("click", closeSheet);
+$("sheetVeil").addEventListener("click", closeSheet);
+$("settingsSheet").addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeSheet(); }
+});
+phone.addEventListener("change", placeSettings);
+window.addEventListener("resize", placeSettings);   // some browsers miss the change event
+placeSettings();
 $("stale").addEventListener("click", () => render());
 
 $("reroll").addEventListener("click", () => {
@@ -408,6 +489,7 @@ function setBusy(on, stage) {
   state.cancelPending = false;
   $("render").classList.toggle("is-busy", on);
   $("renderLabel").textContent = on ? (stage || "Rendering") : "Render";
+  $("mRender").textContent = $("renderLabel").textContent;
   $("status").textContent = on ? (stage || "Rendering…") : $("status").textContent;
   $("status").classList.toggle("is-live", on);
   const showing = on && !$("page").hidden;
@@ -460,6 +542,7 @@ async function render() {
     const done = await poll(started.job, (m, job) => {
       $("loadingText").textContent = m;
       $("liveText").textContent = m;
+      $("mRender").textContent = m;
       $("status").textContent = m + "…";
       showLive(job);
     });
@@ -716,11 +799,16 @@ async function remember(done, body) {
   const opts = { markdown: body.markdown, read: READ, paper: body.paper, sheet: body.sheet,
                  ruled: body.ruled, texture: body.texture,
                  skew: body.skew, size: body.size };
-  const entries = lib().filter((e) =>
-    e.text !== body.text || JSON.stringify(e.opts) !== JSON.stringify(opts) || e.ink !== body.ink);
+  // One card per document, showing its latest render: rendering a document
+  // again, after an edit or in a new hand, replaces its card rather than
+  // adding another, so the library reads as a list of documents. Cards from
+  // before documents had ids are matched the old way, by identical content.
+  const doc = state.doc;
+  const entries = lib().filter((e) => (e.doc ? e.doc !== doc :
+    e.text !== body.text || JSON.stringify(e.opts) !== JSON.stringify(opts) || e.ink !== body.ink));
   entries.unshift({
     id: done.id, title: title(), pages: done.pages, chars: body.text.length,
-    ts: Date.now(), text: body.text, ink: body.ink, opts, thumb, seed: body.seed,
+    ts: Date.now(), text: body.text, ink: body.ink, opts, thumb, seed: body.seed, doc,
   });
   try { localStorage.setItem(LIB_KEY, JSON.stringify(entries.slice(0, LIB_MAX))); }
   catch { /* quota: drop the oldest and try once more */
@@ -751,6 +839,15 @@ function drawLibrary() {
     if (h < 24) return h + "h ago";
     return Math.round(h / 24) + "d ago";
   };
+  // The server keeps a render for RENDER_TTL; past that, opening the card
+  // writes it again from the saved text, which the card says rather than
+  // leaving it to be discovered.
+  const life = (ts) => {
+    const left = Math.round((ts / 1000 + RENDER_TTL - Date.now() / 1000) / 60);
+    if (left <= 0) return "opens by writing it again";
+    if (left < 60) return `expires in ${left}m`;
+    return `expires in ${Math.floor(left / 60)}h ${String(left % 60).padStart(2, "0")}m`;
+  };
   entries.forEach((e, i) => {
     const card = document.createElement("button");
     card.className = "cardlet";
@@ -760,6 +857,7 @@ function drawLibrary() {
       `<span class="cardlet__meta">` +
       `<span class="cardlet__title"></span>` +
       `<span class="cardlet__sub"><span>${e.pages}p · ${ago(e.ts)}</span>` +
+      `<span class="cardlet__life">${life(e.ts)}</span>` +
       `<span class="cardlet__del" title="Remove" role="button" tabindex="0">` +
       `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>` +
       `</span></span></span>`;
@@ -807,6 +905,7 @@ async function openEntry(e) {
       !(await ask("Replace the unsaved text in the editor with this entry?", "Replace"))) return;
   $("text").value = e.text;
   state.seed = e.seed != null ? e.seed : newSeed();
+  state.doc = e.doc || `entry-${e.ts}`;
   // a card's name is kept only if it was really a rename; a title the text
   // would derive anyway stays live, following future edits
   state.title = e.title === titleOf(e.text) ? null : e.title;
@@ -912,25 +1011,75 @@ function takeFile(file) {
   $("pdf").hidden = false;
   showView("write");
   hush();
+  // Reading starts as soon as there is a file: choosing one is the decision.
+  // The page range and the way of reading can still be changed while it
+  // reads, which starts it again with the new choice.
+  readPdf();
 }
 
 $("pdfBtn").addEventListener("click", () => $("file").click());
 $("file").addEventListener("change", () => takeFile($("file").files[0]));
 $("pdfClear").addEventListener("click", () => {
+  if (state.reading) {
+    state.readAgain = false;
+    fetch(`/api/job/${state.reading}/cancel`, { method: "POST" }).catch(() => {});
+  }
   state.file = null;
   $("file").value = "";
   $("pdf").hidden = true;
 });
 
-$("read").addEventListener("click", async () => {
-  // a second press while reading is the way out
+// a press while reading is the way out; afterwards it reads the file again
+$("read").addEventListener("click", () => {
   if (state.reading) {
+    state.readAgain = false;
     fetch(`/api/job/${state.reading}/cancel`, { method: "POST" }).catch(() => {});
     return;
   }
-  if (!state.file) return;
-  // reading lands its Markdown in the editor, over whatever is there
-  if ($("text").value.trim() &&
+  readPdf();
+});
+
+// a change of pages or of reader while reading restarts it with the change
+let rangeTimer = null;
+function rereadSoon(delay) {
+  if (!state.reading) return;
+  clearTimeout(rangeTimer);
+  rangeTimer = setTimeout(() => {
+    state.readAgain = true;
+    fetch(`/api/job/${state.reading}/cancel`, { method: "POST" }).catch(() => {});
+  }, delay);
+}
+$("converter").addEventListener("change", () => rereadSoon(0));
+$("pageRange").addEventListener("input", () => rereadSoon(700));
+
+function readSummary(done) {
+  const f = done.found || {};
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  const kept = [
+    f.equations ? `${plural(f.equations, "equation", "equations")} kept as images` : "",
+    f.tables ? plural(f.tables, "table", "tables") : "",
+    f.headings ? plural(f.headings, "heading", "headings") : "",
+    f.figures ? `${plural(f.figures, "figure", "figures")}, drawn as labelled boxes` : "",
+  ].filter(Boolean).join(" · ");
+  const check = ["headings and lists"];
+  if (f.tables) check.push("table columns");
+  if (f.equations) check.push("where the equations sit");
+  return [
+    `Read ${done.pages_converted} of ${done.total_pages} page${done.total_pages === 1 ? "" : "s"}`
+      + (done.converter_label ? ` as a ${done.converter_label.split(" (")[0]}` : "") + ".",
+    kept,
+    `Worth a look before rendering: ${check.join(", ")}.`,
+    ...(done.notes || []),
+  ];
+}
+
+async function readPdf(confirmed = false) {
+  if (!state.file || state.reading) return;
+  // Reading lands its Markdown in the editor, over whatever is there. Only
+  // the person's own text is worth asking about: text an earlier read of the
+  // PDF put there is replaced by the new read without a question.
+  const own = $("text").value.trim() && $("text").value !== state.lastRead;
+  if (own && !confirmed &&
       !(await ask("Reading the PDF replaces the text in the editor. Continue?", "Read it"))) return;
 
   const body = new FormData();
@@ -939,6 +1088,7 @@ $("read").addEventListener("click", async () => {
   body.append("pages", $("pageRange").value);
 
   hush();
+  state.readAgain = false;
   $("read").textContent = "Cancel";
   $("status").textContent = "Opening the PDF…";
   $("status").classList.add("is-live");
@@ -950,32 +1100,31 @@ $("read").addEventListener("click", async () => {
     state.reading = started.job;
 
     const done = await poll(started.job, (m) => { $("status").textContent = m + "…"; });
-    if (done.cancelled) { $("status").textContent = "Cancelled"; return; }
+    if (done.cancelled) { if (!state.readAgain) $("status").textContent = "Cancelled"; return; }
     if (done.error) { note(done.error, true); return; }
 
     // Extraction is never perfect, so it lands in the editor for review.
     $("text").value = done.markdown;
-    state.seed = newSeed();
+    state.lastRead = done.markdown;
+    newDocument();
     READ = "markdown";                      // a converted PDF is Markdown, whatever it looks like
     $("readAs").value = READ;
     count();
-    $("pdf").hidden = true;
-    state.file = null;
-    $("file").value = "";
     $("text").focus();
-    note(`Read ${done.pages_converted} of ${done.total_pages} pages. `
-         + "Check it over, then render. " + (done.notes || []).join(" "));
+    // the file stays, so a different page range or reader is one click away
+    noteList("The PDF is in the editor", readSummary(done));
     touched();
   } catch (err) {
     note("Could not reach the server. Is it still running?", true);
   } finally {
     state.reading = null;
-    $("read").textContent = "Read it";
+    $("read").textContent = "Read again";
     if ($("status").textContent !== "Cancelled")
       $("status").textContent = state.statusLine || "Ready";
     $("status").classList.remove("is-live");
+    if (state.readAgain) { state.readAgain = false; readPdf(true); }
   }
-});
+}
 
 /* a PDF can be dropped anywhere in the window */
 let depth = 0;
@@ -1025,7 +1174,7 @@ function saveDraft() {
   try {
     localStorage.setItem(DRAFT_KEY, JSON.stringify({
       text: $("text").value, opts: { ...OPTIONS, read: READ, size: SIZE, paper: PAPER, sheet: SHEET },
-      ink: INK, title: state.title, seed: state.seed,
+      ink: INK, title: state.title, seed: state.seed, doc: state.doc,
       // enough to re-attach to the render after a reload, if it still exists
       id: state.id, pages: state.pages, page: state.page, rendered: state.rendered,
     }));
@@ -1043,6 +1192,7 @@ try {
     $("text").value = draft.text;
     state.title = draft.title || null;
     state.seed = draft.seed != null ? draft.seed : null;
+    state.doc = draft.doc || null;
     setOptions(draft.opts || OPTIONS, draft.ink || "blue-black");
     // The render this draft came from may still be on the server; showing it
     // again beats a "Nothing rendered" pane over a full editor. Probed first,
@@ -1063,7 +1213,9 @@ try {
     }
   }
 } catch {}
-if (state.seed == null && !$("text").value.trim()) state.seed = newSeed();
+if (state.seed == null && !$("text").value.trim()) newDocument();
+// a draft from before documents had ids keeps its hand and gains an id
+if (!state.doc) state.doc = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
 /* ---------------------------------------------------------------- first run */
 
@@ -1082,7 +1234,7 @@ function firstRun() {
   } catch { seen = true; }                 // no storage: do not loop on it
   if (seen || $("text").value.trim()) return;
   $("text").value = SAMPLES.markdown;
-  state.seed = newSeed();
+  newDocument();
   count();
   clearTimeout(state.timer);                 // render now, not again a moment later
   $("welcome").hidden = false;
@@ -1096,7 +1248,7 @@ $("welcomeStart").addEventListener("click", () => {
   closeWelcome();
   $("text").value = "";
   state.title = null;
-  state.seed = newSeed();
+  newDocument();
   state.id = null; state.pages = 0; state.rendered = null; state.statusLine = null;
   $("page").hidden = true; $("pager").hidden = true; $("strip").hidden = true;
   $("empty").hidden = false;

@@ -98,14 +98,15 @@
           <span class="pdfstrip__name" id="pdfName"></span>
           <select id="converter" class="mini" aria-label="How to read the PDF">
             {% for c in converters %}
-            <option value="{{ c.name }}" {% if not c.ready %}disabled{% endif %}>
-              {{ c.label }}{% if not c.ready %} - {{ c.reason }}{% endif %}
+            <option value="{{ c.name }}" {% if not c.ready %}disabled{% endif %}
+                    {% if c.name == "auto" %}selected{% endif %}>
+              {{ c.label }}{% if not c.ready %} ({{ c.reason }}){% endif %}
             </option>
             {% endfor %}
           </select>
-          <input type="text" id="pageRange" class="mini mini--slim" placeholder="all"
+          <input type="text" id="pageRange" class="mini mini--slim" placeholder="all pages"
                  aria-label="Page range, for example 1-10" />
-          <button class="btn btn--sm" id="read">Read it</button>
+          <button class="btn btn--sm" id="read">Read again</button>
           <button class="iconbtn" id="pdfClear" aria-label="Remove file">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                  stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
@@ -308,6 +309,27 @@
       </div>
     </div>
 
+    <!-- on a phone: the next action at the thumb, and the settings as a sheet -->
+    <div class="mbar" id="mbar">
+      <button class="btn btn--sm btn--outline" id="mSettings" aria-haspopup="dialog"
+              aria-controls="settingsSheet" aria-expanded="false">Look &amp; pen</button>
+      <span class="mbar__gap"></span>
+      <a class="btn btn--sm btn--outline" id="mDownload" download hidden>PDF</a>
+      <button class="btn btn--sm" id="mRender">Render</button>
+    </div>
+    <div class="sheet" id="settingsSheet" hidden role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+      <div class="sheet__veil" id="sheetVeil"></div>
+      <div class="sheet__box">
+        <div class="sheet__head">
+          <b id="sheetTitle">Look, pen and size</b>
+          <button class="iconbtn" id="sheetClose" aria-label="Close">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                 stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div class="sheet__body" id="sheetBody"></div>
+      </div>
+    </div>
   </main>
 </div>
 
@@ -324,6 +346,7 @@
 <input type="file" id="file" accept="application/pdf,.pdf" hidden aria-label="Choose a PDF" />
 
 <script src="{{ url_for('static', filename='app.js') }}"
-        data-max-chars="{{ max_chars }}" data-page-size="{{ page_size }}"></script>
+        data-max-chars="{{ max_chars }}" data-page-size="{{ page_size }}"
+        data-render-ttl="{{ render_ttl }}"></script>
 </body>
 </html>

@@ -526,7 +526,8 @@ def studio():
     # page_size goes down too, so the editor can say how much paper the text is
     # before anyone waits for a render.
     return render_template("studio.html", converters=converters.available(),
-                           max_chars=render_limit(), page_size=page_size())
+                           max_chars=render_limit(), page_size=page_size(),
+                           render_ttl=RENDER_TTL)
 
 
 @app.post("/api/convert")
@@ -556,7 +557,7 @@ def api_convert():
     path = folder / name
     upload.save(path)
 
-    converter = request.form.get("converter", "pymupdf")
+    converter = request.form.get("converter", "auto")
     page_spec = request.form.get("pages", "")
 
     def work(progress):
@@ -600,7 +601,20 @@ def api_convert():
             notes.append(f"That is roughly {estimate} handwritten pages, "
                          "so rendering will take a while.")
 
+        # What came out, counted for the checklist the studio shows after a
+        # read: worth knowing at a glance, and where to look when checking it.
+        lines = result.markdown.splitlines()
+        found = {
+            "headings": sum(1 for l in lines if re.match(r"#{1,6}\s", l)),
+            "tables": sum(1 for l in lines
+                          if re.match(r"\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$", l)),
+            "equations": len(re.findall(r"!\[equations? ", result.markdown)),
+            "figures": len(re.findall(r"!\[(?!equations? )", result.markdown)),
+        }
+        labels = {c["name"]: c["label"] for c in converters.available()}
         response = {"markdown": result.markdown, "converter": result.converter,
+                    "converter_label": labels.get(result.converter, result.converter),
+                    "found": found,
                     "pages_converted": result.pages_converted,
                     "total_pages": result.total_pages, "scanned": result.scanned,
                     "truncated": result.truncated, "notes": notes,
@@ -811,6 +825,13 @@ def download_page(rid: str, n: int):
                      download_name=f"{stem} page {n}.png" if stem else f"page_{n}.png")
 
 
+def _log_converter_setup() -> None:
+    """Tell whoever runs the server how to enable what the studio shows as unavailable."""
+    for c in converters.available():
+        if not c["ready"] and c.get("setup"):
+            log.info("PDF converter %r unavailable; to enable it: %s", c["name"], c["setup"])
+
+
 def warm() -> None:
     """Do the first visitor's slow work before there is a first visitor.
 
@@ -832,6 +853,7 @@ def warm() -> None:
             t2h._load_words()
             t2h.Sheet().close()             # builds the default blank sheet
     import markdown_blocks  # noqa: F401  (pulls in markdown and bs4)
+    _log_converter_setup()
 
 
 if __name__ == "__main__":

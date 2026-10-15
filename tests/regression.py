@@ -585,6 +585,9 @@ if _PAPER:
             break
         _time.sleep(0.1)
     _md = _job.get("markdown", "")
+    check("a read reports what it found, for the checklist",
+          (_job.get("found") or {}).get("equations", 0) >= 1 and _job.get("converter_label"),
+          str(_job.get("found")) + " " + str(_job.get("converter_label")))
     _srcs = _re.findall(r"!\[[^\]]*\]\(([^)]+)\)", _md)
     check("converted Markdown names crops by relative path only",
           _srcs and all(s.startswith("eq_") and ":" not in s for s in _srcs),
@@ -787,6 +790,11 @@ check("the studio has a main landmark, a heading and a labelled editor",
       "<main" in _sb and "<h1" in _sb and 'id="text" spellcheck="false" aria-label=' in _sb)
 check("the studio offers a one-click PDF and a Fit control",
       'id="dlMain"' in _sb and 'id="zoomFit"' in _sb)
+check("the studio knows how long renders are kept, for the library's expiry line",
+      f'data-render-ttl="{app.RENDER_TTL}"' in _sb)
+check("the studio has a phone bar and a settings sheet with ids of their own",
+      'id="mbar"' in _sb and 'id="settingsSheet"' in _sb
+      and len(_re.findall(r'id="([^"]+)"', _sb)) == len(set(_re.findall(r'id="([^"]+)"', _sb))))
 check("the studio carries its first-run example note",
       'id="welcome"' in _sb and 'id="welcomeStart"' in _sb)
 
@@ -828,6 +836,36 @@ else:
     check("the same seed writes the same pages", False, "a render failed")
 _ns, _ = _app_render({"text": "No seed given."})
 check("a render without a seed is given one", _ns is not None and isinstance(_ns.get("seed"), int))
+
+# --- PDF reading speaks plainly and chooses for itself ----------------------
+_av = converters.available()
+check("converter choices are named in plain words",
+      [c["name"] for c in _av][0] == "auto"
+      # no setup commands for the person in the studio: no pip install, no
+      # environment variable names; those go to the server's log instead
+      and not any(_re.search(r"pip |[A-Z_]{4,}_KEY|set [A-Z]", c["label"] + c["reason"])
+                  for c in _av),
+      "; ".join(f"{c['label']} ({c['reason']})" for c in _av))
+_tmp_pdf = os.path.join(_tf.mkdtemp(prefix="t2h_pdf_"), "text.pdf")
+_doc = _pm.open()
+_pg = _doc.new_page()
+_pg.insert_text((72, 72), "A text PDF with a real text layer.", fontsize=12)
+_doc.save(_tmp_pdf)
+_doc.close()
+check("Automatic reads a text PDF as text", converters.choose(_tmp_pdf) == "pymupdf")
+with open(_tmp_pdf, "rb") as _fh:
+    _r = _client.post("/api/convert", data={"file": (_fh, "text.pdf")},
+                      content_type="multipart/form-data")
+_cj = _r.get_json()["job"]
+for _ in range(300):
+    _cv_job = _client.get(f"/api/job/{_cj}").get_json()
+    if _cv_job["state"] != "running":
+        break
+    _tm.sleep(0.1)
+check("a PDF read with no choice made uses Automatic",
+      _cv_job["state"] == "done" and _cv_job.get("converter") == "pymupdf"
+      and _cv_job.get("converter_label") == "Text PDF" and "found" in _cv_job,
+      str({k: _cv_job.get(k) for k in ("state", "converter", "converter_label", "error")}))
 
 _h = _client.get("/healthz")
 check("health check answers", _h.status_code == 200 and _h.get_json()["ok"], str(_h.get_json()))
