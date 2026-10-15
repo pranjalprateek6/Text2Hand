@@ -510,6 +510,18 @@ try:
 finally:
     t2h.SCAN_SKEW = _skew
 
+# --- the hand tires over the document, not just down the page --------------
+_fs = t2h.Sheet.__new__(t2h.Sheet)
+_fs.height, _fs.baseline = t2h._template().size[1], t2h.MARGIN_T + t2h.LINE_HEIGHT
+_tops = []
+for _fs.count in range(8):
+    _tops.append(_fs._fatigue())
+_fs.baseline = _fs.height - t2h.MARGIN_B
+check("each page starts more tired than the one before",
+      _tops[0] == 0 and all(a < b for a, b in zip(_tops, _tops[1:])), [round(v, 3) for v in _tops])
+check("tiredness carried over stays bounded, and the foot is still 1",
+      _tops[-1] < t2h.FATIGUE_CARRY and abs(_fs._fatigue() - 1) < 1e-9, round(_tops[-1], 3))
+
 # --- word images follow the hand size --------------------------------------
 _ws = {}
 for _mm in (2.5, 3.5):

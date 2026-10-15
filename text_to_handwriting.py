@@ -178,6 +178,8 @@ UNDERLINE_WIDTH = 4
 FATIGUE = True
 FATIGUE_JITTER = 0.7                    # extra rotation and wobble by the page foot
 FATIGUE_GROWTH = 0.05                   # how much letters swell by the page foot
+FATIGUE_CARRY = 0.35                    # how tired a page of a long document starts, at most
+FATIGUE_PAGES = 4.0                     # pages over which that tiredness builds
 CORRECTIONS = False                     # off by default: it writes real mistakes
 CORRECTION_RATE = 0.012                 # chance per eligible word
 
@@ -1499,12 +1501,22 @@ class Sheet:
         return int(offset)
 
     def _fatigue(self) -> float:
-        """0 at the top of the page, 1 at the foot."""
+        """How tired the hand is: 1 at the foot of any page.
+
+        Within a page it climbs from the top to the foot. A writer also tires
+        over a whole document, so the top of each later page starts a little
+        more tired than the one before, up to FATIGUE_CARRY; the pause at the
+        page turn is the rest, which is why a page never starts as tired as
+        the last one ended. It depends only on the page number and the line,
+        so the same seed still writes the same pages.
+        """
         if not FATIGUE:
             return 0.0
         top = MARGIN_T + LINE_HEIGHT
         bottom = self.height - MARGIN_B
-        return min(1.0, max(0.0, (self.baseline - top) / max(1, bottom - top)))
+        down = min(1.0, max(0.0, (self.baseline - top) / max(1, bottom - top)))
+        start = FATIGUE_CARRY * (1 - math.exp(-self.count / FATIGUE_PAGES))
+        return start + (1 - start) * down
 
     def strike(self, x0: float, x1: float) -> None:
         """Cross out what was just written."""
