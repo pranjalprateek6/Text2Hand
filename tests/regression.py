@@ -487,17 +487,25 @@ check("an ordinary page keeps full resolution",
 # --- writing stays inside the right margin ---------------------------------
 # Fatigue grows the hand down the page and every glyph adds kerning jitter, so
 # lines wrapped against the bare measurement used to run ~90px past the margin.
-# A long URL has no space to break at and ran clean off the paper.
+# A long URL has no space to break at and ran clean off the paper. Kerning
+# drawn independently per glyph also added up along a line and ran ~25px over
+# for about 1 seed in 50; it is now bounded. Seeded, so the check is the same
+# every run (over 200 seeds the worst is now 4px).
+import random as _rnd
+
 _skew, t2h.SCAN_SKEW = t2h.SCAN_SKEW, 0
 try:
     _text = ("A line of ordinary prose that wraps several times across the page. " * 60
              + "\n\nhttps://example.com/a/very/long/path/that/never/ends/and/keeps/"
                "going/on/and/on/forever/index.html")
     _over = -9999
-    for _p in t2h.render_pages(_text)[0]:
-        _a = _np.asarray(_p.convert("L"))
-        _cols = _np.where((_a[:, :_a.shape[1] - 60] < 110).any(axis=0))[0]
-        _over = max(_over, int(_cols.max()) - (_a.shape[1] - t2h.MARGIN_R))
+    for _seed in (0, 20, 137):   # 20 and 137 were the worst before the fix
+        t2h.reset_jitter_pools()
+        _rnd.seed(_seed)
+        for _p in t2h.render_pages(_text)[0]:
+            _a = _np.asarray(_p.convert("L"))
+            _cols = _np.where((_a[:, :_a.shape[1] - 60] < 110).any(axis=0))[0]
+            _over = max(_over, int(_cols.max()) - (_a.shape[1] - t2h.MARGIN_R))
     check("no ink runs past the right margin", _over <= 20, f"furthest {_over}px past")
 finally:
     t2h.SCAN_SKEW = _skew
