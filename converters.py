@@ -53,7 +53,7 @@ def _cache_ocr_probe() -> None:
         from pymupdf4llm.helpers import document_layout as dl
         if not getattr(dl.select_ocr_function, "_t2h_cached", False):
             cached = cache(dl.select_ocr_function)
-            cached._t2h_cached = True
+            cached._t2h_cached = True  # type: ignore[attr-defined]
             dl.select_ocr_function = cached
     except Exception:
         pass                # older or newer pymupdf4llm: just stay slow
@@ -412,7 +412,7 @@ def _safe_dpi(rect, dpi: int) -> int:
     return min(dpi, fit)
 
 
-def _equation_regions(page) -> list:
+def _equation_regions(page) -> tuple[list, dict[int, list], dict[int, list]]:
     """Bounding boxes of display-equation lines on a page, merged into groups.
 
     A line counts as an equation line when none of its characters come from a
@@ -581,7 +581,7 @@ def _excise_equations(doc, number: int, assets_dir: str,
         replacements[token] = f"\n\n![{alt}]({ref})\n\n"
         # shrink the redaction below the padded crop, or it eats neighbours
         page.add_redact_annot(rect, text=token, fontsize=7)
-    page.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_NONE)
+    page.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_NONE)  # type: ignore[attr-defined]
     return replacements
 
 
@@ -616,7 +616,7 @@ def _page_pymupdf(doc, number: int, ctx: dict | None = None) -> str:
                          pymupdf.Rect(clip.x1, clip.y0, box.x1, clip.y1)):
                 if not rest.is_empty:
                     piece.add_redact_annot(rest)
-            piece.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_PIXELS)
+            piece.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_PIXELS)  # type: ignore[attr-defined]
         md = pymupdf4llm.to_markdown(cut, show_progress=False)
     else:
         md = pymupdf4llm.to_markdown(doc, pages=[number], show_progress=False)

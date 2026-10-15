@@ -15,7 +15,7 @@ dependencies = [
 pdf = ["pymupdf4llm>=0.0.17"]
 ocr = ["pymupdf4llm>=0.0.17", "pytesseract>=0.3.10"]
 serve = ["gunicorn>=22; sys_platform != 'win32'", "waitress>=3.0; sys_platform == 'win32'"]
-dev = ["numpy>=1.26", "ruff>=0.6"]
+dev = ["numpy>=1.26", "ruff>=0.6", "mypy>=2.4"]
 
 [tool.ruff]
 line-length = 100
@@ -29,3 +29,15 @@ extend-exclude = [".claude", ".remember", "Text To Handwriting.py"]
 select = ["F", "B"]
 # zip(strict=) would be the fix, and these zips pair lists built to match
 ignore = ["B905"]
+
+[tool.mypy]
+# A baseline, not strict: it checks every function body (typed or not) for
+# real type errors, without asking for annotations the code does not have.
+python_version = "3.10"
+files = ["app.py", "render_core.py", "render_pool.py", "converters.py",
+         "markdown_blocks.py", "text_to_handwriting.py", "wsgi.py"]
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+# pymupdf, pytesseract and the optional cloud SDKs ship no type information
+ignore_missing_imports = true

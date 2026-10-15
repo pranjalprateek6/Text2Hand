@@ -41,6 +41,7 @@ import os
 import random
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 
 from PIL import Image, ImageChops, ImageDraw
 
@@ -54,7 +55,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 FONT_DIR = os.path.join(_HERE, "myfont")    # folder of glyph images
 WORD_DIR = os.path.join(_HERE, "wordfont")  # whole-word images, used in preference to letters
 USE_WORDS = True                        # False renders everything letter by letter
-WORD_SCALE: float | None = None          # None derives it from the glyphs at runtime
+WORD_SCALE: float = None  # type: ignore[assignment]         # None derives it from the glyphs at runtime
 BG_PATH = os.path.join(FONT_DIR, "bg.png")
 OUT_DIR = "out"
 DEFAULT_INPUT = os.path.join(_HERE, "dummy.txt")
@@ -65,8 +66,8 @@ MARGIN_L, MARGIN_T, MARGIN_R, MARGIN_B = 150, 100, 150, 100
 # Metrics. Left as None => derived automatically from your glyph images, so the
 # engine adapts to whatever scale your handwriting was scanned at. Override with
 # a number to force a value.
-LINE_HEIGHT: int | None = None          # vertical distance between writing lines
-SPACE_WIDTH: int | None = None          # width of a space character
+LINE_HEIGHT: int = None  # type: ignore[assignment]         # vertical distance between writing lines
+SPACE_WIDTH: int = None  # type: ignore[assignment]         # width of a space character
 
 # Handwriting is specified in millimetres, the way ruled paper is, and turned
 # into pixels from the page width. Set any of these to None to fall back to
@@ -252,7 +253,7 @@ def _prepare(path: str) -> Image.Image:
         im = im.crop(bbox)
     if GLYPH_SCALE != 1.0:                # resize once here, so all metrics follow
         im = im.resize((max(1, round(im.width * GLYPH_SCALE)),
-                        max(1, round(im.height * GLYPH_SCALE))), Image.LANCZOS)
+                        max(1, round(im.height * GLYPH_SCALE))), Image.Resampling.LANCZOS)
     if INK_COLOR is not None:
         # Recolor the stroke to a single pen color, keeping alpha (which still
         # encodes stroke darkness), so faint strokes read as lighter ink.
@@ -339,7 +340,7 @@ def _load_words() -> dict[str, tuple[Image.Image, int]]:
     return _words
 
 
-_INK_LEVEL: float | None = None         # mean stroke darkness of the letter glyphs
+_INK_LEVEL: float = None  # type: ignore[assignment]        # mean stroke darkness of the letter glyphs
 _INK_GAIN_MAX = 1.45                    # never darken a faint word more than this
 
 
@@ -376,7 +377,7 @@ def _baseline_of(im: Image.Image) -> int:
     """
     alpha = im.getchannel("A")
     width, height = alpha.size
-    pixels = alpha.load()
+    pixels: Any = alpha.load()
 
     # Ink per row. Above the line every letter contributes; below it only the
     # descenders do, so the profile falls off a cliff at the baseline. Taking
@@ -624,8 +625,8 @@ def _skew_bands(page: Image.Image, angle: float, fill, bands: int) -> list:
     def make(y0: int):
         bh = min(step, h - y0)
         m = (a, b, c + b * y0, d, e, f + e * y0)
-        return lambda: page.transform((w, bh), Image.AFFINE, m,
-                                      Image.BICUBIC, fillcolor=fill)
+        return lambda: page.transform((w, bh), Image.Transform.AFFINE, m,
+                                      Image.Resampling.BICUBIC, fillcolor=fill)
 
     return [(y0, make(y0)) for y0 in range(0, h, step)]
 
@@ -673,12 +674,12 @@ def _jitter_word(im: Image.Image, base: int, size: float, boost: float,
 
     if abs(size - 1.0) > 0.01:
         im = im.resize((max(1, round(im.width * size)),
-                        max(1, round(im.height * size))), Image.LANCZOS)
+                        max(1, round(im.height * size))), Image.Resampling.LANCZOS)
         base = int(base * size)
     # The same jitter a single glyph gets, applied to the word as one piece.
     if ROT_JITTER:
         angle = random.uniform(-ROT_JITTER, ROT_JITTER) * 0.6 * boost
-        grown = im.rotate(angle, resample=Image.BICUBIC, expand=True)
+        grown = im.rotate(angle, resample=Image.Resampling.BICUBIC, expand=True)
         base += (grown.height - im.height) // 2
         im = grown
     pool.append((im, base))
@@ -696,11 +697,11 @@ def _jitter(im: Image.Image, scale: float = 1.0, boost: float = 1.0) -> Image.Im
     s = scale * (1 + random.uniform(-SCALE_JITTER, SCALE_JITTER)) if SCALE_JITTER else scale
     if s != 1.0:
         g = g.resize((max(1, round(g.width * s)), max(1, round(g.height * s))),
-                     Image.LANCZOS)
+                     Image.Resampling.LANCZOS)
     if ROT_JITTER:
         rot = ROT_JITTER * boost
         g = g.rotate(random.uniform(-rot, rot),
-                     resample=Image.BICUBIC, expand=True)
+                     resample=Image.Resampling.BICUBIC, expand=True)
     return g
 
 
@@ -713,7 +714,7 @@ def _ident(im: Image.Image) -> str:
     h = getattr(im, "_t2h_ident", None)
     if h is None:
         h = hashlib.sha1(im.mode.encode() + repr(im.size).encode() + im.tobytes()).hexdigest()[:16]
-        im._t2h_ident = h
+        im._t2h_ident = h  # type: ignore[attr-defined]
     return h
 
 
@@ -754,7 +755,7 @@ def _noise_window(w: int, h: int, sigma: int, rgb: bool, rng) -> Image.Image:
     return field.crop((ox, oy, ox + w, oy + h))
 
 
-def _texture_layer(w: int, h: int, rng) -> tuple[Image.Image, float]:
+def _texture_layer(w: int, h: int, rng) -> tuple[Image.Image | None, float]:
     """One pre-mixed grain-and-mottle layer, and the weight to blend it at.
 
     Applying grain and then mottle means two passes over a 30 MB page. Mixing
@@ -780,7 +781,7 @@ def _texture_layer(w: int, h: int, rng) -> tuple[Image.Image, float]:
     if b:
         sw, sh = max(1, w // 12), max(1, h // 12)
         mottle = _noise_window(sw, sh, PAPER_NOISE, False, rng)
-        mottle = mottle.resize((w, h), Image.BILINEAR).convert("RGB")
+        mottle = mottle.resize((w, h), Image.Resampling.BILINEAR).convert("RGB")
         layer = Image.blend(grain, mottle, mw / total)
     else:
         layer = grain
@@ -909,7 +910,7 @@ def derive_metrics() -> None:
 # the two most recent looks are kept, since each costs ~90 MB.
 _blank_pools: dict[tuple, list[Image.Image]] = {}
 _PAPER_RNG = random.Random()            # the paper's own randomness; see _new_page
-_templates: dict[str, Image.Image] = {}
+_templates: dict[tuple, Image.Image] = {}
 _BLANK_LOOKS = 2
 
 
@@ -943,7 +944,7 @@ def _template() -> Image.Image:
             grow = max(want[0] / base.width, want[1] / base.height, 1.0)
             if grow > 1.0:
                 base = base.resize((round(base.width * grow), round(base.height * grow)),
-                                   Image.BICUBIC)
+                                   Image.Resampling.BICUBIC)
             base = base.crop((0, 0) + want)
         _templates[key] = base
     return _templates[key]
@@ -980,11 +981,11 @@ class Sheet:
         self._last = ""                       # last character written, for quote direction
         self._in_quote = False                # inside a quotation, for quote direction
         self._blanks = _blank_pool()            # prepared sheets, copied per page
-        self.page = None                      # only ever set while a page is painted
+        self.page: Image.Image | None = None  # only ever set while a page is painted
         self._open = False                    # a page is in progress
-        self._blank = None                    # the sheet it is written on
+        self._blank: Image.Image | None = None  # the sheet it is written on
         self._cmds: list = []                 # what to paint on it, in order
-        self._skew_pool = None
+        self._skew_pool: ThreadPoolExecutor | None = None
         self._line_x0, self._slope, self._word_shift = 0, 0.0, 0
         self._kern_last = 0.0
         self._pressure = 1.0
@@ -1020,6 +1021,7 @@ class Sheet:
         the pen pressure on each letter in particular, is most of what a
         page costs once its layout is known.
         """
+        assert self._blank is not None        # a page is open
         self.page = self._blank.copy()        # the sheet is kept clean to reuse
         draw = ImageDraw.Draw(self.page)
         for cmd in self._cmds:
@@ -1106,14 +1108,14 @@ class Sheet:
             # under it. Printed lighter than ruling, as squared pads are.
             step = LINE_HEIGHT / 2
             colour = tuple(min(255, c + (255 - c) // 3) for c in RULE_COLOR)
-            y = MARGIN_T + LINE_HEIGHT + RULE_OFFSET
+            y: float = MARGIN_T + LINE_HEIGHT + RULE_OFFSET
             while y - step >= 60:
                 y -= step
             top = y
             while y <= self.height - 60:
                 draw.line([(x0, round(y)), (x1, round(y))], fill=colour, width=RULE_WIDTH)
                 y += step
-            x = x0
+            x: float = x0
             while x <= x1:
                 draw.line([(round(x), round(top)), (round(x), round(y - step))],
                           fill=colour, width=RULE_WIDTH)
@@ -1144,13 +1146,15 @@ class Sheet:
         into the sheet, so a half-transparent edge came out a quarter, and
         where two strokes overlapped the second one cut into the first.
         """
-        if self.page.mode == "RGBA" and x >= 0 and y >= 0:
-            w = min(im.width, self.page.width - x)
-            h = min(im.height, self.page.height - y)
+        page = self.page
+        assert page is not None               # only called while painting
+        if page.mode == "RGBA" and x >= 0 and y >= 0:
+            w = min(im.width, page.width - x)
+            h = min(im.height, page.height - y)
             if w > 0 and h > 0:
-                self.page.alpha_composite(im, (x, y), (0, 0, w, h))
+                page.alpha_composite(im, (x, y), (0, 0, w, h))
         else:
-            self.page.paste(im, (x, y), im)
+            page.paste(im, (x, y), im)
 
     @property
     def right(self) -> int:
@@ -1186,7 +1190,7 @@ class Sheet:
             self._new_page()
 
     def _pen(self) -> tuple[int, int, int]:
-        return tuple(INK_COLOR) if INK_COLOR else (25, 30, 60)
+        return tuple(INK_COLOR) if INK_COLOR else (25, 30, 60)  # type: ignore[return-value]
 
     def _pen_stroke(self, x0: float, y: float, x1: float, width: int) -> None:
         """A wobbly horizontal pen stroke, used for underlines and rules."""
@@ -1264,11 +1268,11 @@ class Sheet:
         if width > column * EQ_MAX_WIDTH:
             scale *= column * EQ_MAX_WIDTH / width
         alpha = alpha.resize((max(1, round(alpha.width * scale)),
-                              max(1, round(alpha.height * scale))), Image.LANCZOS)
+                              max(1, round(alpha.height * scale))), Image.Resampling.LANCZOS)
 
         ink = Image.new("RGBA", alpha.size, tuple(INK_COLOR or (20, 26, 66)) + (0,))
         ink.putalpha(alpha)
-        ink = ink.rotate(random.uniform(-0.8, 0.8), resample=Image.BICUBIC, expand=True)
+        ink = ink.rotate(random.uniform(-0.8, 0.8), resample=Image.Resampling.BICUBIC, expand=True)
 
         lines = max(1, math.ceil(ink.height / LINE_HEIGHT))
         if self.baseline + LINE_HEIGHT * lines > self.height - MARGIN_B:
@@ -1539,7 +1543,7 @@ class Sheet:
         flipped = False
         if ch in MIRRORED_OPENING:
             if self._opening():
-                chosen = chosen.transpose(Image.FLIP_LEFT_RIGHT)
+                chosen = chosen.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
                 flipped = True
             if ch == '"':
                 self._in_quote = not self._in_quote
@@ -1827,10 +1831,10 @@ def render_markdown(md_text: str, on_page=None, reuse=None) -> Sheet:
             continue
 
         if block.kind == "table":
-            row = "   ".join(block.cells)
-            track(row)
+            joined = "   ".join(block.cells)
+            track(joined)
             left = MARGIN_L + INDENT_STEP // 2
-            flow(row.split(), left, sheet.right - left)
+            flow(joined.split(), left, sheet.right - left)
             continue
 
         track(block.text)                              # paragraph

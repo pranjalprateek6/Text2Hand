@@ -27,6 +27,7 @@ import time
 import uuid
 import zipfile
 from pathlib import Path
+from typing import Any
 
 from flask import Flask, abort, jsonify, render_template, request, send_file
 from PIL import Image
@@ -51,7 +52,7 @@ app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 # client could claim any address it liked in X-Forwarded-For.
 if os.environ.get("T2H_TRUST_PROXY") == "1":
     from werkzeug.middleware.proxy_fix import ProxyFix
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)  # type: ignore[method-assign]
 
 # What a page may load and run. Everything the app serves is its own, scripts
 # included (no inline script, no eval); styles may be inline because the
@@ -87,7 +88,7 @@ def _headers(response):
 def _static_version(endpoint, values):
     """Give every static link its file's version, so caching it is safe."""
     if endpoint == "static" and "filename" in values and "v" not in values:
-        path = Path(app.static_folder) / values["filename"]
+        path = Path(app.static_folder or "static") / values["filename"]
         try:
             values["v"] = int(path.stat().st_mtime)
         except OSError:
@@ -679,7 +680,7 @@ def api_render():
     base_id = str(data.get("base") or "")
     base = RENDER_ROOT / base_id if base_id.isalnum() and (RENDER_ROOT / base_id).is_dir() else None
 
-    opts = {
+    opts: dict[str, Any] = {
         "base": base,
         "seed": seed,
         "ruled": ruled,
