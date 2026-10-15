@@ -984,6 +984,7 @@ class Sheet:
         self._cmds: list = []                 # what to paint on it, in order
         self._skew_pool = None
         self._line_x0, self._slope, self._word_shift = 0, 0.0, 0
+        self._kern_last = 0.0
         self._pressure = 1.0
         # What has been drawn on the page in progress, op by op, and the
         # first words written on it. The ops are the page's fingerprint: two
@@ -1314,7 +1315,7 @@ class Sheet:
         y = self.baseline - base + self._word_shift + self._drift()
         self._ops.append(("w", int(self.x), int(y), _ident(image), round(self._pressure, 6)))
         self._stamp(image, int(self.x), int(y), self._pressure)
-        self.x += image.width + random.randint(*KERN_JITTER)
+        self.x += image.width + self._kern()
         self._last = core[-1]                 # a whole word skips put(), so record it here
 
         for ch in tail:                       # comma, full stop, closing bracket
@@ -1439,6 +1440,24 @@ class Sheet:
         self.scale = 1.0
         self.newline(left, advance=max(1.0, scale))
 
+    def _kern(self) -> int:
+        """The extra space after a letter or word: irregular, but not adding up.
+
+        Each gap used to be drawn on its own from KERN_JITTER, so over the
+        sixty-odd letters of a line the extra space wandered by +-17 px or
+        more, and a line that fit on average ran 25 px past the margin now and
+        then. Each gap is now the average plus the difference of two
+        successive draws: every gap still varies across the same range, but
+        the random parts cancel along the line, so the line as a whole is
+        never more than a few pixels longer than it was measured to be.
+        """
+        lo, hi = KERN_JITTER
+        spread = (hi - lo) / 4
+        draw = random.uniform(-spread, spread)
+        gap = (lo + hi) / 2 + draw - self._kern_last
+        self._kern_last = draw
+        return int(round(gap))
+
     def _start_line(self) -> None:
         """Give the line about to be written its own drift and slope.
 
@@ -1449,6 +1468,8 @@ class Sheet:
         downhill as a whole, the way a hand drifts off the rule.
         """
         self._line_x0 = self.x
+        self._kern_last = random.uniform(-(KERN_JITTER[1] - KERN_JITTER[0]) / 4,
+                                          (KERN_JITTER[1] - KERN_JITTER[0]) / 4)
         self._drift_phase = random.uniform(0, 2 * math.pi)
         self._drift_step = random.uniform(0.035, 0.075)
         self._slope = (math.tan(math.radians(random.uniform(-LINE_SLOPE, LINE_SLOPE)))
@@ -1527,7 +1548,7 @@ class Sheet:
         pressure = max(INK_MIN * 0.9, own)
         self._ops.append(("c", x, y, _ident(g), round(pressure, 6)))
         self._stamp(g, x, y, pressure)
-        self.x += advance + random.randint(*KERN_JITTER)
+        self.x += advance + self._kern()
         self._last = ch
 
     def _opening(self) -> bool:
