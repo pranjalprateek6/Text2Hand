@@ -98,6 +98,25 @@ def main() -> int:
     check("cancel stops a worker render", job["state"] == "cancelled",
           f"{job['state']} in {time.perf_counter() - t:.2f}s")
 
+    # the same seed writes the same page whichever worker takes it: two at
+    # once land on different workers
+    seeded: dict = {}
+    same = {"text": "One hand, whichever worker writes it. " * 40, "seed": 99,
+            "texture": False}
+    pair = [threading.Thread(target=run, args=(same, seeded, k)) for k in ("a", "b")]
+    for th in pair:
+        th.start()
+    for th in pair:
+        th.join()
+
+    def grey(job):
+        data = client.get(f"/preview/{job['id']}/1.jpg").data
+        return list(Image.open(io.BytesIO(data)).convert("L").tobytes())
+
+    check("workers write the same page from the same seed",
+          seeded["a"]["state"] == seeded["b"]["state"] == "done"
+          and grey(seeded["a"]) == grey(seeded["b"]))
+
     # a worker failure arrives as an error, not a hang
     _job = client.post("/api/render", json={"text": "fine"}).get_json()
     check("worker still serves after a cancel", _job.get("job") is not None)

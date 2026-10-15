@@ -520,6 +520,19 @@ _jitter_pool: dict[tuple, list[Image.Image]] = {}
 _jitter_pooled = 0                      # images currently held, to bound memory
 
 
+def reset_jitter_pools() -> None:
+    """Forget the jittered copies kept from earlier renders.
+
+    A copy is reused at random once a pool is full, so what a page looks like
+    depended on every render the process had done before. A render that is
+    meant to come out the same each time starts from empty pools.
+    """
+    global _jitter_pooled
+    _jitter_pool.clear()
+    _word_pool.clear()
+    _jitter_pooled = 0
+
+
 def reset_glyph_caches() -> None:
     """Drop every cached glyph, the prepared words, and the jitter pool.
 
@@ -879,6 +892,7 @@ def derive_metrics() -> None:
 # render's. Keyed by everything that changes how a blank sheet looks, and only
 # the two most recent looks are kept, since each costs ~90 MB.
 _blank_pools: dict[tuple, list[Image.Image]] = {}
+_PAPER_RNG = random.Random()            # the paper's own randomness; see _new_page
 _templates: dict[str, Image.Image] = {}
 _BLANK_LOOKS = 2
 
@@ -1000,15 +1014,19 @@ class Sheet:
         # and the rest are copies of those. Copying 30 MB costs a fraction of
         # retexturing it, and grain that repeats every sixth sheet is not
         # something a reader can find.
+        # The paper draws on a random source of its own. Whether a sheet is
+        # built or reused depends on what earlier renders left in the pool, and
+        # drawing that from the writing's random source made the same seed
+        # write different letters depending on the process's history.
         if len(self._blanks) < self.PAGE_POOL:
             blank = self.template.copy()
             if PAPER_TEXTURE and not TRANSPARENT:
-                blank = add_paper_texture(blank)
+                blank = add_paper_texture(blank, rng=_PAPER_RNG)
             if (RULED or GRID) and not TRANSPARENT:
                 self._draw_ruling(blank)
             self._blanks.append(blank)
         else:
-            blank = random.choice(self._blanks)
+            blank = _PAPER_RNG.choice(self._blanks)
         self.page = blank.copy()               # the sheet is kept clean to reuse
         _report("page", self.count + 1)
         self.x = MARGIN_L

@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import random
 import re
 import shutil
 import tempfile
@@ -232,13 +233,14 @@ def _on_white(page: Image.Image) -> Image.Image:
 
 def _render(text: str, ruled: bool, texture: bool, skew: bool, as_markdown: bool,
             ink: str = "blue-black", size: str = "normal", on_progress=None,
-            on_ready=None, paper: str = "ruled", sheet: str = "a4"):
+            on_ready=None, paper: str = "ruled", sheet: str = "a4",
+            seed: int | None = None):
     """Render text to a fresh folder and return (render_id, page_count, missing)."""
     rid = uuid.uuid4().hex[:12]
     folder = RENDER_ROOT / rid
     folder.mkdir(parents=True, exist_ok=True)
     opts = {"ruled": ruled, "texture": texture, "skew": skew, "as_markdown": as_markdown,
-            "ink": ink, "size": size, "paper": paper, "sheet": sheet}
+            "ink": ink, "size": size, "paper": paper, "sheet": sheet, "seed": seed}
     ready = (lambda n: on_ready(rid, n)) if on_ready else None
     try:
         pool = _render_pool()
@@ -650,7 +652,15 @@ def api_render():
             "Convert a smaller page range, or trim the text."
         )), 400
 
+    # A document keeps its handwriting from render to render by sending the
+    # same seed; without one it gets a fresh hand, and is told which.
+    try:
+        seed = int(data["seed"]) % (2 ** 31)
+    except (KeyError, TypeError, ValueError):
+        seed = random.randrange(2 ** 31)
+
     opts = {
+        "seed": seed,
         "ruled": ruled,
         "paper": paper,
         "sheet": sheet,
@@ -679,7 +689,8 @@ def api_render():
 
         rid, count, missing, dropped = _render(text, on_progress=on_stage,
                                                on_ready=on_ready, **opts)
-        return {"id": rid, "pages": count, "missing": missing, "dropped": dropped[:30]}
+        return {"id": rid, "pages": count, "missing": missing, "dropped": dropped[:30],
+                "seed": seed}
 
     jid = _job_start("Laying out the text")
     _job_spawn(jid, work, "Could not render")

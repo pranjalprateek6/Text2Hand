@@ -583,3 +583,44 @@ select.mini {
 /* one row height for every group, so the captions line up */
 .grp > :last-child { min-height: 36px; display: flex; align-items: center; }
 .grp > select:last-child { display: block; height: 36px; }
+
+/* ---------------------------------------------------------- new handwriting */
+.reroll {
+  appearance: none; display: inline-flex; align-items: center; gap: 6px;
+  margin-right: 10px; padding: 4px 11px;
+  font: inherit; font-size: 12px; color: var(--foreground);
+  background: var(--background); border: 1px solid var(--border); border-radius: 999px;
+  cursor: pointer; white-space: nowrap;
+  transition: background 180ms var(--ease);
+}
+.reroll:hover { background: var(--secondary); }
+.reroll svg { width: 13px; height: 13px; }
+@media (max-width: 600px) { .reroll__label { display: none; } .reroll { padding: 6px; } }
+
+/* --------------------------------------------------------------- first run */
+.welcome {
+  flex: none;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px;
+  margin: 12px 14px 0; padding: 10px 10px 10px 14px;
+  border: 1px solid var(--border); border-left: 3px solid var(--foreground);
+  border-radius: 8px; background: var(--card);
+}
+.welcome__text { flex: 1 1 260px; font-size: 13.5px; color: var(--muted-foreground); }
+.welcome__text b { color: var(--foreground); font-weight: 600; }
+.welcome__close { margin-left: auto; }
+
+/* ------------------------------------------------------------- fit to pane */
+.zoom__fit {
+  width: auto; padding: 0 8px; font-size: 11.5px; font-family: var(--font-mono);
+  color: var(--muted-foreground);
+}
+.zoom__fit.is-on { color: var(--foreground); background: var(--secondary); }
+
+/* narrow screens: shorter labels, and the bar's buttons may wrap */
+.stale { white-space: nowrap; }
+.bar__acts { flex-wrap: wrap; row-gap: 8px; }
+@media (max-width: 600px) { .wide-only { display: none; } }
+/* on a phone the Preview tab already names this pane; its label is room */
+@media (max-width: 600px) { #previewLabel { display: none; } .stale { margin-left: 0; } }
+/* and the page strip under the preview does the pager's job there */
+@media (max-width: 600px) { #pager { display: none; } }

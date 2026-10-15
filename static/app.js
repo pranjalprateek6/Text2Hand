@@ -27,7 +27,16 @@ const state = {
   timer: null,        // auto-render debounce
   busy: false,
   queued: false,      // a change arrived while a render was running
+  seed: null,         // this document's handwriting; see newSeed
 };
+
+// A document keeps one handwriting from render to render: the same seed and
+// the same text write the same letters, so fixing a word on page six changes
+// that word, not every letter on every page. A new document, or the New
+// handwriting button, draws a new one.
+function newSeed() {
+  return Math.floor(Math.random() * 2 ** 31);
+}
 
 /* -------------------------------------------------------------------- views */
 
@@ -44,13 +53,42 @@ $("navLibrary").addEventListener("click", () => showView("library"));
 
 /* ------------------------------------------------------------------ options */
 
-const OPTIONS = { markdown: false, texture: true, skew: true };
+const OPTIONS = { texture: true, skew: true };
 let INK = "blue-black";
 let SIZE = "normal";
 let PAPER = "ruled";      // ruled, grid or plain
 let SHEET = "a4";         // a4 or letter
 
 $("paper").addEventListener("change", () => { PAPER = $("paper").value; touched(); });
+
+// How the text is read. Auto draws structure when the text is written in
+// Markdown and the text as it stands otherwise, so nobody has to know what
+// Markdown is to get headings and lists; the other two force one or the other.
+let READ = "auto";
+$("readAs").addEventListener("change", () => { READ = $("readAs").value; touched(); });
+
+function looksMarkdown(text) {
+  // A heading, a table rule, a fenced block or an image settles it; lists and
+  // quotes are common in plain text too, so it takes two of those.
+  let strong = 0, weak = 0;
+  for (const line of text.split("\n")) {
+    if (/^#{1,6}\s+\S/.test(line) || /^\s*```/.test(line) || /!\[[^\]]*\]\([^)]+\)/.test(line)
+        || /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line)) strong++;
+    else if (/^\s*([-*+]|\d+[.)])\s+\S/.test(line) || /^>\s?/.test(line)) weak++;
+    if (strong || weak >= 2) return true;
+  }
+  return false;
+}
+
+function asMarkdown() {
+  return READ === "markdown" || (READ === "auto" && looksMarkdown($("text").value));
+}
+
+// the Auto choice says what it decided, so its decision is never a surprise
+function showReading() {
+  const auto = $("readAs").querySelector('option[value="auto"]');
+  auto.textContent = `Auto: ${looksMarkdown($("text").value) ? "Markdown" : "plain text"}`;
+}
 $("sheet").addEventListener("change", () => { SHEET = $("sheet").value; touched(); });
 
 Object.keys(OPTIONS).forEach((key) => {
@@ -135,6 +173,9 @@ $("look").addEventListener("change", () => {
 });
 
 function setOptions(opts, ink) {
+  // entries saved before "Read as" had three choices carry only markdown on/off
+  READ = opts.read || (opts.markdown ? "markdown" : "auto");
+  $("readAs").value = READ;
   // entries saved before paper styles existed carry only "ruled"
   PAPER = opts.paper || (opts.ruled === false ? "plain" : "ruled");
   SHEET = opts.sheet || "a4";
@@ -186,6 +227,8 @@ function count() {
   $("count").textContent = n ? `${n.toLocaleString()} · ~${pages}p` : "0";
   $("count").classList.toggle("is-over", n > MAX_CHARS);
   $("tries").hidden = n > 0;
+  showReading();
+  syncAuto();
   // never rewrite the name mid-edit out from under the person typing it
   if (document.activeElement !== $("docTitle")) $("docTitle").textContent = title();
 }
@@ -243,7 +286,7 @@ document.querySelectorAll(".try").forEach((btn) => {
     if ($("text").value.trim() &&
         !(await ask("Replace what you've written with the sample?", "Replace"))) return;
     $("text").value = SAMPLES[which] || "";
-    if (OPTIONS.markdown !== (which === "markdown")) $("oMarkdown").click();
+    state.seed = newSeed();                 // a new document, a new hand
     count();
     touched();
     $("text").focus();
@@ -320,8 +363,8 @@ function payload() {
   return {
     text: $("text").value,
     paper: PAPER, sheet: SHEET, ruled: PAPER === "ruled",
-    texture: OPTIONS.texture, skew: OPTIONS.skew,
-    markdown: OPTIONS.markdown, ink: INK, size: SIZE,
+    texture: OPTIONS.texture, skew: OPTIONS.skew, seed: state.seed,
+    markdown: asMarkdown(), ink: INK, size: SIZE,
   };
 }
 
@@ -332,8 +375,20 @@ function markStale() {
   const stale = !!state.id && !state.busy && JSON.stringify(payload()) !== state.rendered;
   $("pages").classList.toggle("is-stale", stale);
   $("stale").hidden = !stale;
+  // Whichever is the next thing to do is the dark button: Download PDF when
+  // the page on screen is the current one, Render when it is not.
+  const current = !!state.id && !stale && !state.busy;
+  $("dlMain").hidden = !state.id;
+  $("dlMain").classList.toggle("btn--outline", !current);
+  $("render").classList.toggle("btn--outline", current);
 }
 $("stale").addEventListener("click", () => render());
+
+$("reroll").addEventListener("click", () => {
+  state.seed = newSeed();
+  if (state.busy) { touched(); return; }    // Auto picks it up, or the queue does
+  render();
+});
 
 function cancelJob() {
   // a press before the server has named the job is remembered, not lost
@@ -415,6 +470,11 @@ async function render() {
 
     state.id = done.id;
     state.pages = done.pages;
+    if (done.seed != null && body.seed == null) {
+      // an old draft rendered before documents had seeds: adopt the server's
+      state.seed = done.seed;
+      body.seed = done.seed;
+    }
     state.rendered = JSON.stringify(body);
     // Keep the reader's place: proofreading page 6, fixing a word and
     // re-rendering used to bounce back to page 1. show() clamps, so a render
@@ -506,6 +566,7 @@ function show(n) {
   $("dlZip").href = `/download/${state.id}/pages.zip${name}`;
   $("dlPagePng").href = `/download/${state.id}/page_${state.page}.png${name}`;
   $("dlPagePdf").href = `/download/${state.id}/page_${state.page}.pdf${name}`;
+  $("dlMain").href = $("dlPdf").href;
 
   // On a one-page render the whole document and this page are the same file,
   // and the zip is that one page in a wrapper. Offer the two artefacts that
@@ -542,25 +603,38 @@ $("liveCancel").addEventListener("click", cancelJob);
 $("prev").addEventListener("click", () => show(state.page - 1));
 $("next").addEventListener("click", () => show(state.page + 1));
 
-// The preview opens at 85%, which fits a whole page in the pane without a
-// scrollbar; each press moves 15%. show() never touches this, so the level
-// survives paging and re-renders. On a narrow screen 85% is wider than the
-// pane, so until someone zooms by hand it fits the page to the width instead.
+// The page is fitted to the pane: on a desktop the whole page in view, as
+// large as the pane's height allows, since the page is the thing being made;
+// on a phone, the screen's width. It used to open at a fixed 85% of 540px,
+// a third of a wide screen with dotted canvas all round it. Zooming by hand
+// takes over until Fit is pressed; each press moves 15%, and show() never
+// touches the level, so it survives paging and re-renders.
 let zoom = 0.85;
 let zoomedByHand = false;
 function applyZoom() {
   $("pages").style.setProperty("--zoom", zoom);
   $("zoomOut").disabled = zoom < 0.41;
   $("zoomIn").disabled = zoom > 1.95;
+  $("zoomFit").classList.toggle("is-on", !zoomedByHand);
+}
+function pageAspect() {
+  const p = $("page");
+  return p.naturalWidth ? p.naturalHeight / p.naturalWidth : 3722 / 2632;
 }
 function fitZoom() {
   if (zoomedByHand) return;
-  const room = $("pages").clientWidth - 52;          // the pane's padding
-  zoom = room > 0 ? Math.max(0.4, Math.min(0.85, room / 540)) : 0.85;
+  const pane = $("pages");
+  const wide = (pane.clientWidth - 52) / 540;          // 52: the pane's padding
+  const tall = (pane.clientHeight - 52) / (540 * pageAspect());
+  if (wide <= 0) { zoom = 0.85; applyZoom(); return; }
+  const z = narrow.matches || tall <= 0 ? Math.min(0.85, wide) : Math.min(wide, tall);
+  zoom = Math.max(0.4, Math.min(2.05, z));
   applyZoom();
 }
 $("zoomIn").addEventListener("click", () => { zoomedByHand = true; zoom = Math.min(2.05, zoom + 0.15); applyZoom(); });
 $("zoomOut").addEventListener("click", () => { zoomedByHand = true; zoom = Math.max(0.40, zoom - 0.15); applyZoom(); });
+$("zoomFit").addEventListener("click", () => { zoomedByHand = false; fitZoom(); });
+$("page").addEventListener("load", fitZoom);         // a Letter page is a different shape
 window.addEventListener("resize", fitZoom);
 fitZoom();
 
@@ -578,12 +652,20 @@ $("pageN").addEventListener("keydown", (e) => {
 
 /* ------------------------------------------------------------- auto render */
 
-// Overleaf-style: when Auto is on, a pause after a change re-renders. Off by
-// default because every render is real work on the server, and remembered
-// because a preference that resets is a nag.
-$("auto").checked = localStorage.getItem("t2h.auto") === "1";
+// Overleaf-style: when Auto is on, a pause after a change re-renders. Until
+// someone chooses, it is on for a short document, where a render is quick and
+// the page simply keeps up with the typing, and off for a long one, where
+// every pause would set off a long render. A choice made by hand is kept.
+const AUTO_KEY = "t2h.auto";
+function autoChoice() {
+  try { return localStorage.getItem(AUTO_KEY); } catch { return null; }
+}
+function syncAuto() {
+  const chosen = autoChoice();
+  $("auto").checked = chosen === null ? $("text").value.length <= 3 * PAGE_SIZE : chosen === "1";
+}
 $("auto").addEventListener("change", () => {
-  localStorage.setItem("t2h.auto", $("auto").checked ? "1" : "0");
+  try { localStorage.setItem(AUTO_KEY, $("auto").checked ? "1" : "0"); } catch {}
   touched();
 });
 
@@ -631,14 +713,14 @@ async function remember(done, body) {
     });
   } catch { /* a library entry without a picture still works */ }
 
-  const opts = { markdown: body.markdown, paper: body.paper, sheet: body.sheet,
+  const opts = { markdown: body.markdown, read: READ, paper: body.paper, sheet: body.sheet,
                  ruled: body.ruled, texture: body.texture,
                  skew: body.skew, size: body.size };
   const entries = lib().filter((e) =>
     e.text !== body.text || JSON.stringify(e.opts) !== JSON.stringify(opts) || e.ink !== body.ink);
   entries.unshift({
     id: done.id, title: title(), pages: done.pages, chars: body.text.length,
-    ts: Date.now(), text: body.text, ink: body.ink, opts, thumb,
+    ts: Date.now(), text: body.text, ink: body.ink, opts, thumb, seed: body.seed,
   });
   try { localStorage.setItem(LIB_KEY, JSON.stringify(entries.slice(0, LIB_MAX))); }
   catch { /* quota: drop the oldest and try once more */
@@ -724,6 +806,7 @@ async function openEntry(e) {
       !lib().some((x) => x.text === current) &&
       !(await ask("Replace the unsaved text in the editor with this entry?", "Replace"))) return;
   $("text").value = e.text;
+  state.seed = e.seed != null ? e.seed : newSeed();
   // a card's name is kept only if it was really a rename; a title the text
   // would derive anyway stays live, following future edits
   state.title = e.title === titleOf(e.text) ? null : e.title;
@@ -872,7 +955,9 @@ $("read").addEventListener("click", async () => {
 
     // Extraction is never perfect, so it lands in the editor for review.
     $("text").value = done.markdown;
-    if (!OPTIONS.markdown) $("oMarkdown").click();
+    state.seed = newSeed();
+    READ = "markdown";                      // a converted PDF is Markdown, whatever it looks like
+    $("readAs").value = READ;
     count();
     $("pdf").hidden = true;
     state.file = null;
@@ -939,8 +1024,8 @@ const DRAFT_KEY = "t2h.draft";
 function saveDraft() {
   try {
     localStorage.setItem(DRAFT_KEY, JSON.stringify({
-      text: $("text").value, opts: { ...OPTIONS, size: SIZE, paper: PAPER, sheet: SHEET },
-      ink: INK, title: state.title,
+      text: $("text").value, opts: { ...OPTIONS, read: READ, size: SIZE, paper: PAPER, sheet: SHEET },
+      ink: INK, title: state.title, seed: state.seed,
       // enough to re-attach to the render after a reload, if it still exists
       id: state.id, pages: state.pages, page: state.page, rendered: state.rendered,
     }));
@@ -957,6 +1042,7 @@ try {
   if (draft && draft.text) {
     $("text").value = draft.text;
     state.title = draft.title || null;
+    state.seed = draft.seed != null ? draft.seed : null;
     setOptions(draft.opts || OPTIONS, draft.ink || "blue-black");
     // The render this draft came from may still be on the server; showing it
     // again beats a "Nothing rendered" pane over a full editor. Probed first,
@@ -977,6 +1063,50 @@ try {
     }
   }
 } catch {}
+if (state.seed == null && !$("text").value.trim()) state.seed = newSeed();
 
+/* ---------------------------------------------------------------- first run */
+
+// A first visit used to open on an empty editor beside "Nothing rendered",
+// so seeing what the tool does took a sample click and a Render. It now
+// opens on the example document with its page already being written, and a
+// note saying it is an example, with a way to a blank page.
+const WELCOMED = "t2h.welcomed";
+
+function firstRun() {
+  let seen = false;
+  try {
+    seen = localStorage.getItem(WELCOMED) === "1" || !!localStorage.getItem(DRAFT_KEY)
+      || lib().length > 0;
+    localStorage.setItem(WELCOMED, "1");
+  } catch { seen = true; }                 // no storage: do not loop on it
+  if (seen || $("text").value.trim()) return;
+  $("text").value = SAMPLES.markdown;
+  state.seed = newSeed();
+  count();
+  clearTimeout(state.timer);                 // render now, not again a moment later
+  $("welcome").hidden = false;
+  render();
+}
+
+function closeWelcome() { $("welcome").hidden = true; }
+$("welcomeClose").addEventListener("click", closeWelcome);
+$("text").addEventListener("input", closeWelcome);   // their own text: it has done its job
+$("welcomeStart").addEventListener("click", () => {
+  closeWelcome();
+  $("text").value = "";
+  state.title = null;
+  state.seed = newSeed();
+  state.id = null; state.pages = 0; state.rendered = null; state.statusLine = null;
+  $("page").hidden = true; $("pager").hidden = true; $("strip").hidden = true;
+  $("empty").hidden = false;
+  $("exportBtn").disabled = true;
+  $("status").textContent = "Ready";
+  count();
+  touched();
+  $("text").focus();
+});
+
+firstRun();
 count();
 syncLook();

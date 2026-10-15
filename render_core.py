@@ -7,6 +7,7 @@ here because each worker process renders one document at a time.
 """
 from __future__ import annotations
 
+import random
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -211,5 +212,13 @@ def render_into(folder: Path, text: str, opts: dict, on_progress=None, on_ready=
     """Render `text` with `opts` into `folder`; return (pages, missing, dropped)."""
     opts = dict(opts)
     as_markdown = bool(opts.pop("as_markdown", False))
+    seed = opts.pop("seed", None)
     apply_options(**opts)
+    if seed is not None:
+        # The same document with the same seed writes the same letters, so
+        # fixing a typo on page six does not redraw every word on every page.
+        # Pools kept from earlier renders would decide which jittered copy a
+        # letter gets, so they start empty. Paper grain is not held to this.
+        t2h.reset_jitter_pools()
+        random.seed(seed)
     return write_streaming(text, folder, as_markdown, on_progress, on_ready=on_ready)
