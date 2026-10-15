@@ -374,7 +374,60 @@ $("docTitle").addEventListener("blur", () => {
   if (state.id) show(state.page);       // exports pick the new name up
 });
 
-$("text").addEventListener("input", () => { count(); touched(); });
+$("text").addEventListener("input", () => { starts = null; count(); touched(); });
+
+/* ------------------------------------------------------- text and its pages */
+
+// Where each page of the render on screen starts in the text, found from the
+// first words the server says each page opens with. The text the server drew
+// was folded (curly quotes, accents) and its Markdown drawn as structure, so
+// only letters and digits are compared, ignoring case and accents.
+let starts = null;
+function fold(s) { return s.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase(); }
+function pageStarts() {
+  if (starts) return starts;
+  const text = $("text").value;
+  const words = [];
+  for (const m of text.matchAll(/[\p{L}\p{N}]+/gu)) words.push([fold(m[0]), m.index]);
+  starts = [0];
+  let from = 0;
+  for (let k = 1; k < (state.heads || []).length; k++) {
+    const want = (state.heads[k].join(" ").match(/[\p{L}\p{N}]+/gu) || []).map(fold).slice(0, 4);
+    let at = -1;
+    for (let i = from; want.length && i <= words.length - want.length; i++) {
+      if (want.every((w, j) => words[i + j][0] === w)) { at = i; break; }
+    }
+    if (at < 0) { starts.push(starts[starts.length - 1]); continue; }
+    starts.push(words[at][1]);
+    from = at + 1;
+  }
+  return starts;
+}
+function pageAt(offset) {
+  const s = pageStarts();
+  let page = 1;
+  s.forEach((start, k) => { if (start <= offset) page = k + 1; });
+  return Math.min(page, Math.max(state.pages, 1));
+}
+
+// The cursor in the text brings up the page it is on.
+function followCaret() {
+  if (!state.id || state.pages < 2 || !(state.heads || []).length) return;
+  const page = pageAt($("text").selectionStart);
+  if (page !== state.page) show(page);
+}
+["keyup", "click"].forEach((ev) => $("text").addEventListener(ev, followCaret));
+
+// A page, from the strip or the preview, takes the text to where it starts.
+function jumpTo(page) {
+  const ta = $("text");
+  if (!(state.heads || []).length || !ta.offsetParent) return;   // the editor is not showing
+  const at = pageStarts()[page - 1] || 0;
+  ta.blur();
+  ta.setSelectionRange(at, at);
+  ta.focus();
+}
+$("page").addEventListener("click", () => { if (state.id && !state.busy) jumpTo(state.page); });
 
 /* ------------------------------------------------------------------ samples */
 
@@ -651,7 +704,9 @@ async function render() {
     const res = await fetch("/api/render", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      // the render on screen is the base: pages that have not changed since
+      // are copied from it instead of being written again
+      body: JSON.stringify({ ...body, base: state.id }),
     });
     const started = await res.json();
     if (!res.ok) { setBusy(false); after(); note(started.error || "That did not work.", true); return; }
@@ -672,6 +727,8 @@ async function render() {
 
     state.id = done.id;
     state.pages = done.pages;
+    state.heads = done.heads || [];
+    starts = null;
     if (done.seed != null && body.seed == null) {
       // an old draft rendered before documents had seeds: adopt the server's
       state.seed = done.seed;
@@ -736,7 +793,7 @@ function drawStrip() {
       const n = document.createElement("span");
       n.textContent = i;
       b.append(img, n);
-      b.addEventListener("click", () => show(i));
+      b.addEventListener("click", () => { show(i); jumpTo(i); });
       strip.append(b);
     }
   }
@@ -928,6 +985,7 @@ async function remember(done, body) {
   entries.unshift({
     id: done.id, title: title(), pages: done.pages, chars: body.text.length,
     ts: Date.now(), text: body.text, ink: body.ink, opts, thumb, seed: body.seed, doc,
+    heads: done.heads || [],
   });
   try { localStorage.setItem(LIB_KEY, JSON.stringify(entries.slice(0, LIB_MAX))); }
   catch { /* quota: drop the oldest and try once more */
@@ -1025,6 +1083,8 @@ async function openEntry(e) {
   $("text").value = e.text;
   state.seed = e.seed != null ? e.seed : newSeed();
   state.doc = e.doc || `entry-${e.ts}`;
+  state.heads = e.heads || [];
+  starts = null;
   // a card's name is kept only if it was really a rename; a title the text
   // would derive anyway stays live, following future edits
   state.title = e.title === titleOf(e.text) ? null : e.title;
@@ -1318,7 +1378,7 @@ function saveDraft() {
   try {
     localStorage.setItem(DRAFT_KEY, JSON.stringify({
       text: $("text").value, opts: { ...OPTIONS, read: READ, size: SIZE, paper: PAPER, sheet: SHEET },
-      ink: INK, title: state.title, seed: state.seed, doc: state.doc,
+      ink: INK, title: state.title, seed: state.seed, doc: state.doc, heads: state.heads,
       // enough to re-attach to the render after a reload, if it still exists
       id: state.id, pages: state.pages, page: state.page, rendered: state.rendered,
     }));
@@ -1337,6 +1397,7 @@ try {
     state.title = draft.title || null;
     state.seed = draft.seed != null ? draft.seed : null;
     state.doc = draft.doc || null;
+    state.heads = draft.heads || [];
     setOptions(draft.opts || OPTIONS, draft.ink || "blue-black");
     // The render this draft came from may still be on the server; showing it
     // again beats a "Nothing rendered" pane over a full editor. Probed first,

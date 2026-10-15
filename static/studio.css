@@ -757,3 +757,6 @@ select.mini {
   background: var(--card); color: var(--muted-foreground); font-size: 12px;
 }
 .hl-chip img { height: calc(1.8em - 6px); max-width: 220px; object-fit: contain; border-radius: 3px; background: #fff; padding: 0 3px; }
+
+/* the page in the preview takes you to its text */
+#page { cursor: pointer; }
