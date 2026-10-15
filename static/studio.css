@@ -714,3 +714,16 @@ select.mini {
 .adv[hidden] { display: none; }
 .more::after { content: " ▾"; font-size: 10px; }
 .more[aria-expanded="true"]::after { content: " ▴"; }
+
+/* ------------------------------------------------------------ rename, samples */
+/* a dotted underline says the name is text you can change */
+.bar__title { text-decoration: underline dotted color-mix(in oklch, var(--muted-foreground) 55%, transparent);
+              text-underline-offset: 5px; text-decoration-thickness: 1px; }
+.bar__title:focus { text-decoration: none; }
+.bar__rename { margin-left: -6px; color: var(--muted-foreground); }
+.bar__rename svg { width: 14px; height: 14px; }
+.pane__bar .menu { margin-right: 6px; }
+#samplesPop { right: auto; left: 0; min-width: 240px; }
+#samplesPop .pop__item { width: 100%; text-align: left; border: 0; background: none; font: inherit; color: inherit; }
+#samplesPop .pop__item:hover, #samplesPop .pop__item:focus-visible { background: var(--secondary); }
+@media (max-width: 600px) { #samplesPop { left: auto; right: 0; } }

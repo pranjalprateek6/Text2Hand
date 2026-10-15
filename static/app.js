@@ -274,6 +274,17 @@ function count() {
 
 // The name in the bar is editable, and an edited name follows the document
 // into its exports and its library card.
+// the pencil beside the name says it can be changed, and starts the change
+$("renameBtn").addEventListener("click", () => {
+  const t = $("docTitle");
+  t.focus();
+  const range = document.createRange();
+  range.selectNodeContents(t);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+});
+
 $("docTitle").addEventListener("input", () => {
   state.title = $("docTitle").textContent.trim() || null;
   draftSoon();
@@ -316,7 +327,7 @@ const SAMPLES = {
     "![Figure 1 accuracy over time](chart.png)\n",
 };
 
-document.querySelectorAll(".try").forEach((btn) => {
+document.querySelectorAll(".try, .sample").forEach((btn) => {
   btn.addEventListener("click", async () => {
     const which = btn.dataset.sample;
     // The chips hide once there is text, so this only ever triggers on
@@ -1019,10 +1030,35 @@ $("exportPop").addEventListener("keydown", (e) => {
   }
 });
 $("exportPop").addEventListener("click", () => setMenu(false));
+
+// The Samples menu, with the same keyboard behaviour as Export.
+function setSamples(open, focusFirst) {
+  $("samplesPop").hidden = !open;
+  $("samplesBtn").setAttribute("aria-expanded", String(open));
+  if (open && focusFirst) $("samplesPop").querySelector("button").focus();
+}
+$("samplesBtn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  setSamples($("samplesPop").hidden, e.detail === 0);
+});
+$("samplesPop").addEventListener("keydown", (e) => {
+  const items = [...$("samplesPop").querySelectorAll("button")];
+  const at = items.indexOf(document.activeElement);
+  const step = { ArrowDown: 1, ArrowUp: -1 }[e.key];
+  if (step) { e.preventDefault(); items[(at + step + items.length) % items.length].focus(); }
+  else if (e.key === "Escape" || e.key === "Tab") {
+    if (e.key === "Escape") e.preventDefault();
+    e.stopPropagation();
+    setSamples(false);
+    $("samplesBtn").focus();
+  }
+});
+$("samplesPop").addEventListener("click", () => setSamples(false));
 document.addEventListener("click", (e) => {
   if (!e.target.closest(".menu")) {
     $("exportPop").hidden = true;
     $("exportBtn").setAttribute("aria-expanded", "false");
+    setSamples(false);
   }
 });
 
