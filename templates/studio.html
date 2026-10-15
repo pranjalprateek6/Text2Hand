@@ -187,11 +187,13 @@
             </div>
           </div>
           <div class="grp">
-            <span class="grp__cap" id="capRead">Read as</span>
-            <div class="opts" role="group" aria-labelledby="capRead">
-              <button class="opt" id="oMarkdown" aria-pressed="false"
-                      title="Draw headings, lists and tables instead of the raw symbols">Markdown</button>
-            </div>
+            <label class="grp__cap" for="readAs">Read as</label>
+            <select class="mini mini--look" id="readAs"
+                    title="Auto draws headings, lists and tables when the text is written in Markdown, and the text as it is otherwise">
+              <option value="auto">Auto</option>
+              <option value="markdown">Markdown</option>
+              <option value="plain">Plain text</option>
+            </select>
           </div>
           <span class="count" id="count">0</span>
         </div>

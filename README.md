@@ -69,7 +69,7 @@ python app.py
 
 Then open http://127.0.0.1:5000. The landing page is at `/` and the studio, the tool itself, at `/studio`.
 
-Type or paste text into the studio's editor, pick the paper options and one of four pens, and press **Render**. Converting and rendering both run on a worker thread and report their stage live (`Reading page 3 of 19...`, `Writing page 7...`), so neither hangs a request. Turn on **Auto** and the pages re-render on their own when you stop typing.
+Type or paste text into the studio's editor, pick the paper options and one of four pens, and press **Render**. Converting and rendering both run on a worker thread and report their stage live (`Reading page 3 of 19...`, `Writing page 7...`), so neither hangs a request. With **Auto** on (the default for documents of up to about three pages, until you choose) the pages re-render on their own when you stop typing. A document keeps its handwriting from one render to the next, so fixing a word changes that word and not every letter on the page; **New handwriting** writes it again in a fresh hand. A first visit opens on an example that is already rendered.
 
 The output pane is a viewer, not a wall of images:
 
@@ -130,7 +130,7 @@ A PDF with no text layer is detected and reported, and the app tells you to swit
 
 ## Markdown
 
-Tick **Markdown** in the web app, or pass a `.md` file on the command line. Structure is drawn the way a person writing by hand would express it, since handwriting has no bold and no type sizes:
+The web app reads Markdown on its own when the text is written in it (**Read as: Auto**), and can be told to read it as Markdown or as plain text; on the command line, pass a `.md` file. Structure is drawn the way a person writing by hand would express it, since handwriting has no bold and no type sizes:
 
 | Markdown | Drawn as |
 |---|---|

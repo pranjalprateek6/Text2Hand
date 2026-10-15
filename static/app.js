@@ -53,13 +53,42 @@ $("navLibrary").addEventListener("click", () => showView("library"));
 
 /* ------------------------------------------------------------------ options */
 
-const OPTIONS = { markdown: false, texture: true, skew: true };
+const OPTIONS = { texture: true, skew: true };
 let INK = "blue-black";
 let SIZE = "normal";
 let PAPER = "ruled";      // ruled, grid or plain
 let SHEET = "a4";         // a4 or letter
 
 $("paper").addEventListener("change", () => { PAPER = $("paper").value; touched(); });
+
+// How the text is read. Auto draws structure when the text is written in
+// Markdown and the text as it stands otherwise, so nobody has to know what
+// Markdown is to get headings and lists; the other two force one or the other.
+let READ = "auto";
+$("readAs").addEventListener("change", () => { READ = $("readAs").value; touched(); });
+
+function looksMarkdown(text) {
+  // A heading, a table rule, a fenced block or an image settles it; lists and
+  // quotes are common in plain text too, so it takes two of those.
+  let strong = 0, weak = 0;
+  for (const line of text.split("\n")) {
+    if (/^#{1,6}\s+\S/.test(line) || /^\s*```/.test(line) || /!\[[^\]]*\]\([^)]+\)/.test(line)
+        || /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line)) strong++;
+    else if (/^\s*([-*+]|\d+[.)])\s+\S/.test(line) || /^>\s?/.test(line)) weak++;
+    if (strong || weak >= 2) return true;
+  }
+  return false;
+}
+
+function asMarkdown() {
+  return READ === "markdown" || (READ === "auto" && looksMarkdown($("text").value));
+}
+
+// the Auto choice says what it decided, so its decision is never a surprise
+function showReading() {
+  const auto = $("readAs").querySelector('option[value="auto"]');
+  auto.textContent = `Auto: ${looksMarkdown($("text").value) ? "Markdown" : "plain text"}`;
+}
 $("sheet").addEventListener("change", () => { SHEET = $("sheet").value; touched(); });
 
 Object.keys(OPTIONS).forEach((key) => {
@@ -144,6 +173,9 @@ $("look").addEventListener("change", () => {
 });
 
 function setOptions(opts, ink) {
+  // entries saved before "Read as" had three choices carry only markdown on/off
+  READ = opts.read || (opts.markdown ? "markdown" : "auto");
+  $("readAs").value = READ;
   // entries saved before paper styles existed carry only "ruled"
   PAPER = opts.paper || (opts.ruled === false ? "plain" : "ruled");
   SHEET = opts.sheet || "a4";
@@ -195,6 +227,8 @@ function count() {
   $("count").textContent = n ? `${n.toLocaleString()} · ~${pages}p` : "0";
   $("count").classList.toggle("is-over", n > MAX_CHARS);
   $("tries").hidden = n > 0;
+  showReading();
+  syncAuto();
   // never rewrite the name mid-edit out from under the person typing it
   if (document.activeElement !== $("docTitle")) $("docTitle").textContent = title();
 }
@@ -253,7 +287,6 @@ document.querySelectorAll(".try").forEach((btn) => {
         !(await ask("Replace what you've written with the sample?", "Replace"))) return;
     $("text").value = SAMPLES[which] || "";
     state.seed = newSeed();                 // a new document, a new hand
-    if (OPTIONS.markdown !== (which === "markdown")) $("oMarkdown").click();
     count();
     touched();
     $("text").focus();
@@ -331,7 +364,7 @@ function payload() {
     text: $("text").value,
     paper: PAPER, sheet: SHEET, ruled: PAPER === "ruled",
     texture: OPTIONS.texture, skew: OPTIONS.skew, seed: state.seed,
-    markdown: OPTIONS.markdown, ink: INK, size: SIZE,
+    markdown: asMarkdown(), ink: INK, size: SIZE,
   };
 }
 
@@ -619,12 +652,20 @@ $("pageN").addEventListener("keydown", (e) => {
 
 /* ------------------------------------------------------------- auto render */
 
-// Overleaf-style: when Auto is on, a pause after a change re-renders. Off by
-// default because every render is real work on the server, and remembered
-// because a preference that resets is a nag.
-$("auto").checked = localStorage.getItem("t2h.auto") === "1";
+// Overleaf-style: when Auto is on, a pause after a change re-renders. Until
+// someone chooses, it is on for a short document, where a render is quick and
+// the page simply keeps up with the typing, and off for a long one, where
+// every pause would set off a long render. A choice made by hand is kept.
+const AUTO_KEY = "t2h.auto";
+function autoChoice() {
+  try { return localStorage.getItem(AUTO_KEY); } catch { return null; }
+}
+function syncAuto() {
+  const chosen = autoChoice();
+  $("auto").checked = chosen === null ? $("text").value.length <= 3 * PAGE_SIZE : chosen === "1";
+}
 $("auto").addEventListener("change", () => {
-  localStorage.setItem("t2h.auto", $("auto").checked ? "1" : "0");
+  try { localStorage.setItem(AUTO_KEY, $("auto").checked ? "1" : "0"); } catch {}
   touched();
 });
 
@@ -672,7 +713,7 @@ async function remember(done, body) {
     });
   } catch { /* a library entry without a picture still works */ }
 
-  const opts = { markdown: body.markdown, paper: body.paper, sheet: body.sheet,
+  const opts = { markdown: body.markdown, read: READ, paper: body.paper, sheet: body.sheet,
                  ruled: body.ruled, texture: body.texture,
                  skew: body.skew, size: body.size };
   const entries = lib().filter((e) =>
@@ -915,7 +956,8 @@ $("read").addEventListener("click", async () => {
     // Extraction is never perfect, so it lands in the editor for review.
     $("text").value = done.markdown;
     state.seed = newSeed();
-    if (!OPTIONS.markdown) $("oMarkdown").click();
+    READ = "markdown";                      // a converted PDF is Markdown, whatever it looks like
+    $("readAs").value = READ;
     count();
     $("pdf").hidden = true;
     state.file = null;
@@ -982,7 +1024,7 @@ const DRAFT_KEY = "t2h.draft";
 function saveDraft() {
   try {
     localStorage.setItem(DRAFT_KEY, JSON.stringify({
-      text: $("text").value, opts: { ...OPTIONS, size: SIZE, paper: PAPER, sheet: SHEET },
+      text: $("text").value, opts: { ...OPTIONS, read: READ, size: SIZE, paper: PAPER, sheet: SHEET },
       ink: INK, title: state.title, seed: state.seed,
       // enough to re-attach to the render after a reload, if it still exists
       id: state.id, pages: state.pages, page: state.page, rendered: state.rendered,
@@ -1040,7 +1082,6 @@ function firstRun() {
   } catch { seen = true; }                 // no storage: do not loop on it
   if (seen || $("text").value.trim()) return;
   $("text").value = SAMPLES.markdown;
-  if (!OPTIONS.markdown) $("oMarkdown").click();
   state.seed = newSeed();
   count();
   clearTimeout(state.timer);                 // render now, not again a moment later
