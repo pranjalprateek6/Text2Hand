@@ -164,21 +164,52 @@ const LOOKS = {
   lab: { paper: "grid", texture: true, skew: true, ink: "black", size: "small" },
 };
 
+// Paper style and size, grain, the scanned look and how the text is read sit
+// behind More: the look covers them for most people, and a bar of every
+// control was the first thing the review called noisy. Open or closed is
+// remembered.
+function setMore(open) {
+  $("adv").hidden = !open;
+  $("moreBtn").setAttribute("aria-expanded", String(open));
+  $("moreBtn").classList.toggle("is-on", open);
+  try { localStorage.setItem("t2h.more", open ? "1" : "0"); } catch {}
+}
+$("moreBtn").addEventListener("click", () => setMore($("adv").hidden));
+try { setMore(localStorage.getItem("t2h.more") === "1"); } catch { setMore(false); }
+
+// The swatches show each look as a tiny page, so the choice is made by eye:
+// ruled, squared or plain paper, warm or clean, tilted or square, in that
+// look's ink and at its size. A change by hand leaves none of them chosen and
+// the caption says Custom.
+const INK_HEX = { "blue-black": "#141a42", black: "#1a1a1d", blue: "#153c98", red: "#961c18" };
+document.querySelectorAll(".look").forEach((sw) => {
+  const l = LOOKS[sw.dataset.look];
+  const page = sw.querySelector(".look__page");
+  page.dataset.paper = l.paper;
+  page.classList.toggle("is-warm", l.texture);
+  page.classList.toggle("is-tilted", l.skew);
+  page.style.setProperty("--ink", INK_HEX[l.ink]);
+  page.dataset.size = l.size;
+  sw.addEventListener("click", () => {
+    setOptions({ ...OPTIONS, ...l, read: READ, sheet: SHEET }, l.ink);   // a look keeps size and reading
+    touched();
+  });
+});
+
 function syncLook() {
   const match = Object.keys(LOOKS).find((k) => {
     const l = LOOKS[k];
     return l.paper === PAPER && l.texture === OPTIONS.texture &&
       l.skew === OPTIONS.skew && l.ink === INK && l.size === SIZE;
   });
-  $("look").value = match || "custom";
+  document.querySelectorAll(".look").forEach((sw) => {
+    const on = sw.dataset.look === match;
+    sw.classList.toggle("is-on", on);
+    sw.setAttribute("aria-checked", String(on));
+    sw.tabIndex = on || (!match && sw === document.querySelector(".look")) ? 0 : -1;
+  });
+  $("lookNote").hidden = !!match;
 }
-
-$("look").addEventListener("change", () => {
-  const l = LOOKS[$("look").value];
-  if (!l) return;
-  setOptions({ ...OPTIONS, ...l, sheet: SHEET }, l.ink);   // a look keeps the page size
-  touched();
-});
 
 function setOptions(opts, ink) {
   // entries saved before "Read as" had three choices carry only markdown on/off
@@ -229,7 +260,84 @@ function fileStem() {
   return t === "Untitled" ? "" : t.replace(/…$/, "").trim();
 }
 
+/* ------------------------------------------------------------ highlighting */
+
+// The editor's text is drawn a second time, underneath, with the Markdown
+// picked out: headings, list markers, quotes, rules, tables, code and links.
+// The textarea on top keeps doing all the editing with its own text made
+// transparent, so nothing about typing, selecting or undo changes. Every
+// character is drawn in the same place, so the two layers line up exactly.
+// An equation line, which reads as a corrupted file path, is drawn as a
+// small chip with a picture of the equation over its (hidden) text.
+const HL_LIMIT = 60000;        // past this, the plain textarea, for speed
+const EQ_SRC = /^eq_[0-9a-f]{12}\/eq\d{1,4}_\d{1,4}\.png$/;
+
+function esc(s) {
+  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
+function inline(line) {
+  // images and links first, then inline code; the text is escaped piecewise
+  // so the syntax characters stay in place
+  const out = [];
+  const rx = /(!?)\[([^\]]*)\]\(([^)\s]*)\)|`[^`]+`/g;
+  let last = 0, m;
+  while ((m = rx.exec(line))) {
+    out.push(esc(line.slice(last, m.index)));
+    const whole = m[0];
+    if (whole[0] === "`") out.push(`<span class="hl-code">${esc(whole)}</span>`);
+    else if (m[1] && EQ_SRC.test(m[3])) {
+      out.push(`<span class="hl-eq"><span class="hl-raw">${esc(whole)}</span>`
+        + `<span class="hl-chip"><img src="/asset/${esc(m[3])}" alt="" loading="lazy" />`
+        + `${esc(m[2] || "equation")}</span></span>`);
+    } else out.push(`<span class="hl-link">${esc(whole)}</span>`);
+    last = m.index + whole.length;
+  }
+  out.push(esc(line.slice(last)));
+  return out.join("");
+}
+
+function highlight(text) {
+  let fenced = false;
+  return text.split("\n").map((line) => {
+    if (/^\s*```/.test(line)) { fenced = !fenced; return `<span class="hl-mark">${esc(line)}</span>`; }
+    if (fenced) return `<span class="hl-code">${esc(line)}</span>`;
+    let m;
+    if ((m = line.match(/^(#{1,6})(\s.*)?$/))) {
+      return `<span class="hl-mark">${m[1]}</span><span class="hl-h">${inline(m[2] || "")}</span>`;
+    }
+    if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) return `<span class="hl-mark">${esc(line)}</span>`;
+    if (/^>/.test(line)) return `<span class="hl-q">${inline(line)}</span>`;
+    if (/^\s*\|/.test(line)) return inline(line).replace(/\|/g, '<span class="hl-mark">|</span>');
+    if ((m = line.match(/^(\s*)([-*+]|\d+[.)])(\s+)(.*)$/))) {
+      return `${m[1]}<span class="hl-mark">${esc(m[2])}</span>${m[3]}${inline(m[4])}`;
+    }
+    return inline(line);
+  }).join("\n");
+}
+
+let hlFrame = 0;
+function paintHighlight() {
+  cancelAnimationFrame(hlFrame);
+  hlFrame = requestAnimationFrame(() => {
+    const t = $("text").value;
+    const plain = t.length > HL_LIMIT;
+    $("editorWrap").classList.toggle("is-plain", plain);
+    $("hl").innerHTML = plain ? "" : highlight(t) + "\n ";
+    syncHighlight();
+  });
+}
+function syncHighlight() {
+  const ta = $("text");
+  // the textarea's scrollbar takes width the layer underneath does not have
+  $("hl").style.paddingRight = `${22 + ta.offsetWidth - ta.clientWidth}px`;
+  $("hl").scrollTop = ta.scrollTop;
+}
+$("text").addEventListener("scroll", syncHighlight);
+window.addEventListener("resize", syncHighlight);
+
 function count() {
+  paintHighlight();
   const n = $("text").value.length;
   const pages = Math.max(1, Math.ceil(n / PAGE_SIZE));
   $("count").textContent = n ? `${n.toLocaleString()} · ~${pages}p` : "0";
@@ -243,6 +351,17 @@ function count() {
 
 // The name in the bar is editable, and an edited name follows the document
 // into its exports and its library card.
+// the pencil beside the name says it can be changed, and starts the change
+$("renameBtn").addEventListener("click", () => {
+  const t = $("docTitle");
+  t.focus();
+  const range = document.createRange();
+  range.selectNodeContents(t);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+});
+
 $("docTitle").addEventListener("input", () => {
   state.title = $("docTitle").textContent.trim() || null;
   draftSoon();
@@ -285,7 +404,7 @@ const SAMPLES = {
     "![Figure 1 accuracy over time](chart.png)\n",
 };
 
-document.querySelectorAll(".try").forEach((btn) => {
+document.querySelectorAll(".try, .sample").forEach((btn) => {
   btn.addEventListener("click", async () => {
     const which = btn.dataset.sample;
     // The chips hide once there is text, so this only ever triggers on
@@ -988,10 +1107,35 @@ $("exportPop").addEventListener("keydown", (e) => {
   }
 });
 $("exportPop").addEventListener("click", () => setMenu(false));
+
+// The Samples menu, with the same keyboard behaviour as Export.
+function setSamples(open, focusFirst) {
+  $("samplesPop").hidden = !open;
+  $("samplesBtn").setAttribute("aria-expanded", String(open));
+  if (open && focusFirst) $("samplesPop").querySelector("button").focus();
+}
+$("samplesBtn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  setSamples($("samplesPop").hidden, e.detail === 0);
+});
+$("samplesPop").addEventListener("keydown", (e) => {
+  const items = [...$("samplesPop").querySelectorAll("button")];
+  const at = items.indexOf(document.activeElement);
+  const step = { ArrowDown: 1, ArrowUp: -1 }[e.key];
+  if (step) { e.preventDefault(); items[(at + step + items.length) % items.length].focus(); }
+  else if (e.key === "Escape" || e.key === "Tab") {
+    if (e.key === "Escape") e.preventDefault();
+    e.stopPropagation();
+    setSamples(false);
+    $("samplesBtn").focus();
+  }
+});
+$("samplesPop").addEventListener("click", () => setSamples(false));
 document.addEventListener("click", (e) => {
   if (!e.target.closest(".menu")) {
     $("exportPop").hidden = true;
     $("exportBtn").setAttribute("aria-expanded", "false");
+    setSamples(false);
   }
 });
 

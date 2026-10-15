@@ -598,6 +598,9 @@ if _PAPER:
         _pg = _client.get(f"/preview/{_rend['id']}/2.jpg")
         with Image.open(_io.BytesIO(_pg.data)) as _im:
             _dark = int((_np.asarray(_im.convert("L")) < 120).sum())
+    _thumb = _client.get("/asset/" + _srcs[0]) if _srcs else None
+    check("the editor can show an equation's crop", _thumb is not None and _thumb.status_code == 200
+          and _thumb.mimetype == "image/png", str(_thumb and _thumb.status_code))
     check("app traces the crops onto the page", _ok and _dark > 15_000,
           f"{_dark:,} dark px in the preview" if _ok else str(_err))
 else:
@@ -866,6 +869,16 @@ check("a PDF read with no choice made uses Automatic",
       _cv_job["state"] == "done" and _cv_job.get("converter") == "pymupdf"
       and _cv_job.get("converter_label") == "Text PDF" and "found" in _cv_job,
       str({k: _cv_job.get(k) for k in ("state", "converter", "converter_label", "error")}))
+
+# --- the asset route serves crop names and nothing else ----------------------
+_bad = [_client.get(u).status_code for u in (
+    "/asset/eq_000000000000/..%2F..%2Fapp.py", "/asset/../app.py", "/asset/eq_zz/eq1_1.png",
+    "/asset/eq_000000000000/secret.txt", "/asset/eq_000000000000/eq1_1.png")]
+check("the asset route refuses anything but an existing crop", all(c == 404 for c in _bad), str(_bad))
+
+# --- the landing headline reads whole before any script runs ----------------
+_lp = _client.get("/").get_data(as_text=True)
+check("the hero's word is in the page itself", 'aria-label="handwriting">handwriting</span>' in _lp)
 
 _h = _client.get("/healthz")
 check("health check answers", _h.status_code == 200 and _h.get_json()["ok"], str(_h.get_json()))
