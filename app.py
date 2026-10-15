@@ -234,7 +234,7 @@ def _on_white(page: Image.Image) -> Image.Image:
 def _render(text: str, ruled: bool, texture: bool, skew: bool, as_markdown: bool,
             ink: str = "blue-black", size: str = "normal", on_progress=None,
             on_ready=None, paper: str = "ruled", sheet: str = "a4",
-            seed: int | None = None):
+            seed: int | None = None, base: Path | None = None):
     """Render text to a fresh folder and return (render_id, page_count, missing)."""
     rid = uuid.uuid4().hex[:12]
     folder = RENDER_ROOT / rid
@@ -245,11 +245,12 @@ def _render(text: str, ruled: bool, texture: bool, skew: bool, as_markdown: bool
     try:
         pool = _render_pool()
         if pool is not None:
-            count, missing, dropped = pool.render(text, opts, folder, on_progress, ready)
+            count, missing, dropped, info = pool.render(text, opts, folder, on_progress, ready,
+                                                        base=base)
         else:
             with _render_lock:
-                count, missing, dropped = render_core.render_into(folder, text, opts,
-                                                                  on_progress, ready)
+                count, missing, dropped, info = render_core.render_into(
+                    folder, text, opts, on_progress, ready, base=base)
     except BaseException:
         # a stopped or failed render leaves nothing anyone can download
         shutil.rmtree(folder, ignore_errors=True)
@@ -258,7 +259,7 @@ def _render(text: str, ruled: bool, texture: bool, skew: bool, as_markdown: bool
     if on_progress:
         on_progress("previews", count)
     _prune()
-    return rid, count, missing, dropped
+    return rid, count, missing, dropped, info
 
 
 # Worker processes that render side by side; see render_pool.py. Zero renders
@@ -673,7 +674,13 @@ def api_render():
     except (KeyError, TypeError, ValueError):
         seed = random.randrange(2 ** 31)
 
+    # The render this one follows, if the studio names it: pages that have
+    # not changed are copied from it rather than drawn again.
+    base_id = str(data.get("base") or "")
+    base = RENDER_ROOT / base_id if base_id.isalnum() and (RENDER_ROOT / base_id).is_dir() else None
+
     opts = {
+        "base": base,
         "seed": seed,
         "ruled": ruled,
         "paper": paper,
@@ -701,10 +708,10 @@ def api_render():
         def on_ready(rid: str, n: int) -> None:
             progress(id=rid, ready=n)
 
-        rid, count, missing, dropped = _render(text, on_progress=on_stage,
-                                               on_ready=on_ready, **opts)
+        rid, count, missing, dropped, info = _render(text, on_progress=on_stage,
+                                                     on_ready=on_ready, **opts)
         return {"id": rid, "pages": count, "missing": missing, "dropped": dropped[:30],
-                "seed": seed}
+                "seed": seed, "heads": info.get("heads", []), "reused": info.get("reused", 0)}
 
     jid = _job_start("Laying out the text")
     _job_spawn(jid, work, "Could not render")

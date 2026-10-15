@@ -35,6 +35,7 @@ Output
 from __future__ import annotations
 
 import glob
+import hashlib
 import math
 import os
 import random
@@ -701,6 +702,19 @@ def _jitter(im: Image.Image, scale: float = 1.0, boost: float = 1.0) -> Image.Im
     return g
 
 
+def _ident(im: Image.Image) -> str:
+    """A short fingerprint of an image's pixels, worked out once per image.
+
+    Pooled glyph copies are drawn many times, so the fingerprint is kept on
+    the image itself.
+    """
+    h = getattr(im, "_t2h_ident", None)
+    if h is None:
+        h = hashlib.sha1(im.mode.encode() + repr(im.size).encode() + im.tobytes()).hexdigest()[:16]
+        im._t2h_ident = h
+    return h
+
+
 def _pressed(im: Image.Image, factor: float) -> Image.Image:
     """A copy of a piece of ink at a lighter pressure, or itself at full."""
     if factor >= 0.995:
@@ -964,10 +978,23 @@ class Sheet:
         self._last = ""                       # last character written, for quote direction
         self._in_quote = False                # inside a quotation, for quote direction
         self._blanks = _blank_pool()            # prepared sheets, copied per page
-        self.page = None
+        self.page = None                      # only ever set while a page is painted
+        self._open = False                    # a page is in progress
+        self._blank = None                    # the sheet it is written on
+        self._cmds: list = []                 # what to paint on it, in order
         self._skew_pool = None
         self._line_x0, self._slope, self._word_shift = 0, 0.0, 0
         self._pressure = 1.0
+        # What has been drawn on the page in progress, op by op, and the
+        # first words written on it. The ops are the page's fingerprint: two
+        # pages with the same ops and the same tilt are the same page, so a
+        # later render can copy one rather than draw and save it again. The
+        # paper is left out on purpose; it is the same sheet either way.
+        self._ops: list = []
+        self._heads: list[str] = []
+        self.page_keys: list[str] = []
+        self.page_heads: list[list[str]] = []
+        self.reuse = None                     # callable(number, key) -> bool
         self._drift_step = 0.06
         self._new_page()
 
@@ -982,19 +1009,52 @@ class Sheet:
         self._emit()
         self.close()
 
+    def _paint(self) -> Image.Image:
+        """Paint the page in progress: its blank sheet, then every command.
+
+        Writing a page records what to draw instead of drawing it, so a page
+        an earlier render already holds is never painted at all; painting,
+        the pen pressure on each letter in particular, is most of what a
+        page costs once its layout is known.
+        """
+        self.page = self._blank.copy()        # the sheet is kept clean to reuse
+        draw = ImageDraw.Draw(self.page)
+        for cmd in self._cmds:
+            if cmd[0] == "img":
+                _, im, x, y, pressure = cmd
+                self._put_ink(_pressed(im, pressure), x, y)
+            else:
+                _, pts, width = cmd
+                draw.line(pts, fill=self._pen(), width=width, joint="curve")
+        page, self.page, self._cmds = self.page, None, []
+        return page
+
     def _emit(self) -> None:
         """Skew the page just finished and pass it on, then let go of it."""
-        page, self.page = self.page, None
-        if page is None:
+        if not self._open:
             return
+        self._open = False
+        # Drawn here, one page at a time in page order, so the sequence of
+        # angles does not depend on thread scheduling, and drawn whether or not
+        # the page turns out to be reused, so the pages after it are the same.
+        angle = random.uniform(-SCAN_SKEW, SCAN_SKEW) if SCAN_SKEW else 0.0
+        key = hashlib.sha1(repr((round(angle, 9), self._ops)).encode()).hexdigest()
+        self.page_keys.append(key)
+        self.page_heads.append(self._heads)
+        self._ops, self._heads = [], []
+        if self.reuse is not None and self.on_page is not None and self.reuse(self.count + 1, key):
+            # an earlier render already holds exactly this page: skip the
+            # tilt and the saving, and let the caller copy it
+            self.count += 1
+            self._cmds = []
+            self.on_page(self.count, None)
+            return
+        page = self._paint()
         if SCAN_SKEW:
             if self._skew_pool is None:
                 self._skew_pool = ThreadPoolExecutor(max_workers=_workers())
             fill = ((255, 255, 255, 0) if TRANSPARENT
                     else PAPER_FILL if PAPER_TEXTURE else (255, 255, 255))
-            # Drawn here, one page at a time in page order, so the sequence of
-            # angles does not depend on thread scheduling.
-            angle = random.uniform(-SCAN_SKEW, SCAN_SKEW)
             # One page at a time means banding it: every core works on this
             # sheet rather than each core taking a sheet of its own.
             page = _skew_page(page, angle, fill, self._skew_pool)
@@ -1027,7 +1087,7 @@ class Sheet:
             self._blanks.append(blank)
         else:
             blank = _PAPER_RNG.choice(self._blanks)
-        self.page = blank.copy()               # the sheet is kept clean to reuse
+        self._blank, self._cmds, self._open = blank, [], True
         _report("page", self.count + 1)
         self.x = MARGIN_L
         self.baseline = MARGIN_T + LINE_HEIGHT
@@ -1065,8 +1125,16 @@ class Sheet:
             draw.line([(mx, MARGIN_T - 40), (mx, self.height - MARGIN_B + 40)],
                       fill=MARGIN_RULE_COLOR, width=RULE_WIDTH)
 
-    def _stamp(self, im: Image.Image, x: int, y: int) -> None:
-        """Lay a piece of ink on the page.
+    def _stamp(self, im: Image.Image, x: int, y: int, pressure: float = 1.0) -> None:
+        """Lay a piece of ink on the page, at a pen pressure; painted later."""
+        self._cmds.append(("img", im, x, y, pressure))
+
+    def _line(self, pts: list, width: int) -> None:
+        """Draw a pen line on the page; painted later."""
+        self._cmds.append(("line", pts, width))
+
+    def _put_ink(self, im: Image.Image, x: int, y: int) -> None:
+        """Lay ink on the page being painted.
 
         On paper this is a masked paste. On a transparent sheet it has to be
         compositing: a masked paste writes the stroke's alpha times itself
@@ -1124,7 +1192,8 @@ class Sheet:
         steps = max(2, int((x1 - x0) / 70))
         pts = [(x0 + (x1 - x0) * i / steps, y + random.uniform(-2.0, 2.0))
                for i in range(steps + 1)]
-        ImageDraw.Draw(self.page).line(pts, fill=self._pen(), width=width, joint="curve")
+        self._ops.append(("l", [(round(a, 2), round(b, 2)) for a, b in pts], width))
+        self._line(pts, width)
 
     def underline(self, x0: float, x1: float) -> None:
         self._pen_stroke(x0, self.baseline + UNDERLINE_DROP, x1, UNDERLINE_WIDTH)
@@ -1155,7 +1224,8 @@ class Sheet:
             steps = max(2, int((bottom - top) / 70))
             pts = [(x + random.uniform(-2.0, 2.0), top + (bottom - top) * i / steps)
                    for i in range(steps + 1)]
-            ImageDraw.Draw(self.page).line(pts, fill=self._pen(), width=w, joint="curve")
+            self._ops.append(("l", [(round(a, 2), round(b, 2)) for a, b in pts], w))
+            self._line(pts, w)
 
         self.baseline = start + LINE_HEIGHT * (FIGURE_LINES // 2)   # middle rule
         self.put_line(label.split(), MARGIN_L, self.right - MARGIN_L, align="center")
@@ -1205,6 +1275,7 @@ class Sheet:
         x = MARGIN_L + (column - ink.width) // 2 + random.randint(-12, 12)
         top = self.baseline - X_HEIGHT
         y = top + (LINE_HEIGHT * lines - ink.height) // 2
+        self._ops.append(("e", int(x), int(y), _ident(ink)))
         self._stamp(ink, int(x), int(y))
         self.baseline += LINE_HEIGHT * lines
         self.gap(1)
@@ -1215,7 +1286,8 @@ class Sheet:
         steps = max(2, int((y1 - y0) / 70))
         pts = [(x + random.uniform(-2.0, 2.0), y0 + (y1 - y0) * i / steps)
                for i in range(steps + 1)]
-        ImageDraw.Draw(self.page).line(pts, fill=self._pen(), width=width, joint="curve")
+        self._ops.append(("l", [(round(a, 2), round(b, 2)) for a, b in pts], width))
+        self._line(pts, width)
 
     def put_word(self, token: str, scale: float = 1.0) -> bool:
         """Draw a whole captured word if one exists. False means use letters.
@@ -1240,7 +1312,8 @@ class Sheet:
                                     boost >= _TIRED_AT))
 
         y = self.baseline - base + self._word_shift + self._drift()
-        self._stamp(_pressed(image, self._pressure), int(self.x), int(y))
+        self._ops.append(("w", int(self.x), int(y), _ident(image), round(self._pressure, 6)))
+        self._stamp(image, int(self.x), int(y), self._pressure)
         self.x += image.width + random.randint(*KERN_JITTER)
         self._last = core[-1]                 # a whole word skips put(), so record it here
 
@@ -1256,6 +1329,8 @@ class Sheet:
         self._start_line()
         for i, word in enumerate(words):
             self._new_word()
+            if len(self._heads) < 8:
+                self._heads.append(word)
             for ch in word:
                 self.put(ch)
             if i < len(words) - 1:
@@ -1351,6 +1426,8 @@ class Sheet:
                     self.strike(mark, self.x)
                     self.x += space // 2
                     self._last = " "
+            if len(self._heads) < 8:
+                self._heads.append(word)
             if not self.put_word(word, scale):
                 for ch in word:
                     self.put(ch)
@@ -1447,7 +1524,9 @@ class Sheet:
             y = self.baseline - g.height + drop - lift + wobble
 
         own = self._pressure * random.uniform(1 - GLYPH_PRESSURE, 1.0)
-        self._stamp(_pressed(g, max(INK_MIN * 0.9, own)), x, y)
+        pressure = max(INK_MIN * 0.9, own)
+        self._ops.append(("c", x, y, _ident(g), round(pressure, 6)))
+        self._stamp(g, x, y, pressure)
         self.x += advance + random.randint(*KERN_JITTER)
         self._last = ch
 
@@ -1514,8 +1593,9 @@ def _drop_below_line(ch: str, height: int) -> int:
     return 0
 
 
-def render(text: str, on_page=None) -> Sheet:
+def render(text: str, on_page=None, reuse=None) -> Sheet:
     sheet = Sheet(on_page)
+    sheet.reuse = reuse
     missing: set[str] = set()
 
     column = sheet.right - MARGIN_L
@@ -1592,7 +1672,7 @@ def chars_per_page() -> int:
     return int(packed * 0.65)
 
 
-def render_markdown(md_text: str, on_page=None) -> Sheet:
+def render_markdown(md_text: str, on_page=None, reuse=None) -> Sheet:
     """Render Markdown, expressing its structure in handwriting conventions.
 
     Headings are centred and underlined rather than bold, lists are indented
@@ -1602,6 +1682,7 @@ def render_markdown(md_text: str, on_page=None) -> Sheet:
     from markdown_blocks import to_blocks
 
     sheet = Sheet(on_page)
+    sheet.reuse = reuse
     missing: set[str] = set()
     column = sheet.right - MARGIN_L
 
@@ -1734,7 +1815,8 @@ def render_markdown(md_text: str, on_page=None) -> Sheet:
 
 
 def stream_pages(text: str, on_page, as_markdown: bool = False,
-                 on_progress=None, dropped: list[str] | None = None) -> tuple[int, list[str]]:
+                 on_progress=None, dropped: list[str] | None = None,
+                 reuse=None, info: dict | None = None) -> tuple[int, list[str]]:
     """Render text, handing each finished page to `on_page(number, image)`.
 
     The page is skewed before it is handed over, so what arrives is final, and
@@ -1746,12 +1828,18 @@ def stream_pages(text: str, on_page, as_markdown: bool = False,
     Returns how many pages were made and any characters with no glyph. A
     list passed as `dropped` receives any words of a Markdown source that no
     block wrote out.
+
+    `reuse(number, key)` may answer True for a page an earlier render already
+    holds; that page is then handed over as None, for the caller to copy. A
+    dict passed as `info` receives each page's fingerprint ("keys") and first
+    words ("heads").
     """
     global _progress
     _progress = on_progress
     try:
         derive_metrics()
-        sheet = render_markdown(text, on_page) if as_markdown else render(text, on_page)
+        sheet = (render_markdown(text, on_page, reuse) if as_markdown
+                 else render(text, on_page, reuse))
         sheet.finish()
     finally:
         _progress = None
@@ -1759,6 +1847,9 @@ def stream_pages(text: str, on_page, as_markdown: bool = False,
             _live_sheet.close()
     if dropped is not None:
         dropped.extend(sheet.dropped)
+    if info is not None:
+        info["keys"] = sheet.page_keys
+        info["heads"] = sheet.page_heads
     return sheet.count, sheet.missing
 
 

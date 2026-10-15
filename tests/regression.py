@@ -880,6 +880,37 @@ check("the asset route refuses anything but an existing crop", all(c == 404 for 
 _lp = _client.get("/").get_data(as_text=True)
 check("the hero's word is in the page itself", 'aria-label="handwriting">handwriting</span>' in _lp)
 
+# --- a re-render copies the pages that did not change -----------------------
+_rtext = "\n\n".join(f"Paragraph {i}: ordinary prose for the hand to write, line after line. " * 5
+                     for i in range(45))
+_rbase = {"text": _rtext, "seed": 777, "texture": False}
+_r1, _ = _app_render(_rbase)
+_cut = int(len(_rtext) * 0.8)
+_redit = _rtext[:_cut] + " A late edit. " + _rtext[_cut:]
+_r2, _ = _app_render({**_rbase, "text": _redit, "base": _r1["id"] if _r1 else ""})
+_r3, _ = _app_render({**_rbase, "text": _redit})
+if all(j and j["state"] == "done" for j in (_r1, _r2, _r3)):
+    check("a re-render reuses the pages before an edit",
+          0 < _r2["reused"] < _r2["pages"] and _r3["reused"] == 0,
+          f"{_r2['reused']} of {_r2['pages']} reused")
+    _d2, _d3 = app.RENDER_ROOT / _r2["id"], app.RENDER_ROOT / _r3["id"]
+    _differ = [n for i in range(1, _r2["pages"] + 1)
+               for n in (f"page_{i}.jpg", f"preview_{i}.jpg", f"thumb_{i}.jpg", f"pdf_{i}.jpg")
+               if (_d2 / n).read_bytes() != (_d3 / n).read_bytes()]
+    check("reused pages are byte-identical to a full render", not _differ, str(_differ[:4]))
+    _pdf = _client.get(f"/download/{_r2['id']}/handwriting.pdf")
+    with _pm.open(stream=_pdf.data, filetype="pdf") as _doc:
+        _np_pages = _doc.page_count
+    check("the PDF of a re-render has every page", _np_pages == _r2["pages"],
+          f"{_np_pages} of {_r2['pages']}")
+    check("a render says where each page starts", len(_r2.get("heads", [])) == _r2["pages"]
+          and _r2["heads"][0][:2] == ["Paragraph", "0:"], str(_r2.get("heads", [])[:1]))
+    _other, _ = _app_render({**_rbase, "text": _redit, "base": _r1["id"], "ink": "red"})
+    check("a re-render with other settings reuses nothing", _other and _other["reused"] == 0,
+          str(_other and _other.get("reused")))
+else:
+    check("a re-render reuses the pages before an edit", False, "a render failed")
+
 _h = _client.get("/healthz")
 check("health check answers", _h.status_code == 200 and _h.get_json()["ok"], str(_h.get_json()))
 

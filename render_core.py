@@ -7,7 +7,9 @@ here because each worker process renders one document at a time.
 """
 from __future__ import annotations
 
+import json
 import random
+import shutil
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -42,6 +44,62 @@ PDF_INFO = {"title": "Handwritten pages", "creator": "Text2Hand",
             "producer": "Text2Hand", "subject": "Rendered by Text2Hand from typed text"}
 
 
+PDF_QUALITY = 75               # the PDF's page images (Pillow's default); the full-size page is q95
+
+
+def build_pdf(path: Path, jpegs: list[Path], dpi: float | None = None) -> Path:
+    """Write a PDF of one JPEG per page, embedding each file as it is.
+
+    A JPEG goes into a PDF unchanged (DCTDecode), so nothing is decoded or
+    encoded here: this is file reading and a few hundred bytes of PDF
+    structure per page. Pages are sized from the image and `dpi` (the A4 or
+    Letter page the hand was measured against), and the document's
+    properties say it was made by Text2Hand.
+    """
+    dpi = dpi or pdf_dpi()
+    tmp = path.with_name(f".{path.name}.part")
+    offsets: list[int] = []
+    with open(tmp, "wb") as out:
+        out.write(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+
+        def obj(num: int, body: bytes) -> None:
+            while len(offsets) < num:
+                offsets.append(0)
+            offsets[num - 1] = out.tell()
+            out.write(b"%d 0 obj\n" % num + body + b"\nendobj\n")
+
+        # 1 catalog, 2 page tree, 3 info; then three objects per page
+        kids = []
+        for n, jpeg in enumerate(jpegs):
+            with Image.open(jpeg) as im:            # reads the header only
+                w, h = im.size
+            data = jpeg.read_bytes()
+            img, content, page = 4 + 3 * n, 5 + 3 * n, 6 + 3 * n
+            pw, ph = w * 72 / dpi, h * 72 / dpi
+            obj(img, b"<< /Type /XObject /Subtype /Image /Width %d /Height %d "
+                     b"/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode "
+                     b"/Length %d >>\nstream\n" % (w, h, len(data)) + data + b"\nendstream")
+            draw = b"q %.4f 0 0 %.4f 0 0 cm /Im0 Do Q" % (pw, ph)
+            obj(content, b"<< /Length %d >>\nstream\n" % len(draw) + draw + b"\nendstream")
+            obj(page, b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %.4f %.4f] "
+                      b"/Resources << /XObject << /Im0 %d 0 R >> >> /Contents %d 0 R >>"
+                      % (pw, ph, img, content))
+            kids.append(page)
+        obj(1, b"<< /Type /Catalog /Pages 2 0 R >>")
+        obj(2, b"<< /Type /Pages /Kids [%s] /Count %d >>"
+               % (b" ".join(b"%d 0 R" % k for k in kids), len(kids)))
+        info = b" ".join(b"/%s (%s)" % (k.title().encode(), v.encode("ascii", "replace"))
+                         for k, v in PDF_INFO.items())
+        obj(3, b"<< " + info + b" >>")
+        xref = out.tell()
+        out.write(b"xref\n0 %d\n0000000000 65535 f \n" % (len(offsets) + 1))
+        out.write(b"".join(b"%010d 00000 n \n" % o for o in offsets))
+        out.write(b"trailer\n<< /Size %d /Root 1 0 R /Info 3 0 R >>\nstartxref\n%d\n%%%%EOF\n"
+                  % (len(offsets) + 1, xref))
+    tmp.replace(path)
+    return path
+
+
 def pdf_dpi() -> float:
     """The resolution that makes a page come out A4 in a PDF.
 
@@ -51,8 +109,22 @@ def pdf_dpi() -> float:
     return t2h.px_per_mm() * 25.4
 
 
+PAGES_META = "pages.json"     # each page's fingerprint and first words, beside the pages
+
+
+def _previous(base: Path | None, header: str) -> dict | None:
+    """What an earlier render of the same document recorded, if it can be used."""
+    if base is None:
+        return None
+    try:
+        meta = json.loads((base / PAGES_META).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return meta if meta.get("header") == header else None
+
+
 def write_streaming(text: str, folder: Path, as_markdown: bool, on_progress,
-                     on_ready=None):
+                     on_ready=None, header: str = "", base: Path | None = None):
     """Render, writing each page out as it is finished, and return (count, missing).
 
     The renderer hands over one page at a time and keeps nothing, so the only
@@ -89,30 +161,14 @@ def write_streaming(text: str, folder: Path, as_markdown: bool, on_progress,
         if advanced and on_ready:
             on_ready(advanced)
 
-    # The whole-document PDF is appended here, from the page already in hand.
-    # Building it afterwards from the PNGs meant decoding every page back off
-    # disk, and that decode was 87% of the cost: 4.1s of a 4.7s rebuild against
-    # 20ms a page to append. Appending has to happen in page order, so a page
-    # waits its turn, which is cheap at that price.
-    pdf_path = folder / "handwriting.pdf"
-    if pdf_path.exists():
-        pdf_path.unlink()
-    turn = threading.Condition()
-    next_up = [1]
-    dpi = pdf_dpi()
-
+    # Each page is also saved as the compact JPEG the PDF will carry, from
+    # the page already in hand, and the PDF is put together at the end by
+    # embedding those JPEGs as they are (see build_pdf). Pillow's PDF writer
+    # decodes and re-encodes whatever it is given, so a page copied from an
+    # earlier render had to be decoded and encoded again just to sit in the
+    # PDF; now it is a file copy like the rest of that page.
     def append_pdf(page, i):
-        with turn:
-            while next_up[0] != i:
-                turn.wait()
-            try:
-                page.convert("RGB").save(pdf_path, append=i > 1, resolution=dpi,
-                                         **({} if i > 1 else PDF_INFO))
-            finally:
-                # advanced even if this page failed, or every page behind it
-                # would wait for a turn that never comes
-                next_up[0] += 1
-                turn.notify_all()
+        page.convert("RGB").save(folder / f"pdf_{i}.jpg", quality=PDF_QUALITY)
 
     def on_page(number: int, page):
         slots.acquire()
@@ -163,16 +219,66 @@ def write_streaming(text: str, folder: Path, as_markdown: bool, on_progress,
 
         pool.submit(write)
 
+    # Pages an earlier render of this document already drew. A seeded render
+    # is deterministic, so a page whose fingerprint (everything drawn on it,
+    # and its tilt) matches the earlier render's page of the same number is
+    # that page, and its files are copied instead of being tilted, encoded
+    # and saved again. The earlier render's header must match too: same
+    # options, same seed. Paper grain may differ from what a fresh render
+    # would draw, which is the one thing the fingerprint leaves out.
+    before = _previous(base, header)
+    reused: list[int] = []
+
+    def reuse(number: int, key: str) -> bool:
+        if not before or number > len(before["keys"]) or before["keys"][number - 1] != key:
+            return False
+        names = (f"preview_{number}.jpg", f"thumb_{number}.jpg", f"pdf_{number}.jpg")
+        full = [f"page_{number}.jpg", f"page_{number}.png"]
+        return all((base / n).exists() for n in names) and any((base / n).exists() for n in full)
+
+    def copy(number: int):
+        slots.acquire()
+
+        def write(i=number):
+            try:
+                for name in (f"preview_{i}.jpg", f"thumb_{i}.jpg"):
+                    shutil.copyfile(base / name, folder / name)
+                mark_ready(i)
+                src = base / f"page_{i}.jpg"
+                if not src.exists():
+                    src = base / f"page_{i}.png"
+                shutil.copyfile(src, folder / src.name)
+                shutil.copyfile(base / f"pdf_{i}.jpg", folder / f"pdf_{i}.jpg")
+                reused.append(i)
+            except Exception as exc:
+                failures.append(exc)
+            finally:
+                slots.release()
+
+        pool.submit(write)
+
+    def on_any_page(number: int, page):
+        if page is None:
+            copy(number)
+        else:
+            on_page(number, page)
+
     pool = ThreadPoolExecutor(max_workers=t2h._workers())
     dropped: list[str] = []
+    info: dict = {}
     try:
-        count, missing = t2h.stream_pages(text, on_page, as_markdown=as_markdown,
-                                          on_progress=on_progress, dropped=dropped)
+        count, missing = t2h.stream_pages(text, on_any_page, as_markdown=as_markdown,
+                                          on_progress=on_progress, dropped=dropped,
+                                          reuse=reuse if before else None, info=info)
     finally:
         pool.shutdown(wait=True)
     if failures:
         raise failures[0]
-    return count, missing, dropped
+    build_pdf(folder / "handwriting.pdf", [folder / f"pdf_{i}.jpg" for i in range(1, count + 1)])
+    (folder / PAGES_META).write_text(json.dumps(
+        {"header": header, "keys": info.get("keys", []), "heads": info.get("heads", [])}),
+        encoding="utf-8")
+    return count, missing, dropped, {"heads": info.get("heads", []), "reused": len(reused)}
 
 
 
@@ -208,8 +314,14 @@ def apply_options(ruled: bool = True, texture: bool = True, skew: bool = True,
         t2h.reset_glyph_caches()
 
 
-def render_into(folder: Path, text: str, opts: dict, on_progress=None, on_ready=None):
-    """Render `text` with `opts` into `folder`; return (pages, missing, dropped)."""
+def render_into(folder: Path, text: str, opts: dict, on_progress=None, on_ready=None,
+                base: Path | None = None):
+    """Render `text` with `opts` into `folder`; return (pages, missing, dropped, info).
+
+    `base` is an earlier render of the same document, whose unchanged pages
+    may be copied rather than drawn again; see write_streaming.
+    """
+    header = json.dumps(opts, sort_keys=True) if opts.get("seed") is not None else ""
     opts = dict(opts)
     as_markdown = bool(opts.pop("as_markdown", False))
     seed = opts.pop("seed", None)
@@ -221,4 +333,5 @@ def render_into(folder: Path, text: str, opts: dict, on_progress=None, on_ready=
         # letter gets, so they start empty. Paper grain is not held to this.
         t2h.reset_jitter_pools()
         random.seed(seed)
-    return write_streaming(text, folder, as_markdown, on_progress, on_ready=on_ready)
+    return write_streaming(text, folder, as_markdown, on_progress, on_ready=on_ready,
+                           header=header, base=base if header else None)

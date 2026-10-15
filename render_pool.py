@@ -36,7 +36,7 @@ def _warm_worker() -> None:
     t2h.Sheet().close()
 
 
-def _run(text: str, opts: dict, folder: str, events, stop):
+def _run(text: str, opts: dict, folder: str, events, stop, base: str | None = None):
     """In a worker: render, reporting through `events`, stopping on `stop`."""
     import render_core
     import text_to_handwriting as t2h
@@ -49,7 +49,8 @@ def _run(text: str, opts: dict, folder: str, events, stop):
     def on_ready(n: int) -> None:
         events.put(("ready", n))
 
-    return render_core.render_into(Path(folder), text, opts, on_progress, on_ready)
+    return render_core.render_into(Path(folder), text, opts, on_progress, on_ready,
+                                   base=Path(base) if base else None)
 
 
 class RenderPool:
@@ -70,7 +71,8 @@ class RenderPool:
         for f in [self._executor.submit(_noop) for _ in range(self.processes)]:
             f.result()
 
-    def render(self, text: str, opts: dict, folder: Path, on_progress=None, on_ready=None):
+    def render(self, text: str, opts: dict, folder: Path, on_progress=None, on_ready=None,
+               base: Path | None = None):
         """Render in a worker; return what render_into does.
 
         `on_progress` runs here, in the calling thread, and may raise to stop
@@ -79,7 +81,8 @@ class RenderPool:
         """
         events = self._manager.Queue()
         stop = self._manager.Event()
-        future = self._executor.submit(_run, text, opts, str(folder), events, stop)
+        future = self._executor.submit(_run, text, opts, str(folder), events, stop,
+                                       str(base) if base else None)
         stopping: BaseException | None = None
 
         def deliver(event) -> None:
