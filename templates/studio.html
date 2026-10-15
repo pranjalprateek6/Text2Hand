@@ -109,6 +109,17 @@
           </button>
         </div>
 
+        <!-- a first visit opens on an example, already rendered -->
+        <div class="welcome" id="welcome" hidden role="note">
+          <p class="welcome__text"><b>This is an example.</b> Its page is beside it.
+            Replace the text with your own, or</p>
+          <button class="btn btn--sm" id="welcomeStart">Start with a blank page</button>
+          <button class="iconbtn welcome__close" id="welcomeClose" aria-label="Dismiss">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                 stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+
         <textarea id="text" spellcheck="false" aria-label="Text to write out by hand"
                   placeholder="Type or paste anything. Or drop a PDF anywhere on this window."></textarea>
 

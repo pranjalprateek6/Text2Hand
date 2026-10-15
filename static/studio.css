@@ -596,3 +596,15 @@ select.mini {
 .reroll:hover { background: var(--secondary); }
 .reroll svg { width: 13px; height: 13px; }
 @media (max-width: 600px) { .reroll__label { display: none; } .reroll { padding: 6px; } }
+
+/* --------------------------------------------------------------- first run */
+.welcome {
+  flex: none;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px;
+  margin: 12px 14px 0; padding: 10px 10px 10px 14px;
+  border: 1px solid var(--border); border-left: 3px solid var(--foreground);
+  border-radius: 8px; background: var(--card);
+}
+.welcome__text { flex: 1 1 260px; font-size: 13.5px; color: var(--muted-foreground); }
+.welcome__text b { color: var(--foreground); font-weight: 600; }
+.welcome__close { margin-left: auto; }

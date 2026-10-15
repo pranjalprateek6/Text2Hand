@@ -1003,5 +1003,49 @@ try {
 } catch {}
 if (state.seed == null && !$("text").value.trim()) state.seed = newSeed();
 
+/* ---------------------------------------------------------------- first run */
+
+// A first visit used to open on an empty editor beside "Nothing rendered",
+// so seeing what the tool does took a sample click and a Render. It now
+// opens on the example document with its page already being written, and a
+// note saying it is an example, with a way to a blank page.
+const WELCOMED = "t2h.welcomed";
+
+function firstRun() {
+  let seen = false;
+  try {
+    seen = localStorage.getItem(WELCOMED) === "1" || !!localStorage.getItem(DRAFT_KEY)
+      || lib().length > 0;
+    localStorage.setItem(WELCOMED, "1");
+  } catch { seen = true; }                 // no storage: do not loop on it
+  if (seen || $("text").value.trim()) return;
+  $("text").value = SAMPLES.markdown;
+  if (!OPTIONS.markdown) $("oMarkdown").click();
+  state.seed = newSeed();
+  count();
+  clearTimeout(state.timer);                 // render now, not again a moment later
+  $("welcome").hidden = false;
+  render();
+}
+
+function closeWelcome() { $("welcome").hidden = true; }
+$("welcomeClose").addEventListener("click", closeWelcome);
+$("text").addEventListener("input", closeWelcome);   // their own text: it has done its job
+$("welcomeStart").addEventListener("click", () => {
+  closeWelcome();
+  $("text").value = "";
+  state.title = null;
+  state.seed = newSeed();
+  state.id = null; state.pages = 0; state.rendered = null; state.statusLine = null;
+  $("page").hidden = true; $("pager").hidden = true; $("strip").hidden = true;
+  $("empty").hidden = false;
+  $("exportBtn").disabled = true;
+  $("status").textContent = "Ready";
+  count();
+  touched();
+  $("text").focus();
+});
+
+firstRun();
 count();
 syncLook();
