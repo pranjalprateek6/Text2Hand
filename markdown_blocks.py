@@ -139,7 +139,8 @@ def _paragraph(node, out: list[Block], kind: str = "para") -> None:
     lines of a letter's sign-off), so each piece is written on a line of its
     own. All but the last are "line" blocks, which take no gap after them.
     """
-    pieces, current = [], []
+    pieces: list[list] = []
+    current: list = []
     for child in node.children:
         if getattr(child, "name", None) == "br":
             pieces.append(current)

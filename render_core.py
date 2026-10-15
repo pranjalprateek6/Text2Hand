@@ -189,14 +189,14 @@ def write_streaming(text: str, folder: Path, as_markdown: bool, on_progress,
                 # Halved by box averaging first, which is half the cost of
                 # filtering the full page and looks the same at 900px.
                 preview = page.reduce(2)
-                preview.thumbnail((PREVIEW_WIDTH, PREVIEW_WIDTH * 4), Image.LANCZOS)
+                preview.thumbnail((PREVIEW_WIDTH, PREVIEW_WIDTH * 4), Image.Resampling.LANCZOS)
                 preview.save(folder / f"preview_{i}.jpg", quality=82, optimize=True)
 
                 # From the preview rather than the page: a second full-size
                 # copy per page in flight is 30 MB that buys nothing, and
                 # 900px is still four times the thumbnail's width.
                 thumb = preview.copy()
-                thumb.thumbnail((THUMB_WIDTH, THUMB_WIDTH * 4), Image.LANCZOS)
+                thumb.thumbnail((THUMB_WIDTH, THUMB_WIDTH * 4), Image.Resampling.LANCZOS)
                 thumb.save(folder / f"thumb_{i}.jpg", quality=72, optimize=True)
                 mark_ready(i)
 
@@ -230,7 +230,8 @@ def write_streaming(text: str, folder: Path, as_markdown: bool, on_progress,
     reused: list[int] = []
 
     def reuse(number: int, key: str) -> bool:
-        if not before or number > len(before["keys"]) or before["keys"][number - 1] != key:
+        if (base is None or not before or number > len(before["keys"])
+                or before["keys"][number - 1] != key):
             return False
         names = (f"preview_{number}.jpg", f"thumb_{number}.jpg", f"pdf_{number}.jpg")
         full = [f"page_{number}.jpg", f"page_{number}.png"]
@@ -240,6 +241,7 @@ def write_streaming(text: str, folder: Path, as_markdown: bool, on_progress,
         slots.acquire()
 
         def write(i=number):
+            assert base is not None       # only pages reuse() found are copied
             try:
                 for name in (f"preview_{i}.jpg", f"thumb_{i}.jpg"):
                     shutil.copyfile(base / name, folder / name)

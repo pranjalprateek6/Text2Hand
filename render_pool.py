@@ -22,6 +22,7 @@ import queue
 import sys
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
+from typing import Any
 
 _POLL = 0.05                            # seconds between looks at a worker's queue
 
@@ -56,7 +57,7 @@ def _run(text: str, opts: dict, folder: str, events, stop, base: str | None = No
 class RenderPool:
     def __init__(self, processes: int) -> None:
         ctx = multiprocessing.get_context("spawn")
-        extra = {}
+        extra: dict[str, Any] = {}
         if sys.version_info >= (3, 11):
             # a worker is replaced after this many renders, so whatever its
             # caches and the allocator have accumulated is given back
