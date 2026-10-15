@@ -410,7 +410,59 @@ function markStale() {
   $("dlMain").hidden = !state.id;
   $("dlMain").classList.toggle("btn--outline", !current);
   $("render").classList.toggle("btn--outline", current);
+  syncPhoneBar();
 }
+
+/* --------------------------------------------------------------- phone bar */
+
+// On a phone the top bar is out of reach and the settings bar sat below the
+// editor, a scroll away. The next action (Render, or the PDF once the page
+// is current) sits in a bar at the bottom of the screen, and Look, Pen and
+// Size open as a sheet over whichever tab is showing. Both mirror the
+// controls they stand for rather than duplicating their logic.
+const phone = window.matchMedia("(max-width: 600px)");
+
+function syncPhoneBar() {
+  $("mRender").textContent = $("renderLabel").textContent;
+  $("mRender").classList.toggle("btn--outline", $("render").classList.contains("btn--outline"));
+  $("mDownload").hidden = $("dlMain").hidden;
+  $("mDownload").href = $("dlMain").href || "#";
+  $("mDownload").classList.toggle("btn--outline", $("dlMain").classList.contains("btn--outline"));
+}
+$("mRender").addEventListener("click", () => $("render").click());
+
+const settings = document.querySelector(".pane__foot");
+const settingsHome = { parent: settings.parentNode, next: settings.nextSibling };
+function placeSettings() {
+  // safe to call any number of times: it only moves the settings if they
+  // are on the wrong side of the phone width
+  const inSheet = $("sheetBody").contains(settings);
+  if (phone.matches && !inSheet) $("sheetBody").append(settings);
+  else if (!phone.matches && inSheet) {
+    settingsHome.parent.insertBefore(settings, settingsHome.next);
+    closeSheet();
+  }
+}
+function openSheet() {
+  $("settingsSheet").hidden = false;
+  $("mSettings").setAttribute("aria-expanded", "true");
+  $("sheetClose").focus();
+}
+function closeSheet() {
+  if ($("settingsSheet").hidden) return;
+  $("settingsSheet").hidden = true;
+  $("mSettings").setAttribute("aria-expanded", "false");
+  if (phone.matches) $("mSettings").focus();
+}
+$("mSettings").addEventListener("click", openSheet);
+$("sheetClose").addEventListener("click", closeSheet);
+$("sheetVeil").addEventListener("click", closeSheet);
+$("settingsSheet").addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeSheet(); }
+});
+phone.addEventListener("change", placeSettings);
+window.addEventListener("resize", placeSettings);   // some browsers miss the change event
+placeSettings();
 $("stale").addEventListener("click", () => render());
 
 $("reroll").addEventListener("click", () => {
@@ -437,6 +489,7 @@ function setBusy(on, stage) {
   state.cancelPending = false;
   $("render").classList.toggle("is-busy", on);
   $("renderLabel").textContent = on ? (stage || "Rendering") : "Render";
+  $("mRender").textContent = $("renderLabel").textContent;
   $("status").textContent = on ? (stage || "Rendering…") : $("status").textContent;
   $("status").classList.toggle("is-live", on);
   const showing = on && !$("page").hidden;
@@ -489,6 +542,7 @@ async function render() {
     const done = await poll(started.job, (m, job) => {
       $("loadingText").textContent = m;
       $("liveText").textContent = m;
+      $("mRender").textContent = m;
       $("status").textContent = m + "…";
       showLive(job);
     });
