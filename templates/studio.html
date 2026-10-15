@@ -140,8 +140,13 @@
           </button>
         </div>
 
-        <textarea id="text" spellcheck="false" aria-label="Text to write out by hand"
-                  placeholder="Type or paste anything. Or drop a PDF anywhere on this window."></textarea>
+        <!-- the editor: a plain textarea over a layer that draws the same text
+             with its Markdown picked out; the textarea is what is edited -->
+        <div class="editor" id="editorWrap">
+          <div class="editor__hl" id="hl" aria-hidden="true"></div>
+          <textarea id="text" spellcheck="false" aria-label="Text to write out by hand"
+                    placeholder="Type or paste anything. Or drop a PDF anywhere on this window."></textarea>
+        </div>
 
         <div class="tries" id="tries">
           <span class="tries__label">Try</span>

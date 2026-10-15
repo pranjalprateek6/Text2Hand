@@ -741,6 +741,25 @@ def preview(rid: str, n: int):
     return send_file(path, mimetype="image/jpeg")
 
 
+_ASSET_DIR = re.compile(r"eq_[0-9a-f]{12}")
+_ASSET_FILE = re.compile(r"eq\d{1,4}_\d{1,4}\.png")
+
+
+@app.get("/asset/<folder>/<name>")
+def asset(folder: str, name: str):
+    """An equation crop, for the editor's thumbnail of it.
+
+    Only the server's own crop names are served, from the asset folder and
+    nowhere else: the same names the Markdown refers to them by.
+    """
+    if not (_ASSET_DIR.fullmatch(folder) and _ASSET_FILE.fullmatch(name)):
+        abort(404)
+    path = ASSET_ROOT / folder / name
+    if not path.is_file():
+        abort(404)
+    return send_file(path, mimetype="image/png", max_age=3600)
+
+
 @app.get("/thumb/<rid>/<int:n>.jpg")
 def thumb(rid: str, n: int):
     path = _safe(rid) / f"thumb_{n}.jpg"

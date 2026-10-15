@@ -260,7 +260,84 @@ function fileStem() {
   return t === "Untitled" ? "" : t.replace(/…$/, "").trim();
 }
 
+/* ------------------------------------------------------------ highlighting */
+
+// The editor's text is drawn a second time, underneath, with the Markdown
+// picked out: headings, list markers, quotes, rules, tables, code and links.
+// The textarea on top keeps doing all the editing with its own text made
+// transparent, so nothing about typing, selecting or undo changes. Every
+// character is drawn in the same place, so the two layers line up exactly.
+// An equation line, which reads as a corrupted file path, is drawn as a
+// small chip with a picture of the equation over its (hidden) text.
+const HL_LIMIT = 60000;        // past this, the plain textarea, for speed
+const EQ_SRC = /^eq_[0-9a-f]{12}\/eq\d{1,4}_\d{1,4}\.png$/;
+
+function esc(s) {
+  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
+function inline(line) {
+  // images and links first, then inline code; the text is escaped piecewise
+  // so the syntax characters stay in place
+  const out = [];
+  const rx = /(!?)\[([^\]]*)\]\(([^)\s]*)\)|`[^`]+`/g;
+  let last = 0, m;
+  while ((m = rx.exec(line))) {
+    out.push(esc(line.slice(last, m.index)));
+    const whole = m[0];
+    if (whole[0] === "`") out.push(`<span class="hl-code">${esc(whole)}</span>`);
+    else if (m[1] && EQ_SRC.test(m[3])) {
+      out.push(`<span class="hl-eq"><span class="hl-raw">${esc(whole)}</span>`
+        + `<span class="hl-chip"><img src="/asset/${esc(m[3])}" alt="" loading="lazy" />`
+        + `${esc(m[2] || "equation")}</span></span>`);
+    } else out.push(`<span class="hl-link">${esc(whole)}</span>`);
+    last = m.index + whole.length;
+  }
+  out.push(esc(line.slice(last)));
+  return out.join("");
+}
+
+function highlight(text) {
+  let fenced = false;
+  return text.split("\n").map((line) => {
+    if (/^\s*```/.test(line)) { fenced = !fenced; return `<span class="hl-mark">${esc(line)}</span>`; }
+    if (fenced) return `<span class="hl-code">${esc(line)}</span>`;
+    let m;
+    if ((m = line.match(/^(#{1,6})(\s.*)?$/))) {
+      return `<span class="hl-mark">${m[1]}</span><span class="hl-h">${inline(m[2] || "")}</span>`;
+    }
+    if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) return `<span class="hl-mark">${esc(line)}</span>`;
+    if (/^>/.test(line)) return `<span class="hl-q">${inline(line)}</span>`;
+    if (/^\s*\|/.test(line)) return inline(line).replace(/\|/g, '<span class="hl-mark">|</span>');
+    if ((m = line.match(/^(\s*)([-*+]|\d+[.)])(\s+)(.*)$/))) {
+      return `${m[1]}<span class="hl-mark">${esc(m[2])}</span>${m[3]}${inline(m[4])}`;
+    }
+    return inline(line);
+  }).join("\n");
+}
+
+let hlFrame = 0;
+function paintHighlight() {
+  cancelAnimationFrame(hlFrame);
+  hlFrame = requestAnimationFrame(() => {
+    const t = $("text").value;
+    const plain = t.length > HL_LIMIT;
+    $("editorWrap").classList.toggle("is-plain", plain);
+    $("hl").innerHTML = plain ? "" : highlight(t) + "\n ";
+    syncHighlight();
+  });
+}
+function syncHighlight() {
+  const ta = $("text");
+  // the textarea's scrollbar takes width the layer underneath does not have
+  $("hl").style.paddingRight = `${22 + ta.offsetWidth - ta.clientWidth}px`;
+  $("hl").scrollTop = ta.scrollTop;
+}
+$("text").addEventListener("scroll", syncHighlight);
+window.addEventListener("resize", syncHighlight);
+
 function count() {
+  paintHighlight();
   const n = $("text").value.length;
   const pages = Math.max(1, Math.ceil(n / PAGE_SIZE));
   $("count").textContent = n ? `${n.toLocaleString()} · ~${pages}p` : "0";

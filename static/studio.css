@@ -452,6 +452,7 @@ select.mini {
   .split[data-show="preview"] .pane--source { display: none; }
   .split[data-show="preview"] .pages { min-height: 70vh; }
   #text { min-height: 220px; }
+  .editor { min-height: 220px; }
   .pages { min-height: 340px; }
   .library { padding: 24px 16px 40px; }
 }
@@ -727,3 +728,32 @@ select.mini {
 #samplesPop .pop__item { width: 100%; text-align: left; border: 0; background: none; font: inherit; color: inherit; }
 #samplesPop .pop__item:hover, #samplesPop .pop__item:focus-visible { background: var(--secondary); }
 @media (max-width: 600px) { #samplesPop { left: auto; right: 0; } }
+
+/* ------------------------------------------------------------- highlighting */
+.editor { position: relative; flex: 1; min-height: 0; display: flex; }
+.editor #text { position: relative; z-index: 1; color: transparent; caret-color: var(--foreground); }
+.editor #text::selection { color: transparent; background: color-mix(in oklch, var(--foreground) 18%, transparent); }
+.editor__hl {
+  position: absolute; inset: 0; overflow: hidden; pointer-events: none;
+  padding: 20px 22px;
+  font-family: var(--font-mono); font-size: 13.5px; line-height: 1.8; tab-size: 2;
+  white-space: pre-wrap; overflow-wrap: break-word; word-break: normal;
+  color: var(--foreground);
+}
+.editor.is-plain #text { color: var(--foreground); }
+.editor.is-plain .editor__hl { display: none; }
+.hl-mark { color: color-mix(in oklch, var(--muted-foreground) 85%, transparent); }
+.hl-h { color: var(--foreground); text-decoration: underline; text-decoration-color: color-mix(in oklch, var(--foreground) 25%, transparent); text-underline-offset: 4px; }
+.hl-q { color: var(--muted-foreground); font-style: italic; }
+.hl-code { color: color-mix(in oklch, var(--foreground) 70%, oklch(0.55 0.12 250)); }
+.hl-link { color: color-mix(in oklch, var(--foreground) 60%, oklch(0.55 0.14 250)); }
+.hl-eq { position: relative; }
+.hl-raw { color: transparent; }
+.hl-chip {
+  position: absolute; left: 0; top: -1px;
+  display: inline-flex; align-items: center; gap: 6px;
+  height: calc(1.8em - 2px); padding: 0 8px 0 3px; white-space: nowrap;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: var(--card); color: var(--muted-foreground); font-size: 12px;
+}
+.hl-chip img { height: calc(1.8em - 6px); max-width: 220px; object-fit: contain; border-radius: 3px; background: #fff; padding: 0 3px; }
