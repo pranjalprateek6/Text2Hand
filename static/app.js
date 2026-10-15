@@ -342,6 +342,12 @@ function markStale() {
   const stale = !!state.id && !state.busy && JSON.stringify(payload()) !== state.rendered;
   $("pages").classList.toggle("is-stale", stale);
   $("stale").hidden = !stale;
+  // Whichever is the next thing to do is the dark button: Download PDF when
+  // the page on screen is the current one, Render when it is not.
+  const current = !!state.id && !stale && !state.busy;
+  $("dlMain").hidden = !state.id;
+  $("dlMain").classList.toggle("btn--outline", !current);
+  $("render").classList.toggle("btn--outline", current);
 }
 $("stale").addEventListener("click", () => render());
 
@@ -527,6 +533,7 @@ function show(n) {
   $("dlZip").href = `/download/${state.id}/pages.zip${name}`;
   $("dlPagePng").href = `/download/${state.id}/page_${state.page}.png${name}`;
   $("dlPagePdf").href = `/download/${state.id}/page_${state.page}.pdf${name}`;
+  $("dlMain").href = $("dlPdf").href;
 
   // On a one-page render the whole document and this page are the same file,
   // and the zip is that one page in a wrapper. Offer the two artefacts that
@@ -563,25 +570,38 @@ $("liveCancel").addEventListener("click", cancelJob);
 $("prev").addEventListener("click", () => show(state.page - 1));
 $("next").addEventListener("click", () => show(state.page + 1));
 
-// The preview opens at 85%, which fits a whole page in the pane without a
-// scrollbar; each press moves 15%. show() never touches this, so the level
-// survives paging and re-renders. On a narrow screen 85% is wider than the
-// pane, so until someone zooms by hand it fits the page to the width instead.
+// The page is fitted to the pane: on a desktop the whole page in view, as
+// large as the pane's height allows, since the page is the thing being made;
+// on a phone, the screen's width. It used to open at a fixed 85% of 540px,
+// a third of a wide screen with dotted canvas all round it. Zooming by hand
+// takes over until Fit is pressed; each press moves 15%, and show() never
+// touches the level, so it survives paging and re-renders.
 let zoom = 0.85;
 let zoomedByHand = false;
 function applyZoom() {
   $("pages").style.setProperty("--zoom", zoom);
   $("zoomOut").disabled = zoom < 0.41;
   $("zoomIn").disabled = zoom > 1.95;
+  $("zoomFit").classList.toggle("is-on", !zoomedByHand);
+}
+function pageAspect() {
+  const p = $("page");
+  return p.naturalWidth ? p.naturalHeight / p.naturalWidth : 3722 / 2632;
 }
 function fitZoom() {
   if (zoomedByHand) return;
-  const room = $("pages").clientWidth - 52;          // the pane's padding
-  zoom = room > 0 ? Math.max(0.4, Math.min(0.85, room / 540)) : 0.85;
+  const pane = $("pages");
+  const wide = (pane.clientWidth - 52) / 540;          // 52: the pane's padding
+  const tall = (pane.clientHeight - 52) / (540 * pageAspect());
+  if (wide <= 0) { zoom = 0.85; applyZoom(); return; }
+  const z = narrow.matches || tall <= 0 ? Math.min(0.85, wide) : Math.min(wide, tall);
+  zoom = Math.max(0.4, Math.min(2.05, z));
   applyZoom();
 }
 $("zoomIn").addEventListener("click", () => { zoomedByHand = true; zoom = Math.min(2.05, zoom + 0.15); applyZoom(); });
 $("zoomOut").addEventListener("click", () => { zoomedByHand = true; zoom = Math.max(0.40, zoom - 0.15); applyZoom(); });
+$("zoomFit").addEventListener("click", () => { zoomedByHand = false; fitZoom(); });
+$("page").addEventListener("load", fitZoom);         // a Letter page is a different shape
 window.addEventListener("resize", fitZoom);
 fitZoom();
 
