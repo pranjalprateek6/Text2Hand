@@ -1,0 +1,41 @@
+# Text2Hand on Fly.io. Deploy with:
+#
+#   fly deploy --ha=false
+#
+# --ha=false matters: jobs and their progress live in the one server
+# process's memory (see wsgi.py), so a second machine would answer polls for
+# jobs it never started. The app runs on exactly one machine.
+
+app = "text2hand"
+primary_region = "sin"              # Singapore; Mumbai (bom) takes no new machines
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  # Fly's proxy is in front, so per-visitor limits must read the forwarded
+  # address rather than the proxy's
+  T2H_TRUST_PROXY = "1"
+  # One render worker fits 2 GB; with 3 GB or more, "2" renders two at once
+  T2H_RENDER_PROCS = "1"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  # sleeps when nobody is using it and wakes on the next request (a few
+  # seconds' cold start); renders are temporary, so nothing is lost
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/healthz"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "30s"
+
+[[vm]]
+  memory = "2gb"
+  cpus = 2
+  cpu_kind = "shared"
