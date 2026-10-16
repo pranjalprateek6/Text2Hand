@@ -581,6 +581,7 @@ function markStale() {
   const current = !!state.id && !stale && !state.busy;
   $("dlMain").hidden = !state.id;
   $("dlMain").classList.toggle("btn--outline", !current);
+  $("dlMain").title = current ? "" : "The text has changed: this renders it first, then downloads";
   $("render").classList.toggle("btn--outline", current);
   syncPhoneBar();
 }
@@ -636,6 +637,43 @@ phone.addEventListener("change", placeSettings);
 window.addEventListener("resize", placeSettings);   // some browsers miss the change event
 placeSettings();
 $("stale").addEventListener("click", () => render());
+
+// A download is always of the text as it stands. When the page on screen is
+// out of date, or a render is still running, a download press renders first
+// and the file follows once the new pages exist. It used to hand out the old
+// render without a word, which is how a corrected typo came back in the PDF.
+let pendingDownload = null;
+function downloadIsStale() {
+  return !state.id || state.busy || JSON.stringify(payload()) !== state.rendered;
+}
+function fetchDownload(id) {
+  const src = $(id === "mDownload" ? "dlMain" : id);
+  const a = document.createElement("a");
+  a.href = src.href;
+  a.download = "";
+  document.body.append(a);
+  a.click();
+  a.remove();
+}
+["dlMain", "mDownload", "dlPdf", "dlZip", "dlPagePng", "dlPagePdf"].forEach((id) => {
+  $(id).addEventListener("click", (e) => {
+    if (!downloadIsStale()) return;
+    e.preventDefault();
+    pendingDownload = id;
+    $("status").textContent = "Rendering the latest text, then downloading…";
+    if (!state.busy) render();
+  });
+});
+// called when a render ends: hand over the file it was asked for, or, if the
+// text moved on again while it ran, render once more first
+function settleDownload(ok) {
+  if (!pendingDownload) return;
+  if (!ok) { pendingDownload = null; return; }
+  if (downloadIsStale()) { render(); return; }
+  const id = pendingDownload;
+  pendingDownload = null;
+  fetchDownload(id);
+}
 
 $("reroll").addEventListener("click", () => {
   state.seed = newSeed();
@@ -709,7 +747,11 @@ async function render() {
       body: JSON.stringify({ ...body, base: state.id }),
     });
     const started = await res.json();
-    if (!res.ok) { setBusy(false); after(); note(started.error || "That did not work.", true); return; }
+    if (!res.ok) {
+      settleDownload(false); setBusy(false); after();
+      note(started.error || "That did not work.", true);
+      return;
+    }
     state.job = started.job;
     if (state.cancelPending) cancelJob();
 
@@ -722,8 +764,8 @@ async function render() {
     });
     state.job = null;
     setBusy(false);
-    if (done.cancelled) { after(); $("status").textContent = "Cancelled"; return; }
-    if (done.error) { after(); note(done.error, true); return; }
+    if (done.cancelled) { settleDownload(false); after(); $("status").textContent = "Cancelled"; return; }
+    if (done.error) { settleDownload(false); after(); note(done.error, true); return; }
 
     state.id = done.id;
     state.pages = done.pages;
@@ -751,7 +793,9 @@ async function render() {
       told.push("Some text could not be placed on the page: " + done.dropped.join(", ") + ".");
     }
     if (told.length) note(told.join(" "));
+    settleDownload(true);
   } catch (err) {
+    settleDownload(false);
     setBusy(false);
     after();
     note("Could not reach the server. Is it still running?", true);
