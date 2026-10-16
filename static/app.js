@@ -1049,6 +1049,31 @@ async function remember(done, body) {
   }
 }
 
+// Put the document in the editor away in the library before something else
+// takes its place, with any edits made since its last render. An entry with
+// no render behind it has no id, and is written when it is opened.
+function stashCurrent() {
+  const text = $("text").value;
+  if (!text.trim()) return false;
+  const all = lib();
+  const old = all.find((e) => e.doc && e.doc === state.doc);
+  if (old && old.text === text) return true;            // already there, as it stands
+  let drawn = null;
+  try { drawn = state.rendered ? JSON.parse(state.rendered).text : null; } catch {}
+  const current = !!state.id && drawn === text;
+  const entry = {
+    id: current ? state.id : null, title: title(), pages: current ? state.pages : 0,
+    chars: text.length, ts: Date.now(), text, ink: INK, seed: state.seed, doc: state.doc,
+    opts: { markdown: asMarkdown(), read: READ, paper: PAPER, sheet: SHEET,
+            ruled: PAPER === "ruled", texture: OPTIONS.texture, skew: OPTIONS.skew, size: SIZE },
+    thumb: (old && old.thumb) || "", heads: current ? (state.heads || []) : [],
+  };
+  const rest = all.filter((e) => !(e.doc && e.doc === state.doc));
+  try { localStorage.setItem(LIB_KEY, JSON.stringify([entry, ...rest].slice(0, LIB_MAX))); }
+  catch { return false; }
+  return true;
+}
+
 function drawLibrary() {
   const all = lib();
   const query = ($("libSearch").value || "").trim().toLowerCase();
@@ -1089,8 +1114,8 @@ function drawLibrary() {
       `<span class="cardlet__thumb">${e.thumb ? `<img src="${e.thumb}" alt="" />` : "no preview"}</span>` +
       `<span class="cardlet__meta">` +
       `<span class="cardlet__title"></span>` +
-      `<span class="cardlet__sub"><span>${e.pages}p · ${ago(e.ts)}</span>` +
-      `<span class="cardlet__life">${life(e.ts)}</span>` +
+      `<span class="cardlet__sub"><span>${e.pages ? e.pages + "p" : "not rendered"} · ${ago(e.ts)}</span>` +
+      `<span class="cardlet__life">${e.id ? life(e.ts) : "renders when opened"}</span>` +
       `<span class="cardlet__del" title="Remove" role="button" tabindex="0">` +
       `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>` +
       `</span></span></span>`;
@@ -1172,7 +1197,8 @@ async function openEntry(e) {
     $("empty").hidden = true;
     $("exportBtn").disabled = true;
     state.statusLine = null;
-    note("That render had expired on the server, so it is being written again.");
+    note(e.id ? "That render had expired on the server, so it is being written again."
+              : "Rendering it now.");
     render();
   };
   img.src = `/preview/${e.id}/1.jpg`;
@@ -1333,14 +1359,11 @@ function readSummary(done) {
   ];
 }
 
-async function readPdf(confirmed = false) {
+async function readPdf() {
   if (!state.file || state.reading) return;
-  // Reading lands its Markdown in the editor, over whatever is there. Only
-  // the person's own text is worth asking about: text an earlier read of the
-  // PDF put there is replaced by the new read without a question.
-  const own = $("text").value.trim() && $("text").value !== state.lastRead;
-  if (own && !confirmed &&
-      !(await ask("Reading the PDF replaces the text in the editor. Continue?", "Read it"))) return;
+  // A PDF opens as a document of its own. Whatever was in the editor is put
+  // away in the library first, unrendered edits and all, so there is nothing
+  // to ask about: it used to ask, and then write over it.
 
   const body = new FormData();
   body.append("file", state.file);
@@ -1363,16 +1386,29 @@ async function readPdf(confirmed = false) {
     if (done.cancelled) { if (!state.readAgain) $("status").textContent = "Cancelled"; return; }
     if (done.error) { note(done.error, true); return; }
 
-    // Extraction is never perfect, so it lands in the editor for review.
+    // Extraction is never perfect, so it lands in the editor for review. A
+    // second read of the same PDF (another page range, another reader)
+    // replaces the first in place; anything else is kept in the library.
+    const again = $("text").value === state.lastRead;
+    const kept = !again && stashCurrent();
     $("text").value = done.markdown;
     state.lastRead = done.markdown;
-    newDocument();
+    if (!again) newDocument();
+    state.title = null;
+    state.heads = [];
+    starts = null;
+    // a new document has no render yet: the old one's pages leave with it
+    state.id = null; state.pages = 0; state.rendered = null; state.statusLine = null;
+    $("page").hidden = true; $("pager").hidden = true; $("strip").hidden = true;
+    $("empty").hidden = false;
+    $("exportBtn").disabled = true;
     READ = "markdown";                      // a converted PDF is Markdown, whatever it looks like
     $("readAs").value = READ;
     count();
     $("text").focus();
     // the file stays, so a different page range or reader is one click away
-    noteList("The PDF is in the editor", readSummary(done));
+    noteList(again ? "The PDF is in the editor" : "The PDF is a new document",
+             [...readSummary(done), kept ? "Your previous document is in the Library." : ""]);
     touched();
   } catch (err) {
     note("Could not reach the server. Is it still running?", true);
@@ -1382,7 +1418,7 @@ async function readPdf(confirmed = false) {
     if ($("status").textContent !== "Cancelled")
       $("status").textContent = state.statusLine || "Ready";
     $("status").classList.remove("is-live");
-    if (state.readAgain) { state.readAgain = false; readPdf(true); }
+    if (state.readAgain) { state.readAgain = false; readPdf(); }
   }
 }
 
