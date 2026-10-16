@@ -50,11 +50,14 @@
       </a>
 
       <div class="bar__acts">
-        <label class="auto" title="Render again on its own when you stop typing">
-          <input type="checkbox" id="auto" />
-          <span class="auto__track" aria-hidden="true"></span>
-          <span class="auto__label">Auto</span>
-        </label>
+        <span class="autobox">
+          <label class="auto" title="Render again on its own when you stop typing">
+            <input type="checkbox" id="auto" aria-describedby="autoNote" />
+            <span class="auto__track" aria-hidden="true"></span>
+            <span class="auto__label">Auto</span>
+          </label>
+          <span class="auto__note" id="autoNote" hidden>Paused above ~3 pages · press Render</span>
+        </span>
 
         <!-- the one export most people want, a click away; the menu has the rest -->
         <a class="btn btn--sm btn--outline" id="dlMain" download hidden><span class="wide-only">Download&nbsp;</span>PDF</a>

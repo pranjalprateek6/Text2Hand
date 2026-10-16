@@ -911,20 +911,32 @@ $("pageN").addEventListener("keydown", (e) => {
 
 /* ------------------------------------------------------------- auto render */
 
-// Overleaf-style: when Auto is on, a pause after a change re-renders. Until
-// someone chooses, it is on for a short document, where a render is quick and
-// the page simply keeps up with the typing, and off for a long one, where
-// every pause would set off a long render. A choice made by hand is kept.
+// Overleaf-style: when Auto is on, a pause after a change re-renders. The
+// switch shows the person's choice and nothing else: it starts on, and only
+// they turn it off. On a long document, where every pause would set off a
+// long render, Auto rests and says so under the switch, and picks up again
+// when the document is short. It used to switch itself off and on as the
+// text grew and shrank, which looked like the page had stopped listening.
 const AUTO_KEY = "t2h.auto";
+const AUTO_LIMIT = 3 * PAGE_SIZE;           // characters; about three pages
 function autoChoice() {
   try { return localStorage.getItem(AUTO_KEY); } catch { return null; }
 }
+function autoPaused() {
+  return $("auto").checked && $("text").value.length > AUTO_LIMIT;
+}
+function autoActive() {
+  return $("auto").checked && !autoPaused();
+}
 function syncAuto() {
-  const chosen = autoChoice();
-  $("auto").checked = chosen === null ? $("text").value.length <= 3 * PAGE_SIZE : chosen === "1";
+  $("auto").checked = autoChoice() !== "0";
+  const paused = autoPaused();
+  $("autoNote").hidden = !paused;
+  document.querySelector(".autobox").classList.toggle("is-paused", paused);
 }
 $("auto").addEventListener("change", () => {
   try { localStorage.setItem(AUTO_KEY, $("auto").checked ? "1" : "0"); } catch {}
+  syncAuto();
   touched();
 });
 
@@ -934,7 +946,7 @@ function touched() {
   draftSoon();
   syncLook();
   markStale();
-  if (!$("auto").checked) return;
+  if (!autoActive()) return;
   if (!$("text").value.trim()) return;
   if (JSON.stringify(payload()) === state.rendered) return;
   if (state.busy) {

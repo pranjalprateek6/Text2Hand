@@ -104,6 +104,15 @@ body { overflow: hidden; height: 100vh; }
 .auto input:checked + .auto__track::after { transform: translateX(14px); }
 .auto input:focus-visible + .auto__track { outline: 2px solid var(--ring); outline-offset: 2px; }
 .auto__label { font-size: 13px; color: var(--muted-foreground); }
+/* Auto stays as it was set; on a long document a line under it says it is
+   resting, rather than the switch turning itself off */
+.autobox { position: relative; display: flex; align-items: center; }
+.auto__note {
+  position: absolute; top: calc(100% + 3px); right: 0;
+  white-space: nowrap; font-size: 10.5px; line-height: 1.2;
+  color: var(--muted-foreground);
+}
+.autobox.is-paused .auto__track { opacity: 0.55; }
 
 /* the render button spins while busy */
 .btn.is-busy { pointer-events: none; opacity: 0.75; }
