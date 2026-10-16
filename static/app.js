@@ -50,6 +50,9 @@ function newDocument() {
 
 function showView(which) {
   const write = which === "write";
+  // Auto, Download, Export and Render act on the document in the editor,
+  // which the library is not showing, so they step aside while it is open
+  document.body.dataset.view = which;
   $("viewWrite").hidden = !write;
   $("viewLibrary").hidden = write;
   $("navWrite").classList.toggle("is-on", write);
@@ -633,6 +636,25 @@ $("sheetVeil").addEventListener("click", closeSheet);
 $("settingsSheet").addEventListener("keydown", (e) => {
   if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeSheet(); }
 });
+// Export moves into the bottom bar on a phone, beside the PDF it widens, and
+// out of the header, which was four rows deep before the editor began.
+const exportMenu = $("exportBtn").closest(".menu");
+const exportHome = { parent: exportMenu.parentNode, next: exportMenu.nextSibling };
+// The Write and Preview tabs join the title's row on a phone, rather than
+// taking a row of their own under it.
+const mtabs = document.querySelector(".mtabs");
+const mtabsHome = { parent: mtabs.parentNode, next: mtabs.nextSibling };
+function placeExport() {
+  const below = $("mbarExport").contains(exportMenu);
+  if (phone.matches && !below) $("mbarExport").append(exportMenu);
+  else if (!phone.matches && below) exportHome.parent.insertBefore(exportMenu, exportHome.next);
+  const inBar = mtabs.parentNode === document.querySelector(".bar");
+  if (phone.matches && !inBar) document.querySelector(".bar").append(mtabs);
+  else if (!phone.matches && inBar) mtabsHome.parent.insertBefore(mtabs, mtabsHome.next);
+}
+phone.addEventListener("change", placeExport);
+window.addEventListener("resize", placeExport);
+placeExport();
 phone.addEventListener("change", placeSettings);
 window.addEventListener("resize", placeSettings);   // some browsers miss the change event
 placeSettings();
@@ -977,6 +999,7 @@ function syncAuto() {
   const paused = autoPaused();
   $("autoNote").hidden = !paused;
   document.querySelector(".autobox").classList.toggle("is-paused", paused);
+  document.body.classList.toggle("auto-paused", paused);   // the phone says it elsewhere
 }
 $("auto").addEventListener("change", () => {
   try { localStorage.setItem(AUTO_KEY, $("auto").checked ? "1" : "0"); } catch {}
@@ -1001,7 +1024,10 @@ function touched() {
     return;
   }
   clearTimeout(state.timer);
-  state.timer = setTimeout(render, 1400);
+  // a one-page note renders in well under a second, so its pause is short
+  // enough that the page keeps up with the typing; a longer document waits
+  // for a longer pause rather than starting a render at every breath
+  state.timer = setTimeout(render, $("text").value.length <= PAGE_SIZE ? 700 : 1400);
 }
 
 /* ------------------------------------------------------------------ library */
@@ -1102,9 +1128,9 @@ function drawLibrary() {
   // leaving it to be discovered.
   const life = (ts) => {
     const left = Math.round((ts / 1000 + RENDER_TTL - Date.now() / 1000) / 60);
-    if (left <= 0) return "opens by writing it again";
-    if (left < 60) return `expires in ${left}m`;
-    return `expires in ${Math.floor(left / 60)}h ${String(left % 60).padStart(2, "0")}m`;
+    if (left <= 0) return "re-renders when opened";
+    const t = left < 60 ? `${left}m` : `${Math.floor(left / 60)}h ${String(left % 60).padStart(2, "0")}m`;
+    return `pages kept ${t}, then re-rendered on open`;
   };
   entries.forEach((e, i) => {
     const card = document.createElement("button");

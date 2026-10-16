@@ -63,8 +63,11 @@
         <a class="btn btn--sm btn--outline" id="dlMain" download hidden><span class="wide-only">Download&nbsp;</span>PDF</a>
 
         <div class="menu">
-          <button class="btn btn--sm btn--outline" id="exportBtn" aria-haspopup="true" aria-expanded="false" disabled>
-            Export
+          <button class="btn btn--sm btn--outline" id="exportBtn" aria-haspopup="true" aria-expanded="false"
+                  aria-label="Export" disabled>
+            <span class="export__word">Export</span>
+            <svg class="export__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
           </button>
           <div class="pop" id="exportPop" hidden role="menu" aria-label="Export">
             <a class="pop__item" id="dlPdf" role="menuitem" download><b>Whole document</b><i>PDF, every page</i></a>
@@ -333,7 +336,7 @@
         <div class="library__tools">
           <input type="search" class="mini library__search" id="libSearch" hidden
                  placeholder="Search the library" aria-label="Search the library" />
-          <button class="btn btn--sm" id="libClear" hidden>Clear the library</button>
+          <button class="linkbtn" id="libClear" hidden>Clear the library</button>
         </div>
       </div>
       <div class="grid" id="grid"></div>
@@ -352,6 +355,7 @@
       <button class="btn btn--sm btn--outline" id="mSettings" aria-haspopup="dialog"
               aria-controls="settingsSheet" aria-expanded="false">Look &amp; pen</button>
       <span class="mbar__gap"></span>
+      <span class="mbar__export" id="mbarExport"></span>
       <a class="btn btn--sm btn--outline" id="mDownload" download hidden>PDF</a>
       <button class="btn btn--sm" id="mRender">Render</button>
     </div>
