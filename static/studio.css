@@ -707,8 +707,9 @@ body[data-view="library"] .mbar { display: none !important; }
   .tab { min-height: 44px; padding-left: 14px; padding-right: 14px; }
   .mtab { min-height: 44px; }
   #samplesBtn, #pdfBtn { height: 44px; }
-  .bar .bar__rename { width: 44px; height: 44px; margin-left: -10px; }
+  .bar .bar__rename { width: 44px; height: 44px; margin-left: -10px; flex: none; }
   .auto { min-height: 44px; }
+  .bar__home { min-height: 44px; align-items: center; }
 
   /* the title shares its row with the Write/Preview tabs; the page count
      stays for screen readers, and render progress shows on Render below */

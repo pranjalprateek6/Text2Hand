@@ -421,16 +421,59 @@ function followCaret() {
 }
 ["keyup", "click"].forEach((ev) => $("text").addEventListener(ev, followCaret));
 
-// A page, from the strip or the preview, takes the text to where it starts.
-function jumpTo(page) {
+// How far down the editor a character sits, measured on a hidden copy of the
+// editor with the same font, width and wrapping, since a textarea cannot say
+// where a character is on its own.
+let mirror = null;
+function offsetTop(ta, at) {
+  if (!mirror) {
+    mirror = document.createElement("div");
+    mirror.setAttribute("aria-hidden", "true");
+    document.body.append(mirror);
+  }
+  const cs = getComputedStyle(ta);
+  Object.assign(mirror.style, {
+    position: "absolute", visibility: "hidden", top: "0", left: "-9999px",
+    whiteSpace: "pre-wrap", overflowWrap: "break-word", boxSizing: cs.boxSizing,
+    width: ta.clientWidth + "px", font: cs.font, letterSpacing: cs.letterSpacing,
+    lineHeight: cs.lineHeight, padding: cs.padding, tabSize: cs.tabSize,
+  });
+  mirror.textContent = ta.value.slice(0, at);
+  const mark = document.createElement("span");
+  mark.textContent = "\u200b";
+  mirror.append(mark);
+  return mark.offsetTop;
+}
+
+// Paging (the strip, the pager, the arrow keys) brings the page's text into
+// view, so the editor and the preview stay on the same place in the document.
+// It only scrolls: the cursor and the focus stay where the person left them.
+function revealPage(page) {
   const ta = $("text");
   if (!(state.heads || []).length || !ta.offsetParent) return;   // the editor is not showing
+  const top = offsetTop(ta, pageStarts()[page - 1] || 0);
+  // set outright: a smooth scroll here was cut short by the strip scrolling
+  // its own thumbnail into view at the same moment
+  ta.scrollTop = Math.max(0, top - 24);
+}
+
+// Clicking the page itself means "take me there": the text scrolls to where
+// the page starts and the cursor goes with it, ready to edit.
+function jumpTo(page) {
+  const ta = $("text");
+  if (!(state.heads || []).length || !ta.offsetParent) return;
   const at = pageStarts()[page - 1] || 0;
-  ta.blur();
+  ta.focus({ preventScroll: true });
   ta.setSelectionRange(at, at);
-  ta.focus();
+  revealPage(page);
 }
 $("page").addEventListener("click", () => { if (state.id && !state.busy) jumpTo(state.page); });
+
+function goTo(page) {
+  const before = state.page;
+  show(page);
+  if (state.page !== before) revealPage(state.page);
+}
 
 /* ------------------------------------------------------------------ samples */
 
@@ -859,7 +902,7 @@ function drawStrip() {
       const n = document.createElement("span");
       n.textContent = i;
       b.append(img, n);
-      b.addEventListener("click", () => { show(i); jumpTo(i); });
+      b.addEventListener("click", () => goTo(i));
       strip.append(b);
     }
   }
@@ -925,8 +968,8 @@ $("render").addEventListener("click", () => (state.busy ? cancelJob() : render()
 // stopping is safe at any moment: the server only ever stops between pages
 $("cancelRender").addEventListener("click", cancelJob);
 $("liveCancel").addEventListener("click", cancelJob);
-$("prev").addEventListener("click", () => show(state.page - 1));
-$("next").addEventListener("click", () => show(state.page + 1));
+$("prev").addEventListener("click", () => goTo(state.page - 1));
+$("next").addEventListener("click", () => goTo(state.page + 1));
 
 // The page is fitted to the pane: on a desktop the whole page in view, as
 // large as the pane's height allows, since the page is the thing being made;
@@ -968,7 +1011,7 @@ fitZoom();
 // clamps whatever was typed.
 $("pageN").addEventListener("change", () => {
   const n = parseInt($("pageN").value, 10);
-  if (Number.isFinite(n) && state.id) show(n);
+  if (Number.isFinite(n) && state.id) goTo(n);
   else $("pageN").value = state.page;
 });
 $("pageN").addEventListener("keydown", (e) => {
@@ -1480,8 +1523,8 @@ document.addEventListener("keydown", (e) => {
   if (e.target.isContentEditable) return;   // typing a name, not paging
   if (e.key === "Escape") { $("exportPop").hidden = true; return; }
   if ($("viewWrite").hidden || state.pages < 2) return;
-  if (e.key === "ArrowLeft") { e.preventDefault(); show(state.page - 1); }
-  if (e.key === "ArrowRight") { e.preventDefault(); show(state.page + 1); }
+  if (e.key === "ArrowLeft") { e.preventDefault(); goTo(state.page - 1); }
+  if (e.key === "ArrowRight") { e.preventDefault(); goTo(state.page + 1); }
 });
 
 /* ------------------------------------------------------------------ session */
