@@ -154,8 +154,10 @@ img { max-width: 100%; height: auto; display: block; }
 }
 
 /* scroll reveal */
-.rv { opacity: 0; transform: translateY(24px); transition: opacity 800ms var(--ease), transform 800ms var(--ease); }
-.rv.on { opacity: 1; transform: none; }
+/* hidden only once js-on.js has marked the page: without scripts nothing
+   would ever reveal it, and the hero read as a headline and a blank */
+.js .rv { opacity: 0; transform: translateY(24px); transition: opacity 800ms var(--ease), transform 800ms var(--ease); }
+.js .rv.on { opacity: 1; transform: none; }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }

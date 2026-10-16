@@ -9,7 +9,7 @@
 
 section { position: relative; }
 
-.sec-head { margin-bottom: 56px; }
+.sec-head { margin-bottom: 40px; }
 .sec-head .display { margin-top: 20px; font-size: clamp(38px, 6vw, 72px); }
 .sec-head .lede { margin-top: 18px; font-size: 18px; color: var(--muted-foreground); max-width: 40rem; }
 
@@ -55,15 +55,15 @@ section { position: relative; }
 
 /* ------------------------------------------------------------------ hero */
 .hero {
-  min-height: 100vh;
-  display: flex; flex-direction: column; justify-content: center;
+  display: flex; flex-direction: column;
   overflow: hidden;
 }
+/* anchored beside the headline rather than centred on the hero, which now
+   runs on down to the real page: centred, the sketch sat behind it */
 .hero__art {
   position: absolute;
-  right: -120px; top: 50%;
-  transform: translateY(-50%);
-  width: min(720px, 60vw); height: min(720px, 60vw);
+  right: -120px; top: 40px;
+  width: min(620px, 48vw); height: min(620px, 48vw);
   opacity: 0.4;
   pointer-events: none;
 }
@@ -71,7 +71,8 @@ section { position: relative; }
    text instead of competing with it */
 .hero__art--left {
   right: auto; left: -100px;
-  width: min(540px, 42vw); height: min(540px, 42vw);
+  top: 120px;
+  width: min(460px, 36vw); height: min(460px, 36vw);
   opacity: 0.35;
 }
 .fx-page, .fx-keys { width: 100%; height: 100%; display: block; }
@@ -86,8 +87,8 @@ section { position: relative; }
    hero flush against the viewport edge while the stats under it kept theirs */
 /* the top shrinks on short screens, so the studio button clears the fold on a
    1366x768 laptop instead of showing its top 27px */
-.hero__in { position: relative; z-index: 10; padding-block: clamp(88px, 13vh, 150px) 240px; }
-.hero__title { font-size: clamp(3rem, 11vw, 9.5rem); }
+.hero__in { position: relative; z-index: 10; padding-block: clamp(88px, 10vh, 120px) 56px; }
+.hero__title { font-size: clamp(3rem, 8vw, 7.25rem); }
 .hero__title .line { display: block; }
 .hero__word { position: relative; display: inline-block; }
 .hero__word u {
@@ -99,22 +100,20 @@ section { position: relative; }
    then action, straight down the middle. */
 .hero__in { text-align: center; }
 .hero__lede {
-  margin: 48px auto 0;
+  margin: 32px auto 0;
   font-size: clamp(18px, 2vw, 23px); line-height: 1.55;
-  color: var(--muted-foreground); max-width: 36rem;
+  color: var(--muted-foreground); max-width: 42rem;
 }
 .hero__acts {
-  margin-top: 36px;
+  margin-top: 28px;
   display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
   gap: 16px;
 }
 .hero__note { width: 100%; font-family: var(--font-mono); font-size: 12px; color: var(--muted-foreground); }
 
-/* stats pinned to the hero's foot: one static row, each number bound to its
-   own cell so a viewport edge can never split a pair */
-.hero__stats {
-  position: absolute; left: 0; right: 0; bottom: 32px;
-}
+/* who it is for: one row under the proof, each word bound to its own cell
+   so a viewport edge can never split a pair */
+.hero__stats { position: relative; z-index: 10; padding-bottom: 32px; }
 .hero__stats-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -127,11 +126,50 @@ section { position: relative; }
 .stat span { font-size: 14px; color: var(--muted-foreground); }
 .stat span i { display: block; font-style: normal; font-family: var(--font-mono); font-size: 11px; margin-top: 2px; }
 
+/* ------------------------------------------------------------- proof */
+/* what goes in and what comes out, side by side under the button: the real
+   page is the product, so it belongs in the first screen */
+.proof {
+  margin: 36px auto 0;
+  max-width: 980px;
+  display: grid; grid-template-columns: 1fr auto 1.35fr;
+  align-items: start; gap: 28px;
+  text-align: left;
+}
+.proof__cap {
+  display: block; margin-bottom: 10px;
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--muted-foreground);
+}
+.proof__typed {
+  margin-top: 48px;
+  padding: 20px 22px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--card);
+  font-family: var(--font-mono); font-size: 13px; line-height: 1.7;
+  box-shadow: 0 12px 30px rgba(30, 25, 10, 0.05);
+}
+.proof__typed .proof__cap { margin-bottom: 12px; }
+.proof__typed p + p { margin-top: 10px; }
+.proof__arrow { margin-top: 120px; width: 28px; color: var(--muted-foreground); }
+.proof__arrow svg { width: 28px; height: 28px; display: block; }
+.proof__page { margin: 0; }
+.proof__sheet {
+  /* the top of the letter: everything that is written, none of the blank foot */
+  aspect-ratio: 1100 / 860;
+  overflow: hidden;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  box-shadow: 0 30px 70px rgba(30, 25, 10, 0.14), 0 6px 16px rgba(30, 25, 10, 0.06);
+  transform: rotate(-0.6deg);
+}
+.proof__sheet img { width: 100%; height: auto; display: block; }
+
 /* -------------------------------------------------------------- features */
-.features { padding: 120px 0; }
+.features { padding: 88px 0; }
 .frow {
   display: grid; gap: 32px;
-  padding: 48px 0;
+  padding: 28px 0;
   border-top: 1px solid var(--border);
   align-items: center;
 }
@@ -140,11 +178,12 @@ section { position: relative; }
 .frow__n { font-family: var(--font-mono); font-size: 14px; color: var(--muted-foreground); }
 .frow__t { font-family: var(--font-display); font-size: clamp(28px, 3.6vw, 44px); letter-spacing: -0.02em; }
 .frow__d { margin-top: 12px; font-size: 16px; color: var(--muted-foreground); max-width: 34rem; }
-.frow__v { height: 180px; color: var(--foreground); opacity: 0.85; }
+.frow__v { height: 120px; color: var(--foreground); opacity: 0.85; }
+.frow__dev { margin-top: 12px; font-size: 14px; color: var(--muted-foreground); }
 .frow__v svg { width: 100%; height: 100%; }
 
 /* ---------------------------------------------------------- how it works */
-.how { padding: 120px 0; background: var(--secondary); }
+.how { padding: 88px 0; background: var(--secondary); }
 .how__grid { display: grid; gap: 48px; }
 @media (min-width: 1024px) { .how__grid { grid-template-columns: 1fr 1fr; gap: 96px; } }
 
@@ -185,7 +224,7 @@ section { position: relative; }
 }
 
 /* -------------------------------------------------------------- evidence */
-.evidence { padding: 120px 0; }
+.evidence { padding: 88px 0; }
 .evidence__grid { display: grid; gap: 48px; align-items: start; }
 @media (min-width: 1024px) { .evidence__grid { grid-template-columns: 1fr 1.05fr; gap: 96px; } }
 .evrow { display: grid; grid-template-columns: 44px 1fr; gap: 16px; padding: 20px 0; border-bottom: 1px solid var(--border); }
@@ -210,7 +249,7 @@ section { position: relative; }
 .eqcard figcaption { margin-top: 12px; font-family: var(--font-mono); font-size: 11.5px; color: var(--muted-foreground); }
 
 /* ------------------------------------------------------------------- cta */
-.cta { padding: 120px 0 96px; }
+.cta { padding: 72px 0 80px; }
 .cta__box {
   position: relative;
   border: 1px solid var(--foreground);
@@ -251,10 +290,34 @@ section { position: relative; }
 }
 .footer__gap { flex: 1; }
 
+@media (max-width: 900px) {
+  /* the typed half is the same words as the page beside it; on a narrow
+     screen the page alone says it */
+  .proof { grid-template-columns: 1fr; max-width: 560px; margin-top: 40px; }
+  .proof__typed, .proof__arrow { display: none; }
+}
 @media (max-width: 700px) {
-  .hero__in { padding-block: 140px 40px; }
-  .hero__stats { position: static; margin-top: 8px; padding-bottom: 40px; }
-  .hero__art { opacity: 0.2; }
+  .hero__in { padding-block: 112px 32px; }
+  .hero__stats { padding-bottom: 32px; }
+  /* the sketches sat behind the button and the page on a phone: decoration
+     competing with the two things that matter */
+  .hero__art { display: none; }
   .codecard { position: static; }
+  .features, .how, .evidence { padding: 64px 0; }
+  /* finger-sized targets in the nav */
+  .nav__cta .linkish { display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px; }
+  .nav__cta .btn--sm { height: 44px; }
+  .nav__brand { min-height: 44px; align-items: center; }
 }
 .cta__for { margin-top: 22px; max-width: 38rem; font-size: 17px; line-height: 1.55; color: var(--muted-foreground); }
+
+/* Laptops with little height (1366x768 and the like): the hero tightens so
+   the opening lines of the real page clear the fold, not just its edge. */
+@media (max-height: 820px) and (min-width: 901px) {
+  .hero__in { padding-top: 84px; }
+  .hero__title { font-size: clamp(3rem, 6.6vw, 6rem); }
+  .hero .eyebrow { display: none; }
+  .hero__lede { margin-top: 22px; font-size: 18px; }
+  .hero__acts { margin-top: 20px; gap: 12px; }
+  .proof { margin-top: 24px; }
+}
