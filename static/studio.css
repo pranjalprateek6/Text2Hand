@@ -104,6 +104,15 @@ body { overflow: hidden; height: 100vh; }
 .auto input:checked + .auto__track::after { transform: translateX(14px); }
 .auto input:focus-visible + .auto__track { outline: 2px solid var(--ring); outline-offset: 2px; }
 .auto__label { font-size: 13px; color: var(--muted-foreground); }
+/* Auto stays as it was set; on a long document a line under it says it is
+   resting, rather than the switch turning itself off */
+.autobox { position: relative; display: flex; align-items: center; }
+.auto__note {
+  position: absolute; top: calc(100% + 3px); right: 0;
+  white-space: nowrap; font-size: 10.5px; line-height: 1.2;
+  color: var(--muted-foreground);
+}
+.autobox.is-paused .auto__track { opacity: 0.55; }
 
 /* the render button spins while busy */
 .btn.is-busy { pointer-events: none; opacity: 0.75; }
@@ -634,6 +643,25 @@ select.mini {
 .cardlet__sub { flex-wrap: wrap; row-gap: 2px; }
 .cardlet__life { order: 3; flex-basis: 100%; font-size: 10.5px; color: color-mix(in oklch, var(--muted-foreground) 80%, transparent); }
 
+/* a quiet text button, for actions that must not shout (clearing the library) */
+.linkbtn {
+  appearance: none; border: 0; background: none; cursor: pointer;
+  padding: 8px 6px; font: inherit; font-size: 13px;
+  color: var(--muted-foreground);
+  text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px;
+  transition: color 160ms var(--ease), text-decoration-color 160ms var(--ease);
+}
+.linkbtn:hover, .linkbtn:focus-visible { color: var(--destructive); text-decoration-color: currentColor; }
+
+/* the editor's actions step aside while the library is showing */
+body[data-view="library"] .bar__acts,
+body[data-view="library"] .mbar { display: none !important; }
+
+/* Export shows its word beside the other buttons, and an icon on a phone */
+.export__icon { display: none; width: 18px; height: 18px; }
+.mbar__export:empty { display: none; }
+.mbar .pop { top: auto; bottom: calc(100% + 10px); }
+
 /* --------------------------------------------------------------- phone bar */
 .mbar { display: none; }
 .sheet { position: fixed; inset: 0; z-index: 120; }
@@ -663,7 +691,43 @@ select.mini {
     background: var(--background); border-top: 1px solid var(--border);
   }
   .mbar__gap { flex: 1; }
-  .mbar .btn { height: 42px; padding: 0 18px; font-size: 14px; }
+  .mbar .btn { height: 44px; padding: 0 18px; font-size: 14px; }
+  .mbar #exportBtn { width: 44px; padding: 0; justify-content: center; }
+  .mbar .export__word { display: none; }
+  .mbar .export__icon { display: block; }
+
+  /* The header was four rows (name and tabs, Auto and Export, the title, the
+     Write/Preview tabs) before the editor began. GitHub goes, Export has moved
+     down, and Auto joins the first row, so it is two rows and the tabs. */
+  .bar__gh { display: none; }
+  .bar { gap: 8px; }
+  .bar__acts { width: auto; margin-left: auto; }
+
+  /* thumb-sized targets */
+  .tab { min-height: 44px; padding-left: 14px; padding-right: 14px; }
+  .mtab { min-height: 44px; }
+  #samplesBtn, #pdfBtn { height: 44px; }
+  .bar .bar__rename { width: 44px; height: 44px; margin-left: -10px; }
+  .auto { min-height: 44px; }
+
+  /* the title shares its row with the Write/Preview tabs; the page count
+     stays for screen readers, and render progress shows on Render below */
+  .bar__doc { width: auto; flex: 1; min-width: 0; }
+  .bar .mtabs { order: 6; margin: 0; flex: none; }
+  .bar .mtab { padding: 0 12px; }
+  .bar__status {
+    position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip: rect(0 0 0 0); white-space: nowrap;
+  }
+
+  /* no room for a line under Auto here: the label says it instead */
+  .auto__note { display: none; }
+  body.auto-paused #paneSource .pane__label { font-size: 0; }
+  body.auto-paused #paneSource .pane__label::after { content: "Auto paused"; font-size: 11px; }
+
+  /* the export menu opens up from the bottom bar, the bar's own width */
+  .mbar .menu { position: static; }
+  .mbar .pop { left: 12px; right: 12px; min-width: 0; }
   .app { padding-bottom: 72px; }
   /* the bottom bar has these now */
   #render, #dlMain { display: none; }

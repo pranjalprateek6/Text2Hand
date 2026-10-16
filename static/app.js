@@ -50,6 +50,9 @@ function newDocument() {
 
 function showView(which) {
   const write = which === "write";
+  // Auto, Download, Export and Render act on the document in the editor,
+  // which the library is not showing, so they step aside while it is open
+  document.body.dataset.view = which;
   $("viewWrite").hidden = !write;
   $("viewLibrary").hidden = write;
   $("navWrite").classList.toggle("is-on", write);
@@ -581,6 +584,7 @@ function markStale() {
   const current = !!state.id && !stale && !state.busy;
   $("dlMain").hidden = !state.id;
   $("dlMain").classList.toggle("btn--outline", !current);
+  $("dlMain").title = current ? "" : "The text has changed: this renders it first, then downloads";
   $("render").classList.toggle("btn--outline", current);
   syncPhoneBar();
 }
@@ -632,10 +636,66 @@ $("sheetVeil").addEventListener("click", closeSheet);
 $("settingsSheet").addEventListener("keydown", (e) => {
   if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeSheet(); }
 });
+// Export moves into the bottom bar on a phone, beside the PDF it widens, and
+// out of the header, which was four rows deep before the editor began.
+const exportMenu = $("exportBtn").closest(".menu");
+const exportHome = { parent: exportMenu.parentNode, next: exportMenu.nextSibling };
+// The Write and Preview tabs join the title's row on a phone, rather than
+// taking a row of their own under it.
+const mtabs = document.querySelector(".mtabs");
+const mtabsHome = { parent: mtabs.parentNode, next: mtabs.nextSibling };
+function placeExport() {
+  const below = $("mbarExport").contains(exportMenu);
+  if (phone.matches && !below) $("mbarExport").append(exportMenu);
+  else if (!phone.matches && below) exportHome.parent.insertBefore(exportMenu, exportHome.next);
+  const inBar = mtabs.parentNode === document.querySelector(".bar");
+  if (phone.matches && !inBar) document.querySelector(".bar").append(mtabs);
+  else if (!phone.matches && inBar) mtabsHome.parent.insertBefore(mtabs, mtabsHome.next);
+}
+phone.addEventListener("change", placeExport);
+window.addEventListener("resize", placeExport);
+placeExport();
 phone.addEventListener("change", placeSettings);
 window.addEventListener("resize", placeSettings);   // some browsers miss the change event
 placeSettings();
 $("stale").addEventListener("click", () => render());
+
+// A download is always of the text as it stands. When the page on screen is
+// out of date, or a render is still running, a download press renders first
+// and the file follows once the new pages exist. It used to hand out the old
+// render without a word, which is how a corrected typo came back in the PDF.
+let pendingDownload = null;
+function downloadIsStale() {
+  return !state.id || state.busy || JSON.stringify(payload()) !== state.rendered;
+}
+function fetchDownload(id) {
+  const src = $(id === "mDownload" ? "dlMain" : id);
+  const a = document.createElement("a");
+  a.href = src.href;
+  a.download = "";
+  document.body.append(a);
+  a.click();
+  a.remove();
+}
+["dlMain", "mDownload", "dlPdf", "dlZip", "dlPagePng", "dlPagePdf"].forEach((id) => {
+  $(id).addEventListener("click", (e) => {
+    if (!downloadIsStale()) return;
+    e.preventDefault();
+    pendingDownload = id;
+    $("status").textContent = "Rendering the latest text, then downloading…";
+    if (!state.busy) render();
+  });
+});
+// called when a render ends: hand over the file it was asked for, or, if the
+// text moved on again while it ran, render once more first
+function settleDownload(ok) {
+  if (!pendingDownload) return;
+  if (!ok) { pendingDownload = null; return; }
+  if (downloadIsStale()) { render(); return; }
+  const id = pendingDownload;
+  pendingDownload = null;
+  fetchDownload(id);
+}
 
 $("reroll").addEventListener("click", () => {
   state.seed = newSeed();
@@ -709,7 +769,11 @@ async function render() {
       body: JSON.stringify({ ...body, base: state.id }),
     });
     const started = await res.json();
-    if (!res.ok) { setBusy(false); after(); note(started.error || "That did not work.", true); return; }
+    if (!res.ok) {
+      settleDownload(false); setBusy(false); after();
+      note(started.error || "That did not work.", true);
+      return;
+    }
     state.job = started.job;
     if (state.cancelPending) cancelJob();
 
@@ -722,8 +786,8 @@ async function render() {
     });
     state.job = null;
     setBusy(false);
-    if (done.cancelled) { after(); $("status").textContent = "Cancelled"; return; }
-    if (done.error) { after(); note(done.error, true); return; }
+    if (done.cancelled) { settleDownload(false); after(); $("status").textContent = "Cancelled"; return; }
+    if (done.error) { settleDownload(false); after(); note(done.error, true); return; }
 
     state.id = done.id;
     state.pages = done.pages;
@@ -751,7 +815,9 @@ async function render() {
       told.push("Some text could not be placed on the page: " + done.dropped.join(", ") + ".");
     }
     if (told.length) note(told.join(" "));
+    settleDownload(true);
   } catch (err) {
+    settleDownload(false);
     setBusy(false);
     after();
     note("Could not reach the server. Is it still running?", true);
@@ -911,20 +977,33 @@ $("pageN").addEventListener("keydown", (e) => {
 
 /* ------------------------------------------------------------- auto render */
 
-// Overleaf-style: when Auto is on, a pause after a change re-renders. Until
-// someone chooses, it is on for a short document, where a render is quick and
-// the page simply keeps up with the typing, and off for a long one, where
-// every pause would set off a long render. A choice made by hand is kept.
+// Overleaf-style: when Auto is on, a pause after a change re-renders. The
+// switch shows the person's choice and nothing else: it starts on, and only
+// they turn it off. On a long document, where every pause would set off a
+// long render, Auto rests and says so under the switch, and picks up again
+// when the document is short. It used to switch itself off and on as the
+// text grew and shrank, which looked like the page had stopped listening.
 const AUTO_KEY = "t2h.auto";
+const AUTO_LIMIT = 3 * PAGE_SIZE;           // characters; about three pages
 function autoChoice() {
   try { return localStorage.getItem(AUTO_KEY); } catch { return null; }
 }
+function autoPaused() {
+  return $("auto").checked && $("text").value.length > AUTO_LIMIT;
+}
+function autoActive() {
+  return $("auto").checked && !autoPaused();
+}
 function syncAuto() {
-  const chosen = autoChoice();
-  $("auto").checked = chosen === null ? $("text").value.length <= 3 * PAGE_SIZE : chosen === "1";
+  $("auto").checked = autoChoice() !== "0";
+  const paused = autoPaused();
+  $("autoNote").hidden = !paused;
+  document.querySelector(".autobox").classList.toggle("is-paused", paused);
+  document.body.classList.toggle("auto-paused", paused);   // the phone says it elsewhere
 }
 $("auto").addEventListener("change", () => {
   try { localStorage.setItem(AUTO_KEY, $("auto").checked ? "1" : "0"); } catch {}
+  syncAuto();
   touched();
 });
 
@@ -934,7 +1013,7 @@ function touched() {
   draftSoon();
   syncLook();
   markStale();
-  if (!$("auto").checked) return;
+  if (!autoActive()) return;
   if (!$("text").value.trim()) return;
   if (JSON.stringify(payload()) === state.rendered) return;
   if (state.busy) {
@@ -945,7 +1024,10 @@ function touched() {
     return;
   }
   clearTimeout(state.timer);
-  state.timer = setTimeout(render, 1400);
+  // a one-page note renders in well under a second, so its pause is short
+  // enough that the page keeps up with the typing; a longer document waits
+  // for a longer pause rather than starting a render at every breath
+  state.timer = setTimeout(render, $("text").value.length <= PAGE_SIZE ? 700 : 1400);
 }
 
 /* ------------------------------------------------------------------ library */
@@ -993,6 +1075,31 @@ async function remember(done, body) {
   }
 }
 
+// Put the document in the editor away in the library before something else
+// takes its place, with any edits made since its last render. An entry with
+// no render behind it has no id, and is written when it is opened.
+function stashCurrent() {
+  const text = $("text").value;
+  if (!text.trim()) return false;
+  const all = lib();
+  const old = all.find((e) => e.doc && e.doc === state.doc);
+  if (old && old.text === text) return true;            // already there, as it stands
+  let drawn = null;
+  try { drawn = state.rendered ? JSON.parse(state.rendered).text : null; } catch {}
+  const current = !!state.id && drawn === text;
+  const entry = {
+    id: current ? state.id : null, title: title(), pages: current ? state.pages : 0,
+    chars: text.length, ts: Date.now(), text, ink: INK, seed: state.seed, doc: state.doc,
+    opts: { markdown: asMarkdown(), read: READ, paper: PAPER, sheet: SHEET,
+            ruled: PAPER === "ruled", texture: OPTIONS.texture, skew: OPTIONS.skew, size: SIZE },
+    thumb: (old && old.thumb) || "", heads: current ? (state.heads || []) : [],
+  };
+  const rest = all.filter((e) => !(e.doc && e.doc === state.doc));
+  try { localStorage.setItem(LIB_KEY, JSON.stringify([entry, ...rest].slice(0, LIB_MAX))); }
+  catch { return false; }
+  return true;
+}
+
 function drawLibrary() {
   const all = lib();
   const query = ($("libSearch").value || "").trim().toLowerCase();
@@ -1021,9 +1128,9 @@ function drawLibrary() {
   // leaving it to be discovered.
   const life = (ts) => {
     const left = Math.round((ts / 1000 + RENDER_TTL - Date.now() / 1000) / 60);
-    if (left <= 0) return "opens by writing it again";
-    if (left < 60) return `expires in ${left}m`;
-    return `expires in ${Math.floor(left / 60)}h ${String(left % 60).padStart(2, "0")}m`;
+    if (left <= 0) return "re-renders when opened";
+    const t = left < 60 ? `${left}m` : `${Math.floor(left / 60)}h ${String(left % 60).padStart(2, "0")}m`;
+    return `pages kept ${t}, then re-rendered on open`;
   };
   entries.forEach((e, i) => {
     const card = document.createElement("button");
@@ -1033,8 +1140,8 @@ function drawLibrary() {
       `<span class="cardlet__thumb">${e.thumb ? `<img src="${e.thumb}" alt="" />` : "no preview"}</span>` +
       `<span class="cardlet__meta">` +
       `<span class="cardlet__title"></span>` +
-      `<span class="cardlet__sub"><span>${e.pages}p · ${ago(e.ts)}</span>` +
-      `<span class="cardlet__life">${life(e.ts)}</span>` +
+      `<span class="cardlet__sub"><span>${e.pages ? e.pages + "p" : "not rendered"} · ${ago(e.ts)}</span>` +
+      `<span class="cardlet__life">${e.id ? life(e.ts) : "renders when opened"}</span>` +
       `<span class="cardlet__del" title="Remove" role="button" tabindex="0">` +
       `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>` +
       `</span></span></span>`;
@@ -1116,7 +1223,8 @@ async function openEntry(e) {
     $("empty").hidden = true;
     $("exportBtn").disabled = true;
     state.statusLine = null;
-    note("That render had expired on the server, so it is being written again.");
+    note(e.id ? "That render had expired on the server, so it is being written again."
+              : "Rendering it now.");
     render();
   };
   img.src = `/preview/${e.id}/1.jpg`;
@@ -1277,14 +1385,11 @@ function readSummary(done) {
   ];
 }
 
-async function readPdf(confirmed = false) {
+async function readPdf() {
   if (!state.file || state.reading) return;
-  // Reading lands its Markdown in the editor, over whatever is there. Only
-  // the person's own text is worth asking about: text an earlier read of the
-  // PDF put there is replaced by the new read without a question.
-  const own = $("text").value.trim() && $("text").value !== state.lastRead;
-  if (own && !confirmed &&
-      !(await ask("Reading the PDF replaces the text in the editor. Continue?", "Read it"))) return;
+  // A PDF opens as a document of its own. Whatever was in the editor is put
+  // away in the library first, unrendered edits and all, so there is nothing
+  // to ask about: it used to ask, and then write over it.
 
   const body = new FormData();
   body.append("file", state.file);
@@ -1307,16 +1412,29 @@ async function readPdf(confirmed = false) {
     if (done.cancelled) { if (!state.readAgain) $("status").textContent = "Cancelled"; return; }
     if (done.error) { note(done.error, true); return; }
 
-    // Extraction is never perfect, so it lands in the editor for review.
+    // Extraction is never perfect, so it lands in the editor for review. A
+    // second read of the same PDF (another page range, another reader)
+    // replaces the first in place; anything else is kept in the library.
+    const again = $("text").value === state.lastRead;
+    const kept = !again && stashCurrent();
     $("text").value = done.markdown;
     state.lastRead = done.markdown;
-    newDocument();
+    if (!again) newDocument();
+    state.title = null;
+    state.heads = [];
+    starts = null;
+    // a new document has no render yet: the old one's pages leave with it
+    state.id = null; state.pages = 0; state.rendered = null; state.statusLine = null;
+    $("page").hidden = true; $("pager").hidden = true; $("strip").hidden = true;
+    $("empty").hidden = false;
+    $("exportBtn").disabled = true;
     READ = "markdown";                      // a converted PDF is Markdown, whatever it looks like
     $("readAs").value = READ;
     count();
     $("text").focus();
     // the file stays, so a different page range or reader is one click away
-    noteList("The PDF is in the editor", readSummary(done));
+    noteList(again ? "The PDF is in the editor" : "The PDF is a new document",
+             [...readSummary(done), kept ? "Your previous document is in the Library." : ""]);
     touched();
   } catch (err) {
     note("Could not reach the server. Is it still running?", true);
@@ -1326,7 +1444,7 @@ async function readPdf(confirmed = false) {
     if ($("status").textContent !== "Cancelled")
       $("status").textContent = state.statusLine || "Ready";
     $("status").classList.remove("is-live");
-    if (state.readAgain) { state.readAgain = false; readPdf(true); }
+    if (state.readAgain) { state.readAgain = false; readPdf(); }
   }
 }
 
@@ -1414,10 +1532,22 @@ try {
           + `${draft.text.length.toLocaleString()} chars`;
         $("status").textContent = state.statusLine;
       };
+      img.onerror = renderRestored;
       img.src = `/preview/${draft.id}/1.jpg`;
+    } else {
+      renderRestored();
     }
   }
 } catch {}
+
+// A draft brought back with no render on the server (it expired, or was never
+// made) used to sit beside "Nothing rendered" even with Auto on. It is
+// written now, once the rest of the page has set itself up.
+function renderRestored() {
+  setTimeout(() => {
+    if (!state.id && !state.busy && $("text").value.trim() && autoActive()) render();
+  }, 0);
+}
 if (state.seed == null && !$("text").value.trim()) newDocument();
 // a draft from before documents had ids keeps its hand and gains an id
 if (!state.doc) state.doc = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
