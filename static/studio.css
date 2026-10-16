@@ -395,6 +395,7 @@ select.mini {
 @keyframes ask-in { from { opacity: 0; transform: translateY(6px) scale(0.98); } }
 @media (prefers-reduced-motion: reduce) { .ask__box { animation: none; } }
 .ask__msg { font-size: 14.5px; line-height: 1.55; }
+.ask__input { width: 100%; margin-top: 12px; }
 .ask__row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 
 .library__head { margin-bottom: 32px; }
@@ -403,6 +404,13 @@ select.mini {
 .library__head .library__cap { font-size: 12.5px; color: color-mix(in oklch, var(--muted-foreground) 75%, transparent); }
 .library__tools { display: flex; gap: 10px; align-items: center; margin-top: 16px; }
 .library__search { width: 240px; }
+.library__pick { width: auto; flex: none; }
+
+/* the card menu: fixed, beside the card's button, above everything */
+.cardpop { position: fixed; top: 0; left: 0; right: auto; min-width: 190px; z-index: 120; }
+.cardpop .pop__item { width: 100%; text-align: left; border: 0; background: none; font: inherit; font-size: 14px; color: inherit; }
+.cardpop .pop__item:hover, .cardpop .pop__item:focus-visible { background: var(--secondary); outline: none; }
+.cardpop .cardpop__bad { color: var(--destructive); }
 
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 18px; }
 /* A card is a wrapper holding two buttons side by side, open and remove,
@@ -438,8 +446,8 @@ select.mini {
 .cardlet__meta { display: block; padding: 12px 52px 13px 14px; border-top: 1px solid var(--border); min-width: 0; }
 .cardlet__title { display: block; font-size: 13.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cardlet__sub { display: block; margin-top: 5px; font-family: var(--font-mono); font-size: 11px; color: var(--muted-foreground); }
-/* remove: a finger-sized button of its own in the card's corner */
-.cardlet__del {
+/* the card's menu: a finger-sized button of its own in the card's corner */
+.cardlet__more {
   position: absolute; right: 4px; bottom: 4px;
   width: 44px; height: 44px;
   display: grid; place-items: center;
@@ -447,8 +455,8 @@ select.mini {
   color: var(--muted-foreground); cursor: pointer;
   transition: color 160ms var(--ease), background 160ms var(--ease);
 }
-.cardlet__del:hover, .cardlet__del:focus-visible { color: var(--destructive); background: var(--secondary); }
-.cardlet__del svg { width: 13px; height: 13px; display: block; }
+.cardlet__more:hover, .cardlet__more:focus-visible, .cardlet__more[aria-expanded="true"] { color: var(--foreground); background: var(--secondary); }
+.cardlet__more svg { width: 18px; height: 18px; display: block; }
 
 /* ------------------------------------------------------------------- veil */
 .veil {
@@ -689,10 +697,13 @@ body[data-view="library"] .bar__doc { display: none !important; }
   .cardlet__thumb { width: 64px; flex: none; aspect-ratio: auto; height: 84px; max-height: none; }
   .cardlet__text { font-size: 7px; padding: 6px; }
   .cardlet__meta { flex: 1; border-top: 0; border-left: 1px solid var(--border); align-self: center; }
-  .cardlet__del { top: 50%; bottom: auto; transform: translateY(-50%); }
+  .cardlet__more { top: 50%; bottom: auto; transform: translateY(-50%); }
+  .library__pick { flex: 1 1 40%; min-width: 0; height: 44px; }
+  .cardpop .pop__item { min-height: 44px; }
   .cardlet:hover { transform: none; }
   .library__tools { flex-wrap: wrap; }
-  .library__search { flex: 1; width: auto; min-width: 0; }
+  /* search on a row of its own, the two pickers side by side under it */
+  .library__search { flex: 1 1 100%; width: auto; min-width: 0; }
   #libNew { height: 44px; }
 }
 
