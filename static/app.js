@@ -1506,10 +1506,22 @@ try {
           + `${draft.text.length.toLocaleString()} chars`;
         $("status").textContent = state.statusLine;
       };
+      img.onerror = renderRestored;
       img.src = `/preview/${draft.id}/1.jpg`;
+    } else {
+      renderRestored();
     }
   }
 } catch {}
+
+// A draft brought back with no render on the server (it expired, or was never
+// made) used to sit beside "Nothing rendered" even with Auto on. It is
+// written now, once the rest of the page has set itself up.
+function renderRestored() {
+  setTimeout(() => {
+    if (!state.id && !state.busy && $("text").value.trim() && autoActive()) render();
+  }, 0);
+}
 if (state.seed == null && !$("text").value.trim()) newDocument();
 // a draft from before documents had ids keeps its hand and gains an id
 if (!state.doc) state.doc = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
