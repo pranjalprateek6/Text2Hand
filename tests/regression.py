@@ -983,8 +983,12 @@ check("a render's card is named for the document it was started for",
 check("opening a card never asks to replace (and lose) the open document",
       "Replace the unsaved text" not in _lib_js
       and "Replace what you've written with the sample" not in _lib_js)
-check("a library card's remove button is beside it, not nested in it",
-      "cardlet__open" in _lib_js and 'id="libNone"' in _studio)
+check("a library card's menu button is beside it, not nested in it",
+      "cardlet__open" in _lib_js and "cardlet__more" in _lib_js and 'id="libNone"' in _studio)
+check("a card can be downloaded, renamed, duplicated or removed from the library",
+      all(f'data-act="{a}"' in _studio for a in ("download", "rename", "duplicate", "remove")))
+check("the library can be sorted and filtered",
+      'id="libSort"' in _studio and 'id="libShow"' in _studio and "const SORTS" in _lib_js)
 
 # --- a re-render copies the pages that did not change -----------------------
 _rtext = "\n\n".join(f"Paragraph {i}: ordinary prose for the hand to write, line after line. " * 5

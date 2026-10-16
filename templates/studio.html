@@ -319,6 +319,8 @@
       <div class="ask__veil" id="askVeil"></div>
       <div class="ask__box">
         <p class="ask__msg" id="askMsg"></p>
+        <input class="mini ask__input" id="askInput" hidden aria-labelledby="askMsg"
+               maxlength="120" autocomplete="off" />
         <div class="ask__row">
           <button class="btn btn--outline btn--sm" id="askCancel">Cancel</button>
           <button class="btn btn--sm" id="askOk">Continue</button>
@@ -339,15 +341,33 @@
           <button class="btn btn--sm" id="libNew">New document</button>
           <input type="search" class="mini library__search" id="libSearch" hidden
                  placeholder="Search the library" aria-label="Search the library" />
+          <select class="mini library__pick" id="libShow" hidden aria-label="Show">
+            <option value="all">All documents</option>
+            <option value="rendered">Rendered</option>
+            <option value="drafts">Drafts</option>
+          </select>
+          <select class="mini library__pick" id="libSort" hidden aria-label="Sort by">
+            <option value="recent">Most recent</option>
+            <option value="name">Name, A to Z</option>
+            <option value="long">Longest first</option>
+          </select>
           <button class="linkbtn" id="libClear" hidden>Clear the library</button>
         </div>
       </div>
       <div class="grid" id="grid" role="list" aria-label="Documents"></div>
       <div class="hollow" id="libNone" hidden>
         <p class="hollow__title">Nothing matches</p>
-        <p class="hollow__sub">No document has &ldquo;<span id="libNoneQuery"></span>&rdquo; in its
-          title or text.</p>
-        <button class="btn btn--sm btn--outline" id="libNoneClear">Clear the search</button>
+        <p class="hollow__sub" id="libNoneSub"></p>
+        <button class="btn btn--sm btn--outline" id="libNoneClear">Show everything</button>
+      </div>
+      <!-- one menu, shared by every card and placed beside the one it is for:
+           a card clips its contents, so a menu inside it would be cut off -->
+      <div class="pop cardpop" id="cardPop" role="menu" hidden>
+        <button class="pop__item" role="menuitem" data-act="download">Download PDF</button>
+        <button class="pop__item" role="menuitem" data-act="rename">Rename</button>
+        <button class="pop__item" role="menuitem" data-act="duplicate">Duplicate</button>
+        <div class="pop__rule" role="separator"></div>
+        <button class="pop__item cardpop__bad" role="menuitem" data-act="remove">Remove</button>
       </div>
       <div class="hollow" id="libEmpty">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"

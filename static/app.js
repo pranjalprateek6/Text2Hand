@@ -559,33 +559,46 @@ document.querySelectorAll(".try, .sample").forEach((btn) => {
 // caller awaits the answer the way the old call blocked for it.
 let asking = null;
 
-function ask(message, okLabel = "Continue") {
+// Given a value, it asks for a line of text instead, and answers with what
+// was typed (or null) rather than yes or no.
+function ask(message, okLabel = "Continue", value) {
   return new Promise((resolve) => {
-    asking = { resolve, before: document.activeElement };
+    const typed = value !== undefined;
+    asking = { resolve, before: document.activeElement, typed };
     $("askMsg").textContent = message;
     $("askOk").textContent = okLabel;
+    $("askInput").hidden = !typed;
     $("ask").hidden = false;
-    $("askOk").focus();
+    if (typed) {
+      $("askInput").value = value;
+      $("askInput").focus();
+      $("askInput").select();
+    } else {
+      $("askOk").focus();
+    }
   });
 }
 
 function askDone(answer) {
   if (!asking) return;
   $("ask").hidden = true;
-  const { resolve, before } = asking;
+  const { resolve, before, typed } = asking;
   asking = null;
-  if (before && before.focus) before.focus();
-  resolve(answer);
+  if (before && before.focus && before.isConnected) before.focus();
+  resolve(typed ? (answer ? $("askInput").value : null) : answer);
 }
 
 $("askOk").addEventListener("click", () => askDone(true));
 $("askCancel").addEventListener("click", () => askDone(false));
 $("askVeil").addEventListener("click", () => askDone(false));
-// two buttons and a question: Tab just moves between the buttons
+// a question and its controls: Tab goes round them and never leaves
 $("ask").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && e.target === $("askInput")) { e.preventDefault(); askDone(true); return; }
   if (e.key === "Tab") {
     e.preventDefault();
-    ($("askOk") === document.activeElement ? $("askCancel") : $("askOk")).focus();
+    const stops = [$("askInput"), $("askCancel"), $("askOk")].filter((b) => !b.hidden);
+    const at = stops.indexOf(document.activeElement);
+    stops[(at + (e.shiftKey ? -1 : 1) + stops.length) % stops.length].focus();
   }
 });
 
@@ -1211,23 +1224,53 @@ function stashCurrent() {
   return saveLib([entry, ...rest]);
 }
 
+// One library entry is the same as another: by document, or for cards from
+// before documents had ids, by when it was made.
+const sameEntry = (a, b) => (a.doc || b.doc ? a.doc === b.doc : a.ts === b.ts);
+
+// the card whose menu is open: { entry, button }
+let cardMenu = null;
+
+// How the library is shown, remembered in this browser between visits.
+const LIB_VIEW_KEY = "t2h.libview";
+try {
+  const v = JSON.parse(localStorage.getItem(LIB_VIEW_KEY) || "{}");
+  if (["all", "rendered", "drafts"].includes(v.show)) $("libShow").value = v.show;
+  if (["recent", "name", "long"].includes(v.sort)) $("libSort").value = v.sort;
+} catch {}
+
+const SORTS = {
+  recent: (a, b) => b.ts - a.ts,
+  name: (a, b) => a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: "base" }),
+  long: (a, b) => (b.pages || 0) - (a.pages || 0) || b.chars - a.chars,
+};
+
 function drawLibrary() {
+  closeCardMenu();
   const all = lib();
   const raw = ($("libSearch").value || "").trim();
   const query = raw.toLowerCase();
+  const showing = $("libShow").value;
   // searched over the full text, not only the title: the memorable phrase is
   // usually somewhere in the middle of the document
-  const entries = query
-    ? all.filter((e) => (e.title + "\n" + e.text).toLowerCase().includes(query))
-    : all;
+  const entries = all
+    .filter((e) => showing === "all" || (showing === "drafts") === !e.pages)
+    .filter((e) => !query || (e.title + "\n" + e.text).toLowerCase().includes(query))
+    .sort(SORTS[$("libSort").value] || SORTS.recent);
   $("libEmpty").hidden = all.length > 0;
-  // a search that finds nothing says so, rather than leaving a blank page
-  $("libNone").hidden = !(query && all.length && !entries.length);
-  $("libNoneQuery").textContent = raw;
+  // a search or a filter that finds nothing says so, rather than leaving a
+  // blank page
+  $("libNone").hidden = !(all.length && !entries.length);
+  const kind = { rendered: "rendered document", drafts: "draft" }[showing] || "document";
+  $("libNoneSub").textContent = query
+    ? `No ${kind} has \u201c${raw}\u201d in its title or text.`
+    : `There are no ${kind}s in the library yet.`;
   // at capacity the oldest entries roll off, so say so before it happens
   $("libCap").hidden = all.length < LIB_MAX - 2;
   $("libClear").hidden = all.length === 0;
   $("libSearch").hidden = all.length < 2;
+  $("libShow").hidden = all.length < 2;
+  $("libSort").hidden = all.length < 2;
   const grid = $("grid");
   grid.innerHTML = "";
   const ago = (ts) => {
@@ -1284,24 +1327,157 @@ function drawLibrary() {
     open.addEventListener("click", () => openEntry(e));
 
     // its own button beside the card, not a control nested inside it
-    const del = document.createElement("button");
-    del.className = "cardlet__del";
-    del.setAttribute("aria-label", `Remove ${e.title}`);
-    del.title = "Remove";
-    del.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" '
-      + 'stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>';
-    del.addEventListener("click", async () => {
-      if (!(await ask(`Remove "${e.title}" from the library?`, "Remove"))) return;
-      saveLib(lib().filter((x) => x.ts !== e.ts));
-      drawLibrary();
+    const more = document.createElement("button");
+    more.className = "cardlet__more";
+    more.setAttribute("aria-label", `More for ${e.title}`);
+    more.setAttribute("aria-haspopup", "menu");
+    more.setAttribute("aria-expanded", "false");
+    more.title = "Download, rename, duplicate or remove";
+    more.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">'
+      + '<circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>';
+    more.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      if (cardMenu && cardMenu.button === more) { closeCardMenu(); return; }
+      openCardMenu(e, more);
     });
 
-    card.append(open, del);
+    card.append(open, more);
     grid.appendChild(card);
   });
 }
 
 $("libSearch").addEventListener("input", drawLibrary);
+for (const id of ["libShow", "libSort"]) {
+  $(id).addEventListener("change", () => {
+    try {
+      localStorage.setItem(LIB_VIEW_KEY,
+                           JSON.stringify({ show: $("libShow").value, sort: $("libSort").value }));
+    } catch {}
+    drawLibrary();
+  });
+}
+
+/* ---------------------------------------------------------- a card's menu */
+
+// Download, rename, duplicate and remove, without opening the document.
+
+function openCardMenu(entry, button) {
+  closeCardMenu();
+  cardMenu = { entry, button };
+  const pop = $("cardPop");
+  // a draft has no pages to download yet
+  pop.querySelector('[data-act="download"]').hidden = !entry.pages || !entry.id;
+  pop.hidden = false;
+  button.setAttribute("aria-expanded", "true");
+  const r = button.getBoundingClientRect();
+  const w = pop.offsetWidth, h = pop.offsetHeight;
+  const below = r.bottom + 6 + h <= window.innerHeight;
+  pop.style.top = `${below ? r.bottom + 6 : Math.max(8, r.top - 6 - h)}px`;
+  pop.style.left = `${Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8))}px`;
+  pop.querySelector(".pop__item:not([hidden])").focus();
+}
+
+function closeCardMenu(refocus) {
+  if (!cardMenu) return;
+  const { button } = cardMenu;
+  cardMenu = null;
+  $("cardPop").hidden = true;
+  button.setAttribute("aria-expanded", "false");
+  if (refocus && button.isConnected) button.focus();
+}
+
+$("cardPop").addEventListener("keydown", (e) => {
+  const items = [...$("cardPop").querySelectorAll(".pop__item")].filter((b) => !b.hidden);
+  const at = items.indexOf(document.activeElement);
+  const step = { ArrowDown: 1, ArrowUp: -1 }[e.key];
+  if (step) { e.preventDefault(); items[(at + step + items.length) % items.length].focus(); }
+  else if (e.key === "Home" || e.key === "End") {
+    e.preventDefault();
+    items[e.key === "Home" ? 0 : items.length - 1].focus();
+  } else if (e.key === "Escape" || e.key === "Tab") {
+    e.preventDefault();
+    e.stopPropagation();
+    closeCardMenu(true);
+  }
+});
+document.addEventListener("click", (e) => {
+  if (cardMenu && !e.target.closest("#cardPop")) closeCardMenu();
+});
+window.addEventListener("resize", () => closeCardMenu());
+$("viewLibrary").addEventListener("scroll", () => closeCardMenu(), true);
+window.addEventListener("scroll", () => closeCardMenu(), true);
+
+$("cardPop").addEventListener("click", async (ev) => {
+  const item = ev.target.closest("[data-act]");
+  if (!item || !cardMenu) return;
+  const { entry, button } = cardMenu;
+  closeCardMenu();
+  const act = item.dataset.act;
+  if (act === "download") await downloadEntry(entry, button);
+  else if (act === "rename") await renameEntry(entry);
+  else if (act === "duplicate") duplicateEntry(entry);
+  else if (act === "remove") {
+    if (!(await ask(`Remove "${entry.title}" from the library?`, "Remove"))) return;
+    saveLib(lib().filter((x) => !sameEntry(x, entry)));
+    drawLibrary();
+  }
+});
+
+// The PDF of a card's last render, straight from the library. The server
+// keeps pages for a while only, so it is asked first; a render that has gone
+// is written again by opening the document.
+async function downloadEntry(e, button) {
+  const stem = e.title === "Untitled" ? "" : e.title.replace(/…$/, "").trim();
+  const url = `/download/${e.id}/handwriting.pdf` + (stem ? `?name=${encodeURIComponent(stem)}` : "");
+  let alive = false;
+  try { alive = (await fetch(url, { method: "HEAD" })).ok; } catch {}
+  if (!alive) {
+    // opening it writes it again, and says so; Export has it once it is done
+    openEntry(e);
+    return;
+  }
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "";
+  document.body.append(a);
+  a.click();
+  a.remove();
+  if (button && button.isConnected) button.focus();
+}
+
+async function renameEntry(e) {
+  // the open document's card holds what was last put away; its live name is
+  // the one in the bar
+  const current = !!e.doc && e.doc === state.doc;
+  const name = await ask("Rename this document", "Rename", current ? title() : e.title);
+  const clean = (name || "").trim().slice(0, 120);
+  if (!clean) return;
+  if (current) {
+    state.title = clean;
+    count();                               // the bar shows it
+    if (state.id) show(state.page);        // and exports carry it
+    draftSoon();
+    stashCurrent();
+  } else {
+    saveLib(lib().map((x) => (sameEntry(x, e) ? { ...x, title: clean } : x)));
+  }
+  drawLibrary();
+}
+
+// A copy to change without touching the original: same text, settings and
+// hand, a document of its own.
+function duplicateEntry(e) {
+  if (e.doc && e.doc === state.doc) stashCurrent();   // with any edits since
+  const src = lib().find((x) => sameEntry(x, e)) || e;
+  const copy = {
+    ...src,
+    title: `${src.title.replace(/…$/, "")} (copy)`,
+    doc: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+    ts: Date.now(),
+  };
+  if (saveLib([copy, ...lib()])) note(`Made "${copy.title}".`);
+  drawLibrary();
+}
 
 $("libClear").addEventListener("click", async () => {
   const n = lib().length;
@@ -1717,7 +1893,8 @@ $("newDoc").addEventListener("click", startNewDocument);
 $("libNew").addEventListener("click", startNewDocument);
 $("libNoneClear").addEventListener("click", () => {
   $("libSearch").value = "";
-  drawLibrary();
+  $("libShow").value = "all";
+  $("libShow").dispatchEvent(new Event("change"));
   $("libSearch").focus();
 });
 
