@@ -3,7 +3,19 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="Typed text in, pages in a real hand out. Paste text or drop a PDF; get ruled pages written in a captured human hand." />
+  <meta name="description" content="Type, paste or drop a PDF and get pages written in a real, captured human hand: notes, letters and cards, or transparent handwriting for designs. Free, in the browser." />
+  <link rel="canonical" href="{{ public_url }}/" />
+  <!-- what a shared link shows: a real page, not a bare URL -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Text2Hand" />
+  <meta property="og:title" content="Text2Hand · Typed text, in a real hand" />
+  <meta property="og:description" content="Notes, letters and cards written in a real, captured human hand. Type or drop a PDF; download a PDF or PNG." />
+  <meta property="og:url" content="{{ public_url }}/" />
+  <meta property="og:image" content="{{ public_url }}/static/og.jpg" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="The top of a handwritten letter on ruled paper, written by Text2Hand" />
+  <meta name="twitter:card" content="summary_large_image" />
   <meta name="color-scheme" content="light" />
   <title>Text2Hand · Typed text, in a real hand</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext x=%2750%27 y=%2778%27 text-anchor=%27middle%27 font-family=%27Georgia,serif%27 font-size=%2790%27 fill=%27%23201c14%27%3ET%3C/text%3E%3C/svg%3E" />
@@ -12,6 +24,7 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Instrument+Serif&family=JetBrains+Mono:wght@400;500&display=swap" />
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
   <link rel="stylesheet" href="{{ url_for('static', filename='landing.css') }}" />
+  <script src="{{ url_for('static', filename='js-on.js') }}"></script>
 </head>
 <body>
 
@@ -57,9 +70,9 @@
       </h1>
 
       <p class="hero__lede rv" data-delay="150">
-        Paste text or drop a PDF and get ruled A4 pages written in a real,
-        captured human hand. Not a font: every letter is a photograph of one,
-        and no two on the page are the same image.
+        Type, paste or drop a PDF and get pages written in a real, captured
+        human hand. Not a font: every letter is a photograph of one, and no
+        two on a page are the same image.
       </p>
       <div class="hero__acts rv" data-delay="250">
         <a class="btn btn--lg" href="{{ url_for('studio') }}">
@@ -67,26 +80,46 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
         </a>
-        <a class="btn btn--lg btn--outline" href="#evidence">See a page</a>
-        <span class="hero__note">Ruled, squared or plain · A4 or Letter · four inks</span>
+        <a class="btn btn--lg btn--outline" href="#evidence">See a full page</a>
+        <span class="hero__note">Live preview · five looks · four pens · PDF, PNG or transparent PNG</span>
+      </div>
+
+      <!-- the product itself, in the first screen: what goes in, what comes out -->
+      <div class="proof rv" data-delay="350">
+        <div class="proof__typed" aria-hidden="true">
+          <span class="proof__cap">You type</span>
+          <p>Dear Maya,</p>
+          <p>Thank you for the parcel. The tea arrived on the wettest morning of
+            the year, which felt like good timing, and the little notebook is
+            already half full of lists I will never finish.</p>
+        </div>
+        <span class="proof__arrow" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+               stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        </span>
+        <figure class="proof__page">
+          <span class="proof__cap">You get</span>
+          <div class="proof__sheet">
+            <img src="{{ url_for('static', filename='sample_letter.jpg') }}"
+                 alt="The same letter, written by hand in blue-black ink on ruled paper"
+                 width="1100" height="1556" fetchpriority="high" />
+          </div>
+        </figure>
       </div>
 
     </div>
 
-    <div class="hero__stats" aria-label="Numbers from the renderer">
+    <!-- who it is for, in place of the renderer's statistics -->
+    <div class="hero__stats" aria-label="Who it is for">
       <div class="wrap hero__stats-row">
-        {# counted from the shipped assets at serve time; the hardcoded
-           versions were stale within a week of being written #}
-        <div class="stat"><b>{{ "{:,}".format(stats.chars_page) }}</b><span>characters to a page
-          <i aria-hidden="true">A4 · 33 RULED LINES</i></span></div>
-        <div class="stat"><b>{{ stats.glyphs }}</b><span>glyphs, one hand
-          <i aria-hidden="true">MYFONT</i></span></div>
-        <div class="stat"><b>{{ stats.words }}</b><span>words in one stroke
-          <i aria-hidden="true">WORDFONT</i></span></div>
-        <div class="stat"><b>{{ stats.maths }}</b><span>greek and maths letters
-          <i aria-hidden="true">{{ stats.drawn }} DRAWN · {{ stats.aliased }} ALIASED</i></span></div>
-        <div class="stat"><b>{{ stats.max_pages }}</b><span>pages a run
-          <i aria-hidden="true">RENDERER</i></span></div>
+        <div class="stat"><b>Notes</b><span>you would rather read in a hand
+          <i>lectures, papers, revision</i></span></div>
+        <div class="stat"><b>Letters</b><span>and cards that should feel written
+          <i>thank-yous, invitations</i></span></div>
+        <div class="stat"><b>Designs</b><span>that need real handwriting
+          <i>transparent PNG, any page</i></span></div>
+        <div class="stat"><b>Ease</b><span>for anyone who finds writing slow
+          <i>or painful</i></span></div>
       </div>
     </div>
 </section>
@@ -103,8 +136,9 @@
         <span class="frow__n">01</span>
         <div>
           <h3 class="frow__t">Text becomes pages</h3>
-          <p class="frow__d">Headings centred and underlined, lists indented, tables hand-ruled,
-            figures boxed. Long documents spill onto new pages, up to eighty at a run.</p>
+          <p class="frow__d">Headings, lists, quotes and tables come out the way a person would
+            write them, with tables ruled by hand. Long documents spill onto new pages, up
+            to eighty at a time, and the first page appears while the rest are written.</p>
         </div>
         <div class="frow__v" aria-hidden="true">
           <!-- lines writing themselves onto a sheet -->
@@ -124,9 +158,9 @@
         <span class="frow__n">02</span>
         <div>
           <h3 class="frow__t">PDFs come along</h3>
-          <p class="frow__d">A PDF is read into Markdown you can correct before anything is written,
-            because extraction is never perfect and a wrong heading should be a ten-second
-            fix. Scanned PDFs go through local OCR.</p>
+          <p class="frow__d">Drop a PDF and its text lands in the editor, so you can fix anything
+            before a word is written. Two-column papers are read down each column, and
+            scanned pages are read too.</p>
         </div>
         <div class="frow__v" aria-hidden="true">
           <!-- a document flowing through a converter node -->
@@ -155,9 +189,9 @@
         <span class="frow__n">03</span>
         <div>
           <h3 class="frow__t">Equations survive</h3>
-          <p class="frow__d">Display maths is found by font signature, cropped from the paper,
-            and traced back in as ink, fractions and product signs intact. Inline
-            symbols are drawn glyphs: &alpha; &beta; &psi; &phi; &Sigma; and friends.</p>
+          <p class="frow__d">Equations are lifted straight from the paper and traced onto the
+            page as ink, fractions intact. Greek letters and maths symbols are written by
+            the same hand: &alpha; &beta; &psi; &phi; &Sigma; and friends.</p>
         </div>
         <div class="frow__v" aria-hidden="true">
           <!-- a fraction pulsing under a summation -->
@@ -178,10 +212,14 @@
       <article class="frow rv">
         <span class="frow__n">04</span>
         <div>
-          <h3 class="frow__t">Make it your own hand</h3>
-          <p class="frow__d">Print the capture sheets, write them out, photograph them, and the
-            extraction tools cut your writing into a font of its own. The bundled hand
-            is real, and yours can replace it.</p>
+          <h3 class="frow__t">A look for every page</h3>
+          <p class="frow__d">Notebook, plain sheet, letter, clean scan or lab notes, in one of
+            four pens and three sizes, on A4 or Letter. Or no paper at all: the ink alone as a
+            transparent PNG, ready to drop into a design.</p>
+          <p class="frow__dev">For developers: <a class="linkish"
+            href="https://github.com/pranjalprateek6/Text2Hand#make-it-your-own-handwriting"
+            target="_blank" rel="noreferrer noopener">capture your own hand</a> with the
+            printable sheets and a phone photo.</p>
         </div>
         <div class="frow__v" aria-hidden="true">
           <!-- a pen stroke drawing itself -->
@@ -210,21 +248,22 @@
         <div>
           <div class="step" data-step>
             <span class="step__n">I</span>
-            <h3 class="step__t">Type, or drop a PDF</h3>
-            <p class="step__d">The studio takes anything: notes, an essay, a whole paper.
-              A PDF lands as reviewable Markdown first, equations excised as images.</p>
+            <h3 class="step__t">Type, paste or drop a PDF</h3>
+            <p class="step__d">Notes, a letter, a whole paper. A PDF's text lands in the editor
+              first, so anything the reading got wrong is a quick fix.</p>
           </div>
           <div class="step" data-step>
             <span class="step__n">II</span>
-            <h3 class="step__t">Check it over</h3>
-            <p class="step__d">Extraction is never perfect, so the Markdown sits in the editor
-              to be corrected. Pick paper, tilt and one of four pens.</p>
+            <h3 class="step__t">Pick a look</h3>
+            <p class="step__d">Notebook, plain sheet, letter, clean scan or lab notes, any of four
+              pens. The page updates as you type, beside the text.</p>
           </div>
           <div class="step" data-step>
             <span class="step__n">III</span>
-            <h3 class="step__t">Render and export</h3>
-            <p class="step__d">The document as an A4 PDF, any page as a PNG, or every page
-              zipped. Every render is different: no two letters are the same image.</p>
+            <h3 class="step__t">Download</h3>
+            <p class="step__d">The document as a PDF, any page as a PNG (transparent if you
+              like), or every page zipped. A document keeps its handwriting from one render to
+              the next; New handwriting deals a fresh one.</p>
           </div>
         </div>
 
@@ -232,32 +271,27 @@
           <div class="codecard__bar" aria-hidden="true">
             <span class="codecard__dot"></span><span class="codecard__dot"></span><span class="codecard__dot"></span>
           </div>
-          <pre data-step-code># Attention Is All You Need
+          <pre data-step-code>Dear Maya,
 
-The dominant sequence transduction
-models are based on complex
-recurrent or convolutional
-networks...
+Thank you for the parcel. The tea
+arrived on the wettest morning of
+the year...
 
-&gt; dropped a 29-page PDF
+&gt; or drop lecture-notes.pdf
 &gt; reading page 5 of 29</pre>
-          <pre data-step-code hidden>## 3.1 Maximal Agentic
-## Decomposition
+          <pre data-step-code hidden>look    notebook
+pen     blue-black
+size    normal
+paper   ruled &middot; A4
 
-- headings kept
-- lists and tables kept
-- display maths excised:
-  ![equations (1)-(3)](eq1.png)
+auto    on
+&rarr; the page updates as you type</pre>
+          <pre data-step-code hidden>lecture-notes.pdf  &middot; 4 pages
+page-2.png         &middot; transparent
+pages.zip          &middot; every page
 
-pen: blue-black &middot; paper: ruled</pre>
-          <pre data-step-code hidden>POST /api/render
-
-&rarr; writing page 1 &hellip; 4
-&rarr; 33 ruled lines each
-&rarr; 1,290 characters a page
-
-handwriting.pdf &middot; 4 pages
-pages.zip &middot; full-size pages</pre>
+same text, same hand, every time
+&rarr; New handwriting for another</pre>
         </figure>
       </div>
     </div>
@@ -269,29 +303,30 @@ pages.zip &middot; full-size pages</pre>
       <div class="sec-head">
         <p class="eyebrow rv">The hand</p>
         <h2 class="display rv">No two letters the same</h2>
-        <p class="lede rv">This page was rendered from Markdown. Every mark on it comes from one
-          real hand, captured from written sheets and cut apart, letter by letter and
-          word by word.</p>
+        <p class="lede rv">This page was written from a few lines of typed notes. Every mark on
+          it comes from one real hand, captured from written sheets and cut apart, letter by
+          letter and word by word.</p>
       </div>
 
       <div class="evidence__grid">
         <div>
-          <div class="evrow rv"><i>01</i><div><b>Variants and jitter</b><span>Each glyph gets its own rotation, size, wobble and ink pressure. Repeats never match.</span></div></div>
+          <div class="evrow rv"><i>01</i><div><b>Variants and jitter</b><span>Each letter gets its own rotation, size and wobble, and each word its own pen pressure. Repeats on a page never match.</span></div></div>
           <div class="evrow rv"><i>02</i><div><b>Whole words in one stroke</b><span>Common words are single captured strokes, keeping the joins a real hand makes.</span></div></div>
-          <div class="evrow rv"><i>03</i><div><b>A hand that tires</b><span>Writing grows and loosens toward the foot of each page, and can cross out a word and rewrite it.</span></div></div>
-          <div class="evrow rv"><i>04</i><div><b>Paper that was scanned</b><span>Ruled lines and a red margin printed before a word is written, warm grain, and a slight tilt.</span></div></div>
+          <div class="evrow rv"><i>03</i><div><b>A hand that tires</b><span>Writing grows a little larger and looser as a long document goes on, the way a hand does over a sitting.</span></div></div>
+          <div class="evrow rv"><i>04</i><div><b>Paper that was scanned</b><span>Ruled, squared or plain paper with warm grain and a slight tilt, or no paper at all.</span></div></div>
+          <div class="evrow rv"><i>05</i><div><b>The same hand each time</b><span>A document keeps its handwriting from one render to the next, so fixing a typo does not rewrite the whole thing in a new hand.</span></div></div>
 
           <figure class="eqcard rv">
             <img src="{{ url_for('static', filename='sample_eq.jpg') }}"
-                 alt="Display equations traced as handwriting ink on ruled paper"
-                 width="1100" height="329" loading="lazy" />
-            <figcaption>Equations (5)–(7), traced from a converted arXiv page</figcaption>
+                 alt="The attention equation traced in ink on ruled paper"
+                 width="1100" height="128" loading="lazy" />
+            <figcaption>An equation lifted from a real paper (Attention Is All You Need) and traced as ink</figcaption>
           </figure>
         </div>
 
         <figure class="sheetcard hover-lift rv">
           <img src="{{ url_for('static', filename='sample_page.jpg') }}"
-               alt="A full rendered page: handwritten headings, lists, a table and a figure on ruled paper"
+               alt="A full page of handwritten study notes: a centred title, headings, lists, a quote, a hand-ruled table and a paragraph with a formula"
                width="1100" height="1556" loading="lazy" />
         </figure>
       </div>
@@ -327,8 +362,8 @@ pages.zip &middot; full-size pages</pre>
           <a class="nav__brand" href="/">
             <span class="nav__name">Text2Hand</span>
           </a>
-          <p>Typed text in, pages in a real hand out. A Python renderer, a captured
-            hand, and a studio to drive them.</p>
+          <p>Typed text in, pages in a real hand out. Notes, letters and cards,
+            written by one captured human hand.</p>
         </div>
         <div>
           <h3>Product</h3>

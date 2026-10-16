@@ -950,6 +950,27 @@ check("the asset route refuses anything but an existing crop", all(c == 404 for 
 _lp = _client.get("/").get_data(as_text=True)
 check("the hero's word is in the page itself", 'aria-label="handwriting">handwriting</span>' in _lp)
 
+# --- the landing page: real output, true claims, a preview when shared -------
+check("a shared link has a title, description, picture and canonical address",
+      all(t in _lp for t in ('property="og:image"', 'property="og:title"',
+                             'property="og:description"', 'name="twitter:card"',
+                             'rel="canonical"')))
+with Image.open(os.path.join(ROOT, "static", "og.jpg")) as _og:
+    check("the shared picture is 1200x630", _og.size == (1200, 630), str(_og.size))
+check("the hero shows a real rendered page", "sample_letter.jpg" in _lp
+      and os.path.exists(os.path.join(ROOT, "static", "sample_letter.jpg")))
+check("the landing copy makes no claims the product has outgrown",
+      not any(c in _lp for c in ("Every render is different", "cross out a word",
+                                 "MYFONT", "POST /api/render")))
+# Content waiting for its reveal animation may only be hidden once a script
+# has marked the page, or with scripts off the hero is a headline and a blank.
+_css = "".join(open(os.path.join(ROOT, "static", f), encoding="utf-8").read()
+               for f in ("style.css", "landing.css"))
+_hiding = [m.group(1).strip().splitlines()[-1] for m in
+           _re.finditer(r"([^{}]*\.rv[^{}]*)\{([^}]*opacity:\s*0\s*;[^}]*)\}", _css)]
+check("only a script-marked page hides content for its reveal",
+      _hiding == [".js .rv"] and 'js-on.js' in _lp.split("</head>")[0], str(_hiding))
+
 # --- a re-render copies the pages that did not change -----------------------
 _rtext = "\n\n".join(f"Paragraph {i}: ordinary prose for the hand to write, line after line. " * 5
                      for i in range(45))

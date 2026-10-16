@@ -516,11 +516,16 @@ def healthz():
                    render_processes=RENDER_PROCS, warm=bool(_page_sizes))
 
 
+# Where the site is published, for the canonical link and the picture a
+# shared link shows, both of which must be absolute.
+PUBLIC_URL = os.environ.get("T2H_PUBLIC_URL", "https://text2hand.fly.dev").rstrip("/")
+
+
 @app.get("/")
 def landing():
     """The front door. A placeholder until the real landing page is designed;
     the tool itself lives at /studio."""
-    return render_template("landing.html", stats=_landing_stats())
+    return render_template("landing.html", stats=_landing_stats(), public_url=PUBLIC_URL)
 
 
 @app.get("/studio")
