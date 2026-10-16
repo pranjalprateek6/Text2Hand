@@ -102,6 +102,8 @@
         <div class="pane__bar">
           <span class="pane__label">01 / Source</span>
           <span class="pane__gap"></span>
+          <!-- a blank document, with the current one kept in the library -->
+          <button class="btn btn--sm btn--outline" id="newDoc" title="Start a blank document; this one stays in the library">New</button>
           <!-- the samples stay a click away after the editor has text in it -->
           <div class="menu">
             <button class="btn btn--sm btn--outline" id="samplesBtn" aria-haspopup="true"
@@ -327,19 +329,26 @@
     <!-- ----------------------------------------------------- library view -->
     <div class="library" id="viewLibrary" hidden>
       <div class="library__head">
-        <span class="eyebrow">Archive</span>
         <h2>Library</h2>
-        <p>Everything rendered from this browser. Open one to load its text and
-          settings back into the editor.</p>
-        <p class="library__cap" id="libCap" hidden>The library keeps the last
-          24 renders; the oldest roll off as new ones arrive.</p>
+        <p>Your documents, kept in this browser, drafts included. Open one to carry on
+          where you left off. Pages are kept for {% if render_ttl >= 3600 %}{{ render_ttl // 3600 }} hour{{ 's' if render_ttl >= 7200 }}{% else %}{{ render_ttl // 60 }} minutes{% endif %}; after that a
+          document is written again when you open it.</p>
+        <p class="library__cap" id="libCap" hidden>The library keeps your 24 most recent
+          documents; the oldest leaves when a new one arrives.</p>
         <div class="library__tools">
+          <button class="btn btn--sm" id="libNew">New document</button>
           <input type="search" class="mini library__search" id="libSearch" hidden
                  placeholder="Search the library" aria-label="Search the library" />
           <button class="linkbtn" id="libClear" hidden>Clear the library</button>
         </div>
       </div>
-      <div class="grid" id="grid"></div>
+      <div class="grid" id="grid" role="list" aria-label="Documents"></div>
+      <div class="hollow" id="libNone" hidden>
+        <p class="hollow__title">Nothing matches</p>
+        <p class="hollow__sub">No document has &ldquo;<span id="libNoneQuery"></span>&rdquo; in its
+          title or text.</p>
+        <button class="btn btn--sm btn--outline" id="libNoneClear">Clear the search</button>
+      </div>
       <div class="hollow" id="libEmpty">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"
              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

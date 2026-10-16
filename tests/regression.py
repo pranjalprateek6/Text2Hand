@@ -971,6 +971,21 @@ _hiding = [m.group(1).strip().splitlines()[-1] for m in
 check("only a script-marked page hides content for its reveal",
       _hiding == [".js .rv"] and 'js-on.js' in _lp.split("</head>")[0], str(_hiding))
 
+# --- the library never loses a document -----------------------------------
+_lib_js = open(os.path.join(ROOT, "static", "app.js"), encoding="utf-8").read()
+_studio = _client.get("/studio").get_data(as_text=True)
+check("there is a New document button in the editor and the library",
+      'id="newDoc"' in _studio and 'id="libNew"' in _studio)
+check("a full browser store gives up thumbnails, not documents",
+      "entries.slice(0, 8)" not in _lib_js and "function saveLib(" in _lib_js)
+check("a render's card is named for the document it was started for",
+      "remember(done, body, owner)" in _lib_js and "title: owner.title" in _lib_js)
+check("opening a card never asks to replace (and lose) the open document",
+      "Replace the unsaved text" not in _lib_js
+      and "Replace what you've written with the sample" not in _lib_js)
+check("a library card's remove button is beside it, not nested in it",
+      "cardlet__open" in _lib_js and 'id="libNone"' in _studio)
+
 # --- a re-render copies the pages that did not change -----------------------
 _rtext = "\n\n".join(f"Paragraph {i}: ordinary prose for the hand to write, line after line. " * 5
                      for i in range(45))

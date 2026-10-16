@@ -40,10 +40,41 @@ function newSeed() {
   return Math.floor(Math.random() * 2 ** 31);
 }
 
-// A new document: a new hand, and an identity of its own in the library.
+// A new document: a new hand, an identity of its own in the library, and no
+// name yet. Keeping the last document's name made a sample or a new note
+// arrive in the library labelled as whatever was open before it.
 function newDocument() {
   state.seed = newSeed();
   state.doc = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  state.title = null;
+}
+
+// The render on screen belongs to the document that was there; a new one
+// starts with an empty preview.
+function clearRender() {
+  state.id = null; state.pages = 0; state.rendered = null; state.statusLine = null;
+  state.heads = [];
+  starts = null;
+  $("page").hidden = true; $("pager").hidden = true; $("strip").hidden = true;
+  $("empty").hidden = false;
+  $("exportBtn").disabled = true;
+  $("status").textContent = "Ready";
+}
+
+// Start a blank document. The one in the editor goes into the library first,
+// edits and all: replacing its text in place kept its identity, so the next
+// render overwrote its library card and the old document was simply gone.
+function startNewDocument() {
+  if (state.job) cancelJob();
+  stashCurrent();
+  closeWelcome();
+  $("text").value = "";
+  newDocument();
+  clearRender();
+  count();
+  touched();
+  showView("write");
+  $("text").focus();
 }
 
 /* -------------------------------------------------------------------- views */
@@ -509,10 +540,12 @@ document.querySelectorAll(".try, .sample").forEach((btn) => {
     // The chips hide once there is text, so this only ever triggers on
     // whitespace; still, a keyboard path or a future layout should not be
     // able to wipe the editor without asking.
-    if ($("text").value.trim() &&
-        !(await ask("Replace what you've written with the sample?", "Replace"))) return;
+    // the document in the editor is kept in the library, not overwritten
+    if (state.job) cancelJob();
+    stashCurrent();
     $("text").value = SAMPLES[which] || "";
     newDocument();                 // a new document, a new hand
+    clearRender();
     count();
     touched();
     $("text").focus();
@@ -799,6 +832,9 @@ function showLive(job) {
 async function render() {
   const body = payload();
   if (!body.text.trim()) { note("Write something first."); $("text").focus(); return; }
+  // Which document this render is for, taken now: by the time it finishes the
+  // editor may hold another one, and the card must not take that one's name.
+  const owner = { doc: state.doc, title: title(), read: READ };
 
   hush();
   setBusy(true);
@@ -831,6 +867,13 @@ async function render() {
     setBusy(false);
     if (done.cancelled) { settleDownload(false); after(); $("status").textContent = "Cancelled"; return; }
     if (done.error) { settleDownload(false); after(); note(done.error, true); return; }
+    if (state.doc !== owner.doc) {
+      // Another document was opened while this one was being written. Its
+      // pages go to its own library card; the editor keeps what it now shows.
+      settleDownload(false);
+      remember(done, body, owner);
+      return;
+    }
 
     state.id = done.id;
     state.pages = done.pages;
@@ -849,7 +892,7 @@ async function render() {
     $("exportBtn").disabled = false;
     state.statusLine = `${done.pages} page${done.pages === 1 ? "" : "s"} · ${body.text.length.toLocaleString()} chars`;
     $("status").textContent = state.statusLine;
-    remember(done, body);
+    remember(done, body, owner);
 
     const told = [];
     if (done.missing && done.missing.length) told.push("No glyph for: " + done.missing.join(" ") + ".");
@@ -1086,7 +1129,35 @@ function lib() {
   catch { return []; }
 }
 
-async function remember(done, body) {
+// Write the library, never losing a document to a full browser store: the
+// oldest thumbnails are given up first, one at a time, since a card without a
+// picture still opens. It used to cut the list to its newest eight instead.
+// Returns false, after saying so, only if even that cannot make room.
+function saveLib(entries) {
+  let list = entries.slice(0, LIB_MAX);
+  const rolled = entries.slice(LIB_MAX);
+  for (;;) {
+    try {
+      localStorage.setItem(LIB_KEY, JSON.stringify(list));
+      break;
+    } catch {
+      const victim = [...list].reverse().find((e) => e.thumb);
+      if (!victim) {
+        note("This browser's storage is full, so the library could not be updated. "
+             + "Remove a few old documents to make room.", true);
+        return false;
+      }
+      list = list.map((e) => (e === victim ? { ...e, thumb: "" } : e));
+    }
+  }
+  if (rolled.length) {
+    note(`The library keeps your ${LIB_MAX} most recent documents, so "${rolled[0].title}" `
+         + (rolled.length > 1 ? `and ${rolled.length - 1} more have` : "has") + " left it.");
+  }
+  return true;
+}
+
+async function remember(done, body, owner) {
   let thumb = "";
   try {
     const blob = await (await fetch(`/thumb/${done.id}/1.jpg`)).blob();
@@ -1097,25 +1168,23 @@ async function remember(done, body) {
     });
   } catch { /* a library entry without a picture still works */ }
 
-  const opts = { markdown: body.markdown, read: READ, paper: body.paper, sheet: body.sheet,
+  const opts = { markdown: body.markdown, read: owner.read, paper: body.paper, sheet: body.sheet,
                  ruled: body.ruled, texture: body.texture,
                  skew: body.skew, size: body.size };
   // One card per document, showing its latest render: rendering a document
   // again, after an edit or in a new hand, replaces its card rather than
   // adding another, so the library reads as a list of documents. Cards from
   // before documents had ids are matched the old way, by identical content.
-  const doc = state.doc;
+  const doc = owner.doc;
   const entries = lib().filter((e) => (e.doc ? e.doc !== doc :
     e.text !== body.text || JSON.stringify(e.opts) !== JSON.stringify(opts) || e.ink !== body.ink));
   entries.unshift({
-    id: done.id, title: title(), pages: done.pages, chars: body.text.length,
+    id: done.id, title: owner.title, pages: done.pages, chars: body.text.length,
     ts: Date.now(), text: body.text, ink: body.ink, opts, thumb, seed: body.seed, doc,
     heads: done.heads || [],
   });
-  try { localStorage.setItem(LIB_KEY, JSON.stringify(entries.slice(0, LIB_MAX))); }
-  catch { /* quota: drop the oldest and try once more */
-    try { localStorage.setItem(LIB_KEY, JSON.stringify(entries.slice(0, 8))); } catch {}
-  }
+  saveLib(entries);
+  if (!$("viewLibrary").hidden) drawLibrary();
 }
 
 // Put the document in the editor away in the library before something else
@@ -1126,7 +1195,8 @@ function stashCurrent() {
   if (!text.trim()) return false;
   const all = lib();
   const old = all.find((e) => e.doc && e.doc === state.doc);
-  if (old && old.text === text) return true;            // already there, as it stands
+  // already there, as it stands: the same text under the same name
+  if (old && old.text === text && old.title === title()) return true;
   let drawn = null;
   try { drawn = state.rendered ? JSON.parse(state.rendered).text : null; } catch {}
   const current = !!state.id && drawn === text;
@@ -1138,76 +1208,95 @@ function stashCurrent() {
     thumb: (old && old.thumb) || "", heads: current ? (state.heads || []) : [],
   };
   const rest = all.filter((e) => !(e.doc && e.doc === state.doc));
-  try { localStorage.setItem(LIB_KEY, JSON.stringify([entry, ...rest].slice(0, LIB_MAX))); }
-  catch { return false; }
-  return true;
+  return saveLib([entry, ...rest]);
 }
 
 function drawLibrary() {
   const all = lib();
-  const query = ($("libSearch").value || "").trim().toLowerCase();
+  const raw = ($("libSearch").value || "").trim();
+  const query = raw.toLowerCase();
   // searched over the full text, not only the title: the memorable phrase is
   // usually somewhere in the middle of the document
   const entries = query
     ? all.filter((e) => (e.title + "\n" + e.text).toLowerCase().includes(query))
     : all;
   $("libEmpty").hidden = all.length > 0;
-  // at capacity the oldest entries roll off silently, so say so
-  $("libCap").hidden = all.length < LIB_MAX;
+  // a search that finds nothing says so, rather than leaving a blank page
+  $("libNone").hidden = !(query && all.length && !entries.length);
+  $("libNoneQuery").textContent = raw;
+  // at capacity the oldest entries roll off, so say so before it happens
+  $("libCap").hidden = all.length < LIB_MAX - 2;
   $("libClear").hidden = all.length === 0;
   $("libSearch").hidden = all.length < 2;
   const grid = $("grid");
   grid.innerHTML = "";
   const ago = (ts) => {
     const m = Math.round((Date.now() - ts) / 60000);
-    if (m < 1) return "now";
+    if (m < 1) return "just now";
     if (m < 60) return m + "m ago";
     const h = Math.round(m / 60);
     if (h < 24) return h + "h ago";
     return Math.round(h / 24) + "d ago";
   };
-  // The server keeps a render for RENDER_TTL; past that, opening the card
-  // writes it again from the saved text, which the card says rather than
-  // leaving it to be discovered.
-  const life = (ts) => {
-    const left = Math.round((ts / 1000 + RENDER_TTL - Date.now() / 1000) / 60);
-    if (left <= 0) return "re-renders when opened";
-    const t = left < 60 ? `${left}m` : `${Math.floor(left / 60)}h ${String(left % 60).padStart(2, "0")}m`;
-    return `pages kept ${t}, then re-rendered on open`;
-  };
+  // A render is kept on the server for RENDER_TTL; past that a card is written
+  // again when it is opened. That is said once, in the header, and a card only
+  // mentions it when it applies to that card.
+  const expired = (e) => !e.id || Date.now() / 1000 - e.ts / 1000 > RENDER_TTL;
   entries.forEach((e, i) => {
-    const card = document.createElement("button");
+    const card = document.createElement("div");
     card.className = "cardlet";
+    card.setAttribute("role", "listitem");
     card.style.animationDelay = Math.min(i * 40, 320) + "ms";
-    card.innerHTML =
-      `<span class="cardlet__thumb">${e.thumb ? `<img src="${e.thumb}" alt="" />` : "no preview"}</span>` +
-      `<span class="cardlet__meta">` +
-      `<span class="cardlet__title"></span>` +
-      `<span class="cardlet__sub"><span>${e.pages ? e.pages + "p" : "not rendered"} · ${ago(e.ts)}</span>` +
-      `<span class="cardlet__life">${e.id ? life(e.ts) : "renders when opened"}</span>` +
-      `<span class="cardlet__del" title="Remove" role="button" tabindex="0">` +
-      `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>` +
-      `</span></span></span>`;
-    card.querySelector(".cardlet__title").textContent = e.title;   // never innerHTML user text
-    const drop = async () => {
-      // asked, because the X is small, next to the open action, and final
+    const current = !!e.doc && e.doc === state.doc;
+    if (current) card.classList.add("is-current");
+
+    const open = document.createElement("button");
+    open.className = "cardlet__open";
+    const pages = e.pages ? `${e.pages} page${e.pages === 1 ? "" : "s"}` : "not rendered yet";
+    open.setAttribute("aria-label", `${e.title}, ${pages}, ${ago(e.ts)}`
+                      + (current ? ", open in the editor" : ""));
+    if (current) open.setAttribute("aria-current", "true");
+
+    const thumb = document.createElement("span");
+    thumb.className = "cardlet__thumb";
+    if (e.thumb) {
+      const img = document.createElement("img");
+      img.src = e.thumb; img.alt = "";
+      thumb.append(img);
+    } else {
+      // a draft that was never rendered still shows what it says
+      const text = document.createElement("span");
+      text.className = "cardlet__text";
+      text.textContent = e.text.slice(0, 220);
+      thumb.append(text);
+    }
+    const meta = document.createElement("span");
+    meta.className = "cardlet__meta";
+    const name = document.createElement("span");
+    name.className = "cardlet__title";
+    name.textContent = e.title;                       // never innerHTML user text
+    const sub = document.createElement("span");
+    sub.className = "cardlet__sub";
+    sub.textContent = `${e.pages ? e.pages + "p" : "draft"} · ${ago(e.ts)}`
+      + (current ? " · open now" : expired(e) ? " · renders when opened" : "");
+    meta.append(name, sub);
+    open.append(thumb, meta);
+    open.addEventListener("click", () => openEntry(e));
+
+    // its own button beside the card, not a control nested inside it
+    const del = document.createElement("button");
+    del.className = "cardlet__del";
+    del.setAttribute("aria-label", `Remove ${e.title}`);
+    del.title = "Remove";
+    del.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" '
+      + 'stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+    del.addEventListener("click", async () => {
       if (!(await ask(`Remove "${e.title}" from the library?`, "Remove"))) return;
-      localStorage.setItem(LIB_KEY, JSON.stringify(lib().filter((x) => x.ts !== e.ts)));
+      saveLib(lib().filter((x) => x.ts !== e.ts));
       drawLibrary();
-    };
-    card.addEventListener("click", (ev) => {
-      if (ev.target.closest(".cardlet__del")) { drop(); return; }
-      openEntry(e);
     });
-    // the delete control sits inside the card button, so Enter and Space
-    // would activate the card and open the entry instead of deleting it
-    card.querySelector(".cardlet__del").addEventListener("keydown", (ev) => {
-      if (ev.key === "Enter" || ev.key === " ") {
-        ev.preventDefault();
-        ev.stopPropagation();
-        drop();
-      }
-    });
+
+    card.append(open, del);
     grid.appendChild(card);
   });
 }
@@ -1224,12 +1313,13 @@ $("libClear").addEventListener("click", async () => {
 });
 
 async function openEntry(e) {
-  // Anything rendered is already in the library; only typing that was never
-  // rendered is unsaved, and that is the one thing opening an entry can lose.
-  const current = $("text").value;
-  if (current.trim() && current !== e.text &&
-      !lib().some((x) => x.text === current) &&
-      !(await ask("Replace the unsaved text in the editor with this entry?", "Replace"))) return;
+  // The document already in the editor is just shown again, unsaved edits
+  // and all: reopening its card must not throw them away.
+  if (e.doc && e.doc === state.doc) { showView("write"); $("text").focus(); return; }
+  // Anything else in the editor goes into the library first, so opening a
+  // card never costs the document that was open. It used to ask whether to
+  // "replace the unsaved text", and Replace discarded it.
+  stashCurrent();
   $("text").value = e.text;
   state.seed = e.seed != null ? e.seed : newSeed();
   state.doc = e.doc || `entry-${e.ts}`;
@@ -1622,19 +1712,13 @@ function firstRun() {
 function closeWelcome() { $("welcome").hidden = true; }
 $("welcomeClose").addEventListener("click", closeWelcome);
 $("text").addEventListener("input", closeWelcome);   // their own text: it has done its job
-$("welcomeStart").addEventListener("click", () => {
-  closeWelcome();
-  $("text").value = "";
-  state.title = null;
-  newDocument();
-  state.id = null; state.pages = 0; state.rendered = null; state.statusLine = null;
-  $("page").hidden = true; $("pager").hidden = true; $("strip").hidden = true;
-  $("empty").hidden = false;
-  $("exportBtn").disabled = true;
-  $("status").textContent = "Ready";
-  count();
-  touched();
-  $("text").focus();
+$("welcomeStart").addEventListener("click", startNewDocument);
+$("newDoc").addEventListener("click", startNewDocument);
+$("libNew").addEventListener("click", startNewDocument);
+$("libNoneClear").addEventListener("click", () => {
+  $("libSearch").value = "";
+  drawLibrary();
+  $("libSearch").focus();
 });
 
 firstRun();
