@@ -6,26 +6,23 @@ Every change goes out the same way, without waiting to be asked:
 
 1. Branch off `main`, commit, push, open a PR.
 2. Wait for CI (lint, types, suite on 3.10/3.12/3.13, Docker build and container smoke test) to pass, then merge it.
-3. Deploy what was merged, from an up-to-date `main`:
+3. The merge deploys itself: the `deploy` job in `.github/workflows/tests.yml` runs `flyctl deploy --ha=false` once everything else passes on `main`, then runs the smoke test against https://text2hand.fly.dev. Watch that run (`gh run list --branch main --limit 1`, then `gh run watch <id>`) and say the change is live only once its `deploy` job has succeeded.
+4. If the `deploy` job fails, read its log, fix the cause, and only if CI cannot deploy at all fall back to a manual deploy from an up-to-date `main`:
 
    ```
    git checkout main && git pull
    fly deploy --ha=false
-   ```
-
-4. Check the live site, and say it is live only after this passes:
-
-   ```
    python tests/smoke.py https://text2hand.fly.dev
    ```
 
-If the deploy or the smoke test fails, report what broke instead of calling it done. Deploy only from `main`, never from a feature branch.
+Report what broke rather than calling a failed deploy done. Never deploy from a feature branch.
 
 ### Deploy rules
 
 - **Always `--ha=false`, and never scale past one machine.** Jobs and their progress live in the one server process's memory (see `wsgi.py`), so a second machine would answer polls for jobs it never started.
 - The app is `text2hand` on Fly.io, region `sin`; its config is `fly.toml`. Fly no longer accepts new machines in Mumbai (`bom`).
-- `flyctl` is at `%USERPROFILE%\.fly\bin`. If a command says no access token is available, run `fly auth login` in the background and give the owner the approval URL it prints.
+- CI deploys with the `FLY_API_TOKEN` repository secret, a deploy token for this one app that expires in October 2027. When it expires, replace it with `fly tokens create deploy -a text2hand --name github-actions --expiry 8760h | gh secret set FLY_API_TOKEN` (piped, never printed).
+- Locally, `flyctl` is at `%USERPROFILE%\.fly\bin`. If a command says no access token is available, run `fly auth login` in the background and give the owner the approval URL it prints.
 - The machine stops when idle, so the first request after a quiet spell takes a few seconds; that is expected, not a failure.
 
 ## Testing

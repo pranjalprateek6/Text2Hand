@@ -119,3 +119,37 @@ jobs:
           tags: |
             ${{ steps.name.outputs.repo }}:latest
             ${{ steps.name.outputs.repo }}:sha-${{ github.sha }}
+
+  # Every change that lands on main, once everything above has passed on it,
+  # goes live on Fly.io and is then checked there. One deploy at a time, and
+  # never cancelled half way: a newer push waits for the one in progress.
+  # --ha=false keeps the app on exactly one machine, which it must be (jobs
+  # live in one process's memory; see CLAUDE.md). The token in FLY_API_TOKEN
+  # can deploy this one app and nothing else.
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository_owner == 'pranjalprateek6'
+    needs: [lint, types, suite, docker]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: fly-deploy
+      cancel-in-progress: false
+    environment:
+      name: production
+      url: https://text2hand.fly.dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@fc53c09e1bc3be6f54706524e3b82c4f462f77be  # 1.5
+
+      - name: Deploy
+        run: flyctl deploy --ha=false --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check the live site
+        run: python tests/smoke.py https://text2hand.fly.dev
