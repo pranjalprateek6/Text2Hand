@@ -51,12 +51,12 @@
 
       <div class="bar__acts">
         <span class="autobox">
-          <label class="auto" title="Render again on its own when you stop typing">
+          <label class="auto" id="autoLabel" title="Render again on its own when you stop typing">
             <input type="checkbox" id="auto" aria-describedby="autoNote" />
             <span class="auto__track" aria-hidden="true"></span>
-            <span class="auto__label">Auto</span>
+            <span class="auto__label"><span class="auto__word">Auto</span><span class="auto__state"> · paused</span></span>
           </label>
-          <span class="auto__note" id="autoNote" hidden>Paused above ~3 pages · press Render</span>
+          <span class="auto__note" id="autoNote" hidden>Long document: press Render when ready</span>
         </span>
 
         <!-- the one export most people want, a click away; the menu has the rest -->
@@ -112,7 +112,7 @@
               <button class="pop__item sample" role="menuitem" data-sample="pangram"><b>Pangram</b><i>every letter, in two lines</i></button>
               <button class="pop__item sample" role="menuitem" data-sample="punctuation"><b>Punctuation</b><i>quotes, colons, apostrophes</i></button>
               <button class="pop__item sample" role="menuitem" data-sample="symbols"><b>Symbols</b><i>maths, brackets and the rest</i></button>
-              <button class="pop__item sample" role="menuitem" data-sample="markdown"><b>Markdown</b><i>headings, lists, a quote, a figure</i></button>
+              <button class="pop__item sample" role="menuitem" data-sample="markdown"><b>Markdown</b><i>headings, lists, a quote, a table</i></button>
             </div>
           </div>
           <button class="btn btn--sm btn--outline" id="pdfBtn">From a PDF</button>
@@ -139,8 +139,8 @@
 
         <!-- a first visit opens on an example, already rendered -->
         <div class="welcome" id="welcome" hidden role="note">
-          <p class="welcome__text"><b>This is an example.</b> Its page is beside it.
-            Replace the text with your own, or</p>
+          <p class="welcome__text"><b>This is an example</b>, written out beside it.
+            Change the text and the page follows.</p>
           <button class="btn btn--sm" id="welcomeStart">Start with a blank page</button>
           <button class="iconbtn welcome__close" id="welcomeClose" aria-label="Dismiss">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
@@ -186,6 +186,10 @@
               <button class="look" data-look="lab" role="radio" aria-checked="false"
                       aria-label="Lab"><span class="look__page" aria-hidden="true"><i>Aa</i></span>
                 <span class="look__name">Lab</span></button>
+              <button class="look" data-look="ink" role="radio" aria-checked="false"
+                      aria-label="Ink only, a transparent PNG for designs"
+                      title="No paper: the writing alone, as a transparent PNG"><span class="look__page" aria-hidden="true"><i>Aa</i></span>
+                <span class="look__name">Ink only</span></button>
             </div>
           </div>
           <div class="grp">
@@ -220,14 +224,14 @@
                   <option value="ruled">Ruled</option>
                   <option value="grid">Squared</option>
                   <option value="plain">Plain</option>
-                  <option value="none">None (transparent PNG)</option>
+                  <option value="none">None: ink only, transparent</option>
                 </select>
                 <select class="mini mini--look" id="sheet" aria-label="Page size">
                   <option value="a4">A4</option>
                   <option value="letter">Letter</option>
                 </select>
-                <button class="opt is-on" id="oTexture" aria-pressed="true" title="A warm paper tint with a fine grain">Paper grain</button>
-                <button class="opt is-on" id="oSkew" aria-pressed="true" title="Turn the page very slightly, as a scanner does">Scanned look</button>
+                <button class="opt opt--check is-on" id="oTexture" aria-pressed="true" title="A warm paper tint with a fine grain">Paper grain</button>
+                <button class="opt opt--check is-on" id="oSkew" aria-pressed="true" title="Turn the page very slightly, as a scanner does">Scanned look</button>
               </div>
             </div>
             <div class="grp">
@@ -261,13 +265,19 @@
                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
             <span class="reroll__label">New handwriting</span>
           </button>
+          <button class="reroll" id="unroll" hidden aria-label="Previous handwriting"
+                  title="Go back to the handwriting before this one">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg>
+            <span class="reroll__label">Previous</span>
+          </button>
           <div class="zoom" role="group" aria-label="Zoom">
             <button class="iconbtn" id="zoomOut" aria-label="Zoom out" title="Zoom out">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                    stroke-linecap="round"><path d="M5 12h14"/></svg>
             </button>
-            <button class="iconbtn zoom__fit" id="zoomFit" aria-label="Fit the page"
-                    title="Fit the whole page in view">Fit</button>
+            <button class="iconbtn zoom__fit" id="zoomFit" aria-label="Fit the whole page"
+                    title="Fit the whole page in view; press again to fit its width">Page</button>
             <button class="iconbtn" id="zoomIn" aria-label="Zoom in" title="Zoom in">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
                    stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
@@ -298,7 +308,7 @@
               <path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/>
             </svg>
             <p class="hollow__title">Nothing rendered</p>
-            <p class="hollow__sub">Write something and press Render, or pick a sample.</p>
+            <p class="hollow__sub" id="emptySub">Write something and press Render, or pick a sample.</p>
           </div>
 
           <div class="ghost" id="loading" hidden>

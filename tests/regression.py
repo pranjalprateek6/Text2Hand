@@ -987,6 +987,20 @@ check("a library card's menu button is beside it, not nested in it",
       "cardlet__open" in _lib_js and "cardlet__more" in _lib_js and 'id="libNone"' in _studio)
 check("a card can be downloaded, renamed, duplicated or removed from the library",
       all(f'data-act="{a}"' in _studio for a in ("download", "rename", "duplicate", "remove")))
+# --- the studio review, October ---------------------------------------------
+_css_studio = open(os.path.join(ROOT, "static", "studio.css"), encoding="utf-8").read()
+check("the phone keeps the pager: the page strip sits behind the bottom bar",
+      "#pager { display: none; }" not in _css_studio)
+check("the first-visit example has no figure pointing at a missing picture",
+      "chart.png" not in _lib_js)
+check("a long first line is cut at a word for the title, not mid-word",
+      "head.lastIndexOf(\" \")" in _lib_js)
+check("New handwriting can be undone", 'id="unroll"' in _studio and "prevSeed" in _lib_js)
+check("transparent output is a look of its own", 'data-look="ink"' in _studio
+      and 'ink: { paper: "none"' in _lib_js)
+check("Auto shows as paused, not dimmed to look switched off",
+      "auto__state" in _studio and ".autobox.is-paused .auto__track" not in _css_studio)
+
 check("the library can be sorted and filtered",
       'id="libSort"' in _studio and 'id="libShow"' in _studio and "const SORTS" in _lib_js)
 
