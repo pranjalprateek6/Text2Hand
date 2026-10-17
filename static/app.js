@@ -44,6 +44,7 @@ function newSeed() {
 // name yet. Keeping the last document's name made a sample or a new note
 // arrive in the library labelled as whatever was open before it.
 function newDocument() {
+  forgetHand();
   state.seed = newSeed();
   state.doc = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   state.title = null;
@@ -196,6 +197,7 @@ const LOOKS = {
   letter: { paper: "plain", texture: true, skew: false, ink: "blue", size: "large" },
   clean: { paper: "ruled", texture: false, skew: false, ink: "blue-black", size: "normal" },
   lab: { paper: "grid", texture: true, skew: true, ink: "black", size: "small" },
+  ink: { paper: "none", texture: false, skew: false, ink: "black", size: "normal" },
 };
 
 // Paper style and size, grain, the scanned look and how the text is read sit
@@ -278,7 +280,15 @@ function titleOf(text) {
     // a name, not italics
     .replace(/(\*\*|__|[*`])/g, "")
     .trim();
-  return first ? (first.length > 40 ? first.slice(0, 40) + "…" : first) : "Untitled";
+  if (!first) return "Untitled";
+  if (first.length <= 40) return first;
+  // cut at the last clause break, or else the last word, that leaves at least
+  // half the length: "Shopping list for the weekend trip, writ" was a file
+  const head = first.slice(0, 41);
+  const clause = Math.max(...[", ", "; ", ": ", " - ", " – ", " — "].map((m) => head.lastIndexOf(m)));
+  const word = head.lastIndexOf(" ");
+  const end = clause >= 20 ? clause : word >= 20 ? word : 40;
+  return first.slice(0, end).replace(/[\s,;:.\-–—]+$/, "") + "…";
 }
 
 // A name typed into the bar wins; until then the title follows the text.
@@ -530,8 +540,11 @@ const SAMPLES = {
     "1. Collect the data\n" +
     "2. Train the model\n\n" +
     "> Deep learning is a subset of machine learning.\n\n" +
-    "---\n\n" +
-    "![Figure 1 accuracy over time](chart.png)\n",
+    "| Layer | Learns |\n" +
+    "|---|---|\n" +
+    "| First | edges |\n" +
+    "| Middle | shapes |\n" +
+    "| Last | objects |\n",
 };
 
 document.querySelectorAll(".try, .sample").forEach((btn) => {
@@ -675,6 +688,7 @@ function markStale() {
   $("dlMain").classList.toggle("btn--outline", !current);
   $("dlMain").title = current ? "" : "The text has changed: this renders it first, then downloads";
   $("render").classList.toggle("btn--outline", current);
+  syncAutoNote();
   syncPhoneBar();
 }
 
@@ -786,10 +800,26 @@ function settleDownload(ok) {
   fetchDownload(id);
 }
 
-$("reroll").addEventListener("click", () => {
-  state.seed = newSeed();
+// A new hand replaced the one before for good, and a hand someone liked was
+// a lucky draw they could not get back. The last one is kept for one undo.
+let prevSeed = null;
+function forgetHand() { prevSeed = null; $("unroll").hidden = true; }
+function useSeed(seed) {
+  state.seed = seed;
   if (state.busy) { touched(); return; }    // Auto picks it up, or the queue does
   render();
+}
+$("reroll").addEventListener("click", () => {
+  prevSeed = state.seed;
+  $("unroll").hidden = false;
+  useSeed(newSeed());
+});
+$("unroll").addEventListener("click", () => {
+  if (prevSeed == null) return;
+  const seed = prevSeed;
+  forgetHand();
+  $("reroll").focus();
+  useSeed(seed);
 });
 
 function cancelJob() {
@@ -1035,11 +1065,20 @@ $("next").addEventListener("click", () => goTo(state.page + 1));
 // touches the level, so it survives paging and re-renders.
 let zoom = 0.85;
 let zoomedByHand = false;
+// On a wide screen the whole page fitted to the pane's height left the
+// writing small, so Fit has a second setting: the page's width, scrolled.
+// Pressing it while fitted switches between the two; the choice is kept.
+let fitWidth = false;
+try { fitWidth = localStorage.getItem("t2h.fit") === "width"; } catch {}
 function applyZoom() {
   $("pages").style.setProperty("--zoom", zoom);
   $("zoomOut").disabled = zoom < 0.41;
   $("zoomIn").disabled = zoom > 1.95;
   $("zoomFit").classList.toggle("is-on", !zoomedByHand);
+  const width = fitWidth || narrow.matches;
+  $("zoomFit").textContent = zoomedByHand ? "Fit" : width ? "Width" : "Page";
+  $("zoomFit").setAttribute("aria-label", zoomedByHand ? "Fit the page again"
+    : width ? "Fitted to the page's width" : "Fitted to the whole page");
 }
 function pageAspect() {
   const p = $("page");
@@ -1051,13 +1090,22 @@ function fitZoom() {
   const wide = (pane.clientWidth - 52) / 540;          // 52: the pane's padding
   const tall = (pane.clientHeight - 52) / (540 * pageAspect());
   if (wide <= 0) { zoom = 0.85; applyZoom(); return; }
-  const z = narrow.matches || tall <= 0 ? Math.min(0.85, wide) : Math.min(wide, tall);
+  const z = narrow.matches ? Math.min(0.85, wide)
+    : tall <= 0 || fitWidth ? Math.min(1.4, wide) : Math.min(wide, tall);
   zoom = Math.max(0.4, Math.min(2.05, z));
   applyZoom();
 }
 $("zoomIn").addEventListener("click", () => { zoomedByHand = true; zoom = Math.min(2.05, zoom + 0.15); applyZoom(); });
 $("zoomOut").addEventListener("click", () => { zoomedByHand = true; zoom = Math.max(0.40, zoom - 0.15); applyZoom(); });
-$("zoomFit").addEventListener("click", () => { zoomedByHand = false; fitZoom(); });
+$("zoomFit").addEventListener("click", () => {
+  // fitted already: switch between the whole page and its width
+  if (!zoomedByHand && !narrow.matches) {
+    fitWidth = !fitWidth;
+    try { localStorage.setItem("t2h.fit", fitWidth ? "width" : "page"); } catch {}
+  }
+  zoomedByHand = false;
+  fitZoom();
+});
 $("page").addEventListener("load", fitZoom);         // a Letter page is a different shape
 window.addEventListener("resize", fitZoom);
 fitZoom();
@@ -1096,9 +1144,22 @@ function autoActive() {
 function syncAuto() {
   $("auto").checked = autoChoice() !== "0";
   const paused = autoPaused();
-  $("autoNote").hidden = !paused;
   document.querySelector(".autobox").classList.toggle("is-paused", paused);
-  document.body.classList.toggle("auto-paused", paused);   // the phone says it elsewhere
+  $("autoLabel").title = paused
+    ? "Auto rests on documents over about three pages, so each pause in typing does not "
+      + "start a long render. Press Render when you are ready."
+    : "Render again on its own when you stop typing";
+  syncAutoNote();
+  // the empty preview says what will happen, which depends on Auto
+  $("emptySub").textContent = autoActive()
+    ? "Start typing and your page appears here, or pick a sample."
+    : "Write something and press Render, or pick a sample.";
+}
+// the line under the switch is for when it matters: Auto is resting and the
+// page on screen is not the text in the editor
+function syncAutoNote() {
+  const behind = !state.busy && JSON.stringify(payload()) !== state.rendered;
+  $("autoNote").hidden = !(autoPaused() && behind && $("text").value.trim());
 }
 $("auto").addEventListener("change", () => {
   try { localStorage.setItem(AUTO_KEY, $("auto").checked ? "1" : "0"); } catch {}
@@ -1497,6 +1558,7 @@ async function openEntry(e) {
   // "replace the unsaved text", and Replace discarded it.
   stashCurrent();
   $("text").value = e.text;
+  forgetHand();
   state.seed = e.seed != null ? e.seed : newSeed();
   state.doc = e.doc || `entry-${e.ts}`;
   state.heads = e.heads || [];

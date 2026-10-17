@@ -112,7 +112,10 @@ body { overflow: hidden; height: 100vh; }
   white-space: nowrap; font-size: 10.5px; line-height: 1.2;
   color: var(--muted-foreground);
 }
-.autobox.is-paused .auto__track { opacity: 0.55; }
+/* paused shows as a word beside the switch, which stays on: it was dimmed,
+   and read as switched off */
+.auto__state { display: none; }
+.autobox.is-paused .auto__state { display: inline; }
 
 /* the render button spins while busy */
 .btn.is-busy { pointer-events: none; opacity: 0.75; }
@@ -217,6 +220,18 @@ body { overflow: hidden; height: 100vh; }
 }
 .opt:hover { color: var(--foreground); }
 .opt.is-on { background: var(--foreground); border-color: var(--foreground); color: var(--background); }
+/* an on/off setting, not an action: a box that is ticked, not a dark pill */
+.opt--check { display: inline-flex; align-items: center; gap: 7px; padding-left: 10px; }
+.opt--check::before {
+  content: ""; width: 13px; height: 13px; flex: none; box-sizing: border-box;
+  border: 1.5px solid currentColor; border-radius: 3px;
+}
+.opt--check.is-on { background: transparent; border-color: var(--border); color: var(--foreground); }
+.opt--check.is-on::before {
+  background: var(--foreground) no-repeat center / 9px
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2 6.5 5 9l5-6' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  border-color: var(--foreground);
+}
 
 .inks { display: flex; gap: 7px; }
 .ink {
@@ -661,8 +676,12 @@ select.mini {
 @media (max-width: 600px) { .wide-only { display: none; } }
 /* on a phone the Preview tab already names this pane; its label is room */
 @media (max-width: 600px) { #previewLabel { display: none; } .stale { margin-left: 0; } }
-/* and the page strip under the preview does the pager's job there */
-@media (max-width: 600px) { #pager { display: none; } }
+/* the page strip sits a scroll below the preview on a phone, behind the
+   bottom bar, so the pager stays: it is the only sign there are more pages */
+@media (max-width: 600px) {
+  #pager .pager__jump { width: 30px; }
+  .zoom__fit { min-width: 0; }
+}
 
 /* a note that is a heading and a short list */
 .notecard__head { display: block; color: var(--foreground); font-weight: 600; margin-bottom: 4px; }
@@ -771,10 +790,20 @@ body[data-view="library"] .bar__doc { display: none !important; }
     clip: rect(0 0 0 0); white-space: nowrap;
   }
 
-  /* no room for a line under Auto here: the label says it instead */
+  /* no room for a line under Auto here, or for "Auto · paused" in the first
+     row: the switch's label becomes "Paused" instead */
   .auto__note { display: none; }
-  body.auto-paused #paneSource .pane__label { font-size: 0; }
-  body.auto-paused #paneSource .pane__label::after { content: "Auto paused"; font-size: 11px; }
+  .autobox.is-paused .auto__word { display: none; }
+  .autobox.is-paused .auto__state { font-size: 0; }
+  .autobox.is-paused .auto__state::after { content: "Paused"; font-size: 13px; }
+  /* the page is always fitted to its width here, so Fit only appears once
+     the page has been zoomed by hand, to undo that */
+  .zoom__fit.is-on { display: none; }
+  .pager__n { white-space: nowrap; }
+  /* the Write tab names this pane; its label is room for the buttons */
+  #paneSource .pane__label { display: none; }
+  /* the editor's count belongs to the editor, not the settings sheet */
+  .sheet .count { display: none; }
 
   /* the export menu opens up from the bottom bar, the bar's own width */
   .mbar .menu { position: static; }
@@ -809,6 +838,10 @@ body[data-view="library"] .bar__doc { display: none !important; }
 .look__page[data-paper="ruled"]::before {
   content: ""; position: absolute; top: 0; bottom: 0; left: 7px; width: 1px;
   background: rgba(214, 120, 120, 0.6);
+}
+/* ink only: no paper, so the swatch is the checks that mean transparent */
+.look__page[data-paper="none"] {
+  background: #fff repeating-conic-gradient(#e4e1d8 0 25%, #fff 0 50%) 0 0 / 10px 10px;
 }
 .look__page[data-paper="grid"] {
   background-image:
