@@ -723,7 +723,8 @@ body[data-view="library"] .bar__doc { display: none !important; }
   .library__tools { flex-wrap: wrap; }
   /* search on a row of its own, the two pickers side by side under it */
   .library__search { flex: 1 1 100%; width: auto; min-width: 0; }
-  #libNew { height: 44px; }
+  #libNew, .library__search { height: 44px; }
+  #libClear { min-height: 44px; padding: 0 6px; }
 }
 
 /* Export shows its word beside the other buttons, and an icon on a phone */
@@ -775,7 +776,12 @@ body[data-view="library"] .bar__doc { display: none !important; }
   /* thumb-sized targets */
   .tab { min-height: 44px; padding-left: 14px; padding-right: 14px; }
   .mtab { min-height: 44px; }
-  #samplesBtn, #pdfBtn { height: 44px; }
+  #newDoc, #samplesBtn, #pdfBtn { height: 44px; }
+  /* the preview's own controls, finger-sized as well */
+  .reroll, #zoomIn, #zoomOut, #zoomFit, #prev, #next { min-width: 44px; min-height: 44px; justify-content: center; }
+  /* and closer together, so the bar still fits beside the pager */
+  .pane__bar:has(#pager) { gap: 6px; padding-left: 10px; padding-right: 10px; }
+  .pane__bar:has(#pager) .reroll, .pane__bar:has(#pager) .zoom { margin-right: 0; }
   .bar .bar__rename { width: 44px; height: 44px; margin-left: -10px; flex: none; }
   .auto { min-height: 44px; }
   .bar__home { min-height: 44px; align-items: center; }
