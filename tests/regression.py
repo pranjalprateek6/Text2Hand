@@ -1000,6 +1000,8 @@ check("transparent output is a look of its own", 'data-look="ink"' in _studio
       and 'ink: { paper: "none"' in _lib_js)
 check("the editor's New button is finger-sized on a phone, like its neighbours",
       "#newDoc, #samplesBtn, #pdfBtn { height: 44px; }" in _css_studio)
+check("every control in the phone's Look & pen sheet is finger-sized",
+      ".sheet .ink::before" in _css_studio and ".sheet .sizebtn { min-width: 44px; min-height: 44px; }" in _css_studio)
 check("Auto shows as paused, not dimmed to look switched off",
       "auto__state" in _studio and ".autobox.is-paused .auto__track" not in _css_studio)
 
