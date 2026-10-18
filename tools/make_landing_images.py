@@ -9,8 +9,8 @@ text and fixed seeds, through the same /api/render the studio uses:
 
   static/sample_letter.jpg   the hero: a short letter on ruled paper
   static/sample_page.jpg     the showcase: a page of study notes
-  static/sample_eq.jpg       display equations traced from a real paper
-                             (needs attention.pdf; kept as is without it)
+  static/sample_eq.jpg       the attention equation written out in the hand,
+                             fraction and root included
   static/og.jpg              the 1200x630 picture shown when the link is shared
 
 The paper grain is random on every run; the writing is not.
@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import io
 import os
+import random
 import sys
 import tempfile
 import time
@@ -113,21 +114,105 @@ def crop_to_writing(page: Image.Image, keep_below: int = 0, pad: int = 70) -> Im
     return page.crop((0, max(0, y0 - pad), page.width, min(page.height, max(y1, keep_below) + pad)))
 
 
-def equations() -> Image.Image | None:
-    """Display equations from a real paper, traced as ink, or None without it."""
-    import converters
+def written_equation() -> Image.Image:
+    """The attention equation written in the captured hand, on ruled paper.
 
-    paper = Path.home() / "Downloads" / "attention.pdf"
-    if not paper.exists():
-        return None
-    assets = app.ASSET_ROOT / "eq_landing"
-    result = converters.to_markdown(str(paper), "pymupdf", "4", assets_dir=str(assets),
-                                    asset_ref="eq_landing")
-    images = [line for line in result.markdown.splitlines() if line.startswith("![")]
-    if not images:
-        return None
-    page = render("\n\n".join(images[:2]), 7, markdown=True, skew=False)
-    return crop_to_writing(page, pad=50)
+    The page writer sets text in lines, not fractions, so this one picture is
+    composed from the hand's own glyphs: the fraction bar and the root's
+    overbar are pen lines in the same ink, and nothing is typeset.
+    """
+    import render_core
+    import text_to_handwriting as t2h
+
+    render_core.apply_options(paper="ruled", ink="blue-black", texture=True, skew=False)
+    t2h.derive_metrics()
+    rng = random.Random(1706)
+    random.seed(1706)
+    pages: list[Image.Image] = []
+    sheet = t2h.Sheet(on_page=lambda n, page: pages.append(page))   # opens its first page
+
+    S = 1.3                                  # a showcase: written a little large
+    X = round(t2h.X_HEIGHT * S)
+    gap = round(X * 0.12)
+
+    def glyph(ch: str, scale: float = 1.0) -> Image.Image:
+        g = rng.choice(t2h.glyph_variants(ch))
+        return t2h.jittered(g, scale * S)
+
+    def run(text: str, scale: float = 1.0) -> list:
+        """(image, dx, dy-from-baseline) for each glyph, and the run's width."""
+        out, x = [], 0
+        for ch in text:
+            if ch == " ":
+                x += round(t2h.SPACE_WIDTH * S * scale * 0.7)
+                continue
+            g = glyph(ch, scale)
+            if ch in t2h.CENTERED:
+                dy = -round(X * scale / 2) - g.height // 2
+            else:
+                dy = -g.height + t2h._drop_below_line(ch, g.height)
+            out.append((g, x, dy))
+            x += g.width + round(gap * scale)
+        return out, x - round(gap * scale)
+
+    def stamp(pieces: list, x0: int, base: int) -> None:
+        for g, dx, dy in pieces:
+            sheet._stamp(g, x0 + dx, base + dy, rng.uniform(0.86, 1.0))
+
+    def pen(points: list) -> None:
+        wob = [(x, y + rng.uniform(-1.5, 1.5)) for x, y in points]
+        sheet._line(wob, max(3, round(X * 0.075)))
+
+    left, wl = run("Attention(Q, K, V) = softmax(")
+    num, wn = run("QK")
+    sup, ws = run("T", 0.62)
+    root = glyph("\u221a")
+    den_d, wd = run("d")
+    sub, wk = run("k", 0.62)
+    right, wr = run(")V")
+
+    num_w = wn + gap + ws
+    den_w = root.width + gap + wd + gap + wk
+    frac_w = max(num_w, den_w) + 2 * gap
+    total = wl + gap + frac_w + gap + wr
+    x = (sheet.width - total) // 2
+
+    base = t2h.MARGIN_T + 4 * t2h.LINE_HEIGHT          # on a ruled line, with room above
+    axis = base - X // 2                               # where = and the bar sit
+    stamp(left, x, base)
+    x += wl + gap
+
+    # numerator, over the bar, with T raised
+    nx = x + (frac_w - num_w) // 2
+    nbase = axis - round(X * 0.5)
+    stamp(num, nx, nbase)
+    cap = max(g.height for g, _, _ in num)
+    stamp(sup, nx + wn + gap, nbase - round(cap * 0.55))
+    # the bar
+    pen([(x, axis), (x + frac_w // 2, axis + 1), (x + frac_w, axis)])
+    # denominator: the root, then d with k lowered, and the root's overbar
+    dx = x + (frac_w - den_w) // 2
+    # the root's overbar keeps clear of the fraction bar above it
+    dtall = max(g.height for g, _, _ in den_d)
+    rh = dtall + round(X * 0.45)
+    top = axis + round(X * 0.8)
+    dbase = top + rh - round(X * 0.12)
+    root = root.resize((max(1, round(root.width * rh / root.height)), rh), Image.LANCZOS)
+    sheet._stamp(root, dx, top, 0.95)
+    rx = dx + root.width - round(root.width * 0.08)
+    stamp(den_d, rx + gap, dbase)
+    stamp(sub, rx + gap + wd + gap, dbase + round(X * 0.25))
+    pen([(rx - 2, top + 2), (dx + den_w + gap, top + 2)])
+    x += frac_w + gap
+    stamp(right, x, base)
+
+    sheet.finish()
+    page = pages[-1].convert("RGB")
+    # the strip of page the equation is written on, with a little paper
+    # above and below it
+    ink = ImageOps.invert(page.convert("L")).point(lambda v: 255 if v > 150 else 0).getbbox()
+    pad = round(0.45 * t2h.LINE_HEIGHT)
+    return page.crop((0, max(0, ink[1] - pad), page.width, min(page.height, ink[3] + pad)))
 
 
 def main() -> None:
@@ -138,11 +223,7 @@ def main() -> None:
     notes = render(NOTES, 4242, markdown=True, paper="ruled", ink="blue-black")
     save_jpeg(notes, "sample_page.jpg", 1100)
 
-    eq = equations()
-    if eq is not None:
-        save_jpeg(eq, "sample_eq.jpg", 1100)
-    else:
-        print("  sample_eq.jpg: kept (attention.pdf not found in Downloads)")
+    save_jpeg(written_equation(), "sample_eq.jpg", 1100)
 
     # the shared-link picture: the top of the letter, on its own paper
     top = letter.crop((0, 0, letter.width, round(letter.width * 630 / 1200)))
