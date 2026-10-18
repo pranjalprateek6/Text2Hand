@@ -810,6 +810,14 @@ body[data-view="library"] .bar__doc { display: none !important; }
   #paneSource .pane__label { display: none; }
   /* the editor's count belongs to the editor, not the settings sheet */
   .sheet .count { display: none; }
+  /* every control in the sheet finger-sized: the swatches keep their size
+     and gain an invisible 44px target, spaced so the targets never overlap */
+  .sheet .inks { gap: 14px; }
+  .sheet .ink { position: relative; }
+  .sheet .ink::before { content: ""; position: absolute; inset: -7px; border-radius: 999px; }
+  .sheet .sizebtn { min-width: 44px; min-height: 44px; }
+  .sheet .opt, .sheet select.mini { min-height: 44px; }
+  .sheet__head .iconbtn { width: 44px; height: 44px; }
 
   /* the export menu opens up from the bottom bar, the bar's own width */
   .mbar .menu { position: static; }
