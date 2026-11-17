@@ -41,6 +41,7 @@ import os
 import random
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from typing import Any
 
 from PIL import Image, ImageChops, ImageDraw
@@ -123,7 +124,7 @@ MIRRORED_OPENING = set("\"'")
 # a letter or a full stop, a quote is closing.
 OPENS_AFTER = set(" \t([{-—")
 RAISE_FRAC = 0.20                       # how far up, as a fraction of the line height
-CENTERED = set("+=<>~-∈∗∞")             # centred on the x-height axis; a hyphen
+CENTERED = set("+=<>~-∈∗∞→←↔≠≥≤−–×")    # centred on the x-height axis; a hyphen
                                         # left on the baseline reads as _
 X_HEIGHT = 0                            # derived from the glyphs at runtime
 
@@ -164,11 +165,16 @@ PAPER_FILL = (244, 242, 236)            # corner fill for the scan skew (should 
 # a person writes it: headings centred and underlined, lists indented.
 INDENT_STEP = 90                        # px of indent per list nesting level
 HEADING_SCALE = {1: 1.30, 2: 1.15, 3: 1.05}     # glyph scale by heading level
-# Gaps are in whole ruled lines. Anything fractional would walk the writing off
-# the ruling, since the rules are a fixed grid and never move.
-HEADING_GAP_BEFORE = 1                  # blank lines before a heading
-HEADING_GAP_AFTER = 0                   # the underline already separates it
-PARA_GAP = 1
+# Gaps are in ruled lines. On ruled or squared paper they are rounded to whole
+# lines, since anything fractional would walk the writing off the ruling; on
+# plain paper there are no rules to keep to, and a gap may be part of a line.
+HEADING_GAP_BEFORE: float = 1           # blank lines before a heading
+HEADING_GAP_AFTER: float = 0            # the underline already separates it
+PARA_GAP: float = 1
+COMPACT_GAPS = {"para": 0.45, "heading": 0.6}   # what spacing="compact" sets
+HEADING_INK: tuple[int, int, int] | None = None  # a second pen for headings; None is the body's
+HEADING_UNDERLINE = True                # headings underlined, the way a hand marks them
+HEADING_KEEP = 2                        # lines a heading needs below it, or it starts the next page
 UNDERLINE_DROP = 12                     # px below the baseline
 UNDERLINE_WIDTH = 4
 
@@ -205,10 +211,28 @@ EQ_MAX_WIDTH = 0.86                     # of the writing column
 # reach out over SMB to a \\host\share they named.
 IMAGE_ROOT: str | None = None
 
+@contextmanager
+def heading_pen():
+    """Write with the heading pen (HEADING_INK) for the length of the block.
+
+    Glyphs, words and pen lines are all kept per ink, so switching pens for a
+    heading and back costs nothing once each pen has been used.
+    """
+    global INK_COLOR
+    if HEADING_INK is None or HEADING_INK == INK_COLOR:
+        yield
+        return
+    body, INK_COLOR = INK_COLOR, HEADING_INK
+    try:
+        yield
+    finally:
+        INK_COLOR = body
+
+
 # --------------------------------------------------------------------------- #
 # Glyph loading  (prepare once, cache, discover variants)
 # --------------------------------------------------------------------------- #
-_cache: dict[str, list[Image.Image] | None] = {}
+_cache: dict[tuple, list[Image.Image] | None] = {}   # (character, ink): glyphs are tinted as they load
 
 # The Sheet currently being written, for cleanup when a render is abandoned.
 _live_sheet = None
@@ -275,8 +299,9 @@ GLYPH_ALIASES = {
 
 def glyph_variants(ch: str) -> list[Image.Image] | None:
     """All prepared images for a character (real variants if present), or None."""
-    if ch in _cache:
-        return _cache[ch]
+    key = (ch, INK_COLOR)
+    if key in _cache:
+        return _cache[key]
 
     scode = str(ord(GLYPH_ALIASES.get(ch, ch)))
     variants: list[Image.Image] = []
@@ -287,8 +312,8 @@ def glyph_variants(ch: str) -> list[Image.Image] | None:
         if rest == "" or not rest[0].isdigit():
             variants.append(_prepare(path))
 
-    _cache[ch] = variants or None
-    return _cache[ch]
+    _cache[key] = variants or None
+    return _cache[key]
 
 
 # --------------------------------------------------------------------------- #
@@ -297,47 +322,60 @@ def glyph_variants(ch: str) -> list[Image.Image] | None:
 # A word written in one stroke keeps its joins, which letters pasted side by
 # side cannot reproduce. Where an image exists it is used in preference to
 # assembling the word, and everything else still falls back to letters.
-_words: dict[str, tuple[Image.Image, int]] | None = None
+# word -> its captured images, per ink, since each is tinted as it loads
+_words_by_ink: dict[tuple | None, dict[str, list[tuple[Image.Image, int]]]] = {}
 
 
-def _load_words() -> dict[str, tuple[Image.Image, int]]:
-    """Word image plus its baseline offset, measured from the top of the crop."""
-    global _words
-    if _words is not None:
-        return _words
-    _words = {}
+def _load_words() -> dict[str, list[tuple[Image.Image, int]]]:
+    """Every captured image of each word, with its baseline offset from the top.
+
+    index.json maps a word to one file, or to a list of files when the same
+    word was captured more than once; each is a real variant of that word,
+    dealt out like a letter's variants so the same capture is not repeated
+    close to itself.
+    """
+    words = _words_by_ink.get(INK_COLOR)
+    if words is not None:
+        return words
+    words = _words_by_ink[INK_COLOR] = {}
     index = os.path.join(WORD_DIR, "index.json")
     if not USE_WORDS or not os.path.exists(index):
-        return _words
+        return words
 
     import json
     with open(index, encoding="utf-8") as fh:
         listing = json.load(fh)
 
-    for label, name in listing.items():
-        path = os.path.join(WORD_DIR, name)
-        if not os.path.exists(path):
-            continue
-        im = Image.open(path).convert("RGBA")
-        alpha = im.convert("L").point(lambda p: 0 if p >= INK_THRESHOLD else 255 - p)
-        im.putalpha(alpha)
-        box = alpha.getbbox()
-        if not box:
-            continue
-        im = im.crop(box)
-        # The words were written on a different sheet, with less pressure:
-        # their strokes averaged 169 against the letters' 185, and "was"
-        # only 128, so assembled and captured words sat side by side in two
-        # visibly different inks. Each is brought up to the letters' level.
-        gain = _ink_gain(im.getchannel("A"))
-        if gain > 1.0:
-            im.putalpha(im.getchannel("A").point(lambda v, g=gain: min(255, int(v * g))))
-        if INK_COLOR is not None:
-            tinted = Image.new("RGBA", im.size, tuple(INK_COLOR) + (0,))
-            tinted.putalpha(im.getchannel("A"))
-            im = tinted
-        _words[label] = (im, _baseline_of(im))
-    return _words
+    for label, names in listing.items():
+        for name in [names] if isinstance(names, str) else names:
+            _load_word(words, label, name)
+    return words
+
+
+def _load_word(words: dict[str, list[tuple[Image.Image, int]]], label: str, name: str) -> None:
+    """Prepare one captured word image and add it to the label's variants."""
+    path = os.path.join(WORD_DIR, name)
+    if not os.path.exists(path):
+        return
+    im = Image.open(path).convert("RGBA")
+    alpha = im.convert("L").point(lambda p: 0 if p >= INK_THRESHOLD else 255 - p)
+    im.putalpha(alpha)
+    box = alpha.getbbox()
+    if not box:
+        return
+    im = im.crop(box)
+    # The words were written on a different sheet, with less pressure:
+    # their strokes averaged 169 against the letters' 185, and "was"
+    # only 128, so assembled and captured words sat side by side in two
+    # visibly different inks. Each is brought up to the letters' level.
+    gain = _ink_gain(im.getchannel("A"))
+    if gain > 1.0:
+        im.putalpha(im.getchannel("A").point(lambda v, g=gain: min(255, int(v * g))))
+    if INK_COLOR is not None:
+        tinted = Image.new("RGBA", im.size, tuple(INK_COLOR) + (0,))
+        tinted.putalpha(im.getchannel("A"))
+        im = tinted
+    words.setdefault(label, []).append((im, _baseline_of(im)))
 
 
 _INK_LEVEL: float = None  # type: ignore[assignment]        # mean stroke darkness of the letter glyphs
@@ -417,8 +455,18 @@ def split_token(token: str) -> tuple[str, str, str]:
     return token[:head], token[head:tail], token[tail:]
 
 
-def word_image(word: str) -> tuple[Image.Image, int] | None:
-    return _load_words().get(word)
+def word_image(word: str, take: bool = True) -> tuple[Image.Image, int] | None:
+    """A captured image of the word, dealt from its variants, or None.
+
+    Measuring a line asks for the word before it is written; it passes
+    take=False and is shown the variant that will be drawn, without using it
+    up, so the width a line was broken at is the width that gets written.
+    """
+    variants = _load_words().get(word)
+    if not variants:
+        return None
+    deal = _deck.draw if take else _deck.peek
+    return variants[deal(("word", word), len(variants))]
 
 
 def measure(word: str, scale: float = 1.0) -> int:
@@ -430,7 +478,7 @@ def measure(word: str, scale: float = 1.0) -> int:
     """
     kern = sum(KERN_JITTER) / 2
     head, core, tail = split_token(word)
-    hit = word_image(core) if core else None
+    hit = word_image(core, take=False) if core else None
     if hit:
         width = hit[0].width * WORD_SCALE + kern
         width += sum(char_advance(c) + kern for c in head + tail)
@@ -523,17 +571,145 @@ _TIRED_AT = 1.35                        # boost above this counts as the tired b
 _jitter_pool: dict[tuple, list[Image.Image]] = {}
 _jitter_pooled = 0                      # images currently held, to bound memory
 
+# A pooled copy is the same picture every time it comes back, and a hand never
+# writes the same letter twice. Seen down a page, "– The" opening line after
+# line was the same stamp, so every occurrence now gets a copy of its own,
+# bent through the whole shape as well as tilted and sized. The pool is still
+# there for anyone who would rather have the speed.
+FRESH_COPIES = True                     # a new jittered copy for every occurrence
+SHAPE_BEND = 0.035                      # how far a letter's outline may bend, of its size
+WORD_BEND = 0.012                       # the same for a whole captured word, which is wider
+
+
+class _Deck:
+    """Hands out variant numbers like cards from a shuffled deck.
+
+    Picking a variant at random let the same one land twice in a row, and on
+    a character with two or three variants that happened all the time. Each
+    variant is now used once before any repeats, and a fresh round never
+    opens with the one that closed the last, so the same version of a letter
+    or word is as far from its last use as the number of versions allows.
+    Draws from the renderer's own random stream, so a seeded render still
+    comes out the same.
+    """
+
+    def __init__(self) -> None:
+        self._left: dict[tuple, list[int]] = {}
+        self._last: dict[tuple, int] = {}
+
+    def clear(self) -> None:
+        self._left.clear()
+        self._last.clear()
+
+    def _deal(self, key: tuple, n: int) -> list[int]:
+        order = list(range(n))
+        random.shuffle(order)
+        if n > 1 and order[0] == self._last.get(key):
+            order[0], order[-1] = order[-1], order[0]
+        self._left[key] = order
+        return order
+
+    def peek(self, key: tuple, n: int) -> int:
+        """The variant the next draw will give, without taking it."""
+        left = self._left.get(key)
+        if not left or max(left) >= n:
+            left = self._deal(key, n)
+        return left[0]
+
+    def draw(self, key: tuple, n: int) -> int:
+        v = self.peek(key, n)
+        self._left[key].pop(0)
+        self._last[key] = v
+        return v
+
+
+_deck = _Deck()
+
+
+def _bend(im: Image.Image, strength: float) -> Image.Image:
+    """Bend a piece of ink through a coarse mesh, so its outline shifts a little.
+
+    Rotation and scale move a letter but leave its shape exactly as captured;
+    this moves the shape itself, a curve rounder here, a stroke longer there,
+    the way the same letter differs from one writing to the next.
+    """
+    if strength <= 0:
+        return im
+    w, h = im.size
+    pad = max(3, int(0.08 * max(w, h)))
+    canvas = Image.new(im.mode, (w + 2 * pad, h + 2 * pad), (0, 0, 0, 0) if im.mode == "RGBA" else 255)
+    canvas.paste(im, (pad, pad))
+    cw, ch = canvas.size
+    n = 3
+    amp = strength * min(w, h) + 0.6
+    pts = {(i, j): (i * cw / n + random.gauss(0, amp), j * ch / n + random.gauss(0, amp))
+           for i in range(n + 1) for j in range(n + 1)}
+    mesh = []
+    for i in range(n):
+        for j in range(n):
+            box = (int(i * cw / n), int(j * ch / n), int((i + 1) * cw / n), int((j + 1) * ch / n))
+            ul, ll, lr, ur = pts[(i, j)], pts[(i, j + 1)], pts[(i + 1, j + 1)], pts[(i + 1, j)]
+            mesh.append((box, (*ul, *ll, *lr, *ur)))
+    out = canvas.transform(canvas.size, Image.Transform.MESH, mesh, Image.Resampling.BICUBIC)
+    bounds = out.getchannel("A").getbbox() if out.mode == "RGBA" else None
+    return out.crop(bounds) if bounds else im
+
+
+def _fresh_copy(im: Image.Image, scale: float = 1.0, boost: float = 1.0) -> Image.Image:
+    """A glyph sized, tilted and bent in one resampling.
+
+    The same random size and tilt _jitter gives, plus the bend, folded into a
+    single mesh warp. Done as three steps (bend, resize, rotate) every fresh
+    copy cost ten resamplings and the render ran at half speed; a 2x2 mesh
+    is four, and still bends each quarter of the letter its own way.
+    """
+    s = scale * (1 + random.uniform(-SCALE_JITTER, SCALE_JITTER)) if SCALE_JITTER else scale
+    rot = ROT_JITTER * boost
+    a = math.radians(random.uniform(-rot, rot)) if ROT_JITTER else 0.0
+    w, h = im.size
+    cos, sin = math.cos(a), math.sin(a)
+    # the scaled, rotated glyph's footprint, with room for the bend
+    ow = abs(w * s * cos) + abs(h * s * sin)
+    oh = abs(w * s * sin) + abs(h * s * cos)
+    pad = max(2.0, SHAPE_BEND * max(ow, oh) * 2)
+    out_w, out_h = int(ow + 2 * pad) + 1, int(oh + 2 * pad) + 1
+    cx, cy = out_w / 2, out_h / 2
+    amp = SHAPE_BEND * min(w, h) + 0.4
+
+    def source(x: float, y: float) -> tuple[float, float]:
+        # undo the rotation about the centre, then the scale
+        dx, dy = (x - cx) / s, (y - cy) / s
+        return (w / 2 + dx * cos - dy * sin, h / 2 + dx * sin + dy * cos)
+
+    n = 2
+    pts = {}
+    for i in range(n + 1):
+        for j in range(n + 1):
+            sx, sy = source(i * out_w / n, j * out_h / n)
+            pts[(i, j)] = (sx + random.gauss(0, amp), sy + random.gauss(0, amp))
+    mesh = []
+    for i in range(n):
+        for j in range(n):
+            box = (int(i * out_w / n), int(j * out_h / n), int((i + 1) * out_w / n), int((j + 1) * out_h / n))
+            ul, ll, lr, ur = pts[(i, j)], pts[(i, j + 1)], pts[(i + 1, j + 1)], pts[(i + 1, j)]
+            mesh.append((box, (*ul, *ll, *lr, *ur)))
+    out = im.transform((out_w, out_h), Image.Transform.MESH, mesh, Image.Resampling.BICUBIC)
+    bounds = out.getchannel("A").getbbox() if out.mode == "RGBA" else None
+    return out.crop(bounds) if bounds else out
+
 
 def reset_jitter_pools() -> None:
     """Forget the jittered copies kept from earlier renders.
 
     A copy is reused at random once a pool is full, so what a page looks like
     depended on every render the process had done before. A render that is
-    meant to come out the same each time starts from empty pools.
+    meant to come out the same each time starts from empty pools, and with
+    every deck of variants shuffled afresh.
     """
     global _jitter_pooled
     _jitter_pool.clear()
     _word_pool.clear()
+    _deck.clear()
     _jitter_pooled = 0
 
 
@@ -545,12 +721,13 @@ def reset_glyph_caches() -> None:
     scale, has to clear the pool too. Clearing only the glyph cache would leave
     the pool handing out the old ink for as long as the process lived.
     """
-    global _words, _jitter_pooled
+    global _jitter_pooled
     _cache.clear()
     _jitter_pool.clear()
     _word_pool.clear()
+    _deck.clear()
     _jitter_pooled = 0
-    _words = None
+    _words_by_ink.clear()
 
 
 def pool_key(ch: str, variant: int, flipped: bool,
@@ -564,7 +741,7 @@ def pool_key(ch: str, variant: int, flipped: bool,
     to a few steps cannot be seen. Bucketing turns a unique request per glyph
     into a handful per character, which is what makes a pool possible at all.
     """
-    return (ch, variant, flipped,
+    return (ch, INK_COLOR, variant, flipped,
             round(scale / _SCALE_STEP), boost >= _TIRED_AT)
 
 
@@ -580,6 +757,8 @@ def jittered(im: Image.Image, scale: float = 1.0, boost: float = 1.0,
     more than that.
     """
     global _jitter_pooled
+    if FRESH_COPIES:
+        return _fresh_copy(im, scale, boost)
     if key is None:
         return _jitter(im, scale, boost)
 
@@ -669,7 +848,9 @@ def _jitter_word(im: Image.Image, base: int, size: float, boost: float,
     pool = _word_pool.get(key)
     if pool is None:
         pool = _word_pool[key] = []
-    if len(pool) >= WORD_POOL:
+    if FRESH_COPIES:
+        im = _bend(im, WORD_BEND)
+    elif len(pool) >= WORD_POOL:
         return random.choice(pool)
 
     if abs(size - 1.0) > 0.01:
@@ -682,8 +863,9 @@ def _jitter_word(im: Image.Image, base: int, size: float, boost: float,
         grown = im.rotate(angle, resample=Image.Resampling.BICUBIC, expand=True)
         base += (grown.height - im.height) // 2
         im = grown
-    pool.append((im, base))
-    _jitter_pooled += 1
+    if not FRESH_COPIES:                  # a fresh copy is never handed out twice
+        pool.append((im, base))
+        _jitter_pooled += 1
     return im, base
 
 
@@ -896,7 +1078,7 @@ def derive_metrics() -> None:
         # descender the two ought to be the same, but the baseline is found by
         # the steepest fall in ink, which sits a little above the true foot of
         # the letters. Measuring from it made every word render ~12% too large.
-        heights = sorted(w[0].height for w in (word_image(f) for f in flat) if w)
+        heights = sorted(w[0].height for w in (word_image(f, take=False) for f in flat) if w)
         WORD_SCALE = (X_HEIGHT / heights[len(heights) // 2]) if heights else 1.0
 
 
@@ -1029,8 +1211,8 @@ class Sheet:
                 _, im, x, y, pressure = cmd
                 self._put_ink(_pressed(im, pressure), x, y)
             else:
-                _, pts, width = cmd
-                draw.line(pts, fill=self._pen(), width=width, joint="curve")
+                _, pts, width, pen = cmd
+                draw.line(pts, fill=pen, width=width, joint="curve")
         page, self.page, self._cmds = self.page, None, []
         return page
 
@@ -1068,6 +1250,10 @@ class Sheet:
             self.on_page(self.count, page)
         else:
             self.pages.append(page)
+
+    def page_break(self) -> None:
+        """Finish this page here and carry on at the top of the next."""
+        self._new_page()
 
     def _new_page(self) -> None:
         self._emit()                          # the previous page is done with
@@ -1135,8 +1321,12 @@ class Sheet:
         self._cmds.append(("img", im, x, y, pressure))
 
     def _line(self, pts: list, width: int) -> None:
-        """Draw a pen line on the page; painted later."""
-        self._cmds.append(("line", pts, width))
+        """Draw a pen line on the page; painted later, in the pen in hand now.
+
+        Painting happens once the page is full, and a heading's underline
+        painted then came out in whatever ink the body was using.
+        """
+        self._cmds.append(("line", pts, width, self._pen()))
 
     def _put_ink(self, im: Image.Image, x: int, y: int) -> None:
         """Lay ink on the page being painted.
@@ -1171,8 +1361,12 @@ class Sheet:
             self._new_page()
 
     def gap(self, lines: float) -> None:
-        """Leave whole blank ruled lines between blocks."""
-        self.baseline += LINE_HEIGHT * max(0, round(lines))
+        """Leave blank lines between blocks: whole ones on ruled or squared
+        paper, which has to stay on its rules, any part of one on plain."""
+        lines = max(0.0, lines)
+        if RULED or GRID:
+            lines = round(lines)
+        self.baseline += int(round(LINE_HEIGHT * lines))
         if self.baseline + LINE_HEIGHT > self.height - MARGIN_B:
             self._new_page()
 
@@ -1183,6 +1377,8 @@ class Sheet:
         the baseline between rules. Everything after them would inherit that
         offset and never recover.
         """
+        if not (RULED or GRID):               # no ruling to get back on to
+            return
         first = MARGIN_T + LINE_HEIGHT
         steps = math.ceil((self.baseline - first) / LINE_HEIGHT - 1e-6)
         self.baseline = first + max(0, steps) * LINE_HEIGHT
@@ -1199,7 +1395,7 @@ class Sheet:
         steps = max(2, int((x1 - x0) / 70))
         pts = [(x0 + (x1 - x0) * i / steps, y + random.uniform(-2.0, 2.0))
                for i in range(steps + 1)]
-        self._ops.append(("l", [(round(a, 2), round(b, 2)) for a, b in pts], width))
+        self._ops.append(("l", [(round(a, 2), round(b, 2)) for a, b in pts], width, self._pen()))
         self._line(pts, width)
 
     def underline(self, x0: float, x1: float) -> None:
@@ -1231,7 +1427,7 @@ class Sheet:
             steps = max(2, int((bottom - top) / 70))
             pts = [(x + random.uniform(-2.0, 2.0), top + (bottom - top) * i / steps)
                    for i in range(steps + 1)]
-            self._ops.append(("l", [(round(a, 2), round(b, 2)) for a, b in pts], w))
+            self._ops.append(("l", [(round(a, 2), round(b, 2)) for a, b in pts], w, self._pen()))
             self._line(pts, w)
 
         self.baseline = start + LINE_HEIGHT * (FIGURE_LINES // 2)   # middle rule
@@ -1288,12 +1484,43 @@ class Sheet:
         self.gap(1)
         return True
 
+    def diagram(self, text: str) -> bool:
+        """Sketch a ```diagram block (see diagrams.py) on the page, in this pen.
+
+        Returns False if the block cannot be read as a diagram, so the caller
+        writes it out as text instead of losing it.
+        """
+        import diagrams
+
+        try:
+            # seeded from the render's own stream, so a seeded render repeats
+            ink = diagrams.draw(text, sys.modules[__name__], self._pen(), seed=random.randrange(2 ** 31))
+        except diagrams.DiagramError:
+            return False
+        column = self.right - MARGIN_L
+        if ink.width > column:
+            k = column / ink.width
+            ink = ink.resize((max(1, int(ink.width * k)), max(1, int(ink.height * k))),
+                             Image.Resampling.LANCZOS)
+        ink = ink.rotate(random.uniform(-0.6, 0.6), resample=Image.Resampling.BICUBIC, expand=True)
+        lines = max(1, math.ceil(ink.height / LINE_HEIGHT))
+        if self.baseline + LINE_HEIGHT * lines > self.height - MARGIN_B:
+            self._new_page()
+        x = MARGIN_L + (column - ink.width) // 2 + random.randint(-20, 20)
+        top = self.baseline - X_HEIGHT
+        y = top + (LINE_HEIGHT * lines - ink.height) // 2
+        self._ops.append(("e", int(x), int(y), _ident(ink)))
+        self._stamp(ink, int(x), int(y))
+        self.baseline += LINE_HEIGHT * lines
+        self.gap(min(1.0, PARA_GAP))
+        return True
+
     def vrule(self, x: float, y0: float, y1: float, width: int) -> None:
         """A wobbly vertical pen stroke, for table column dividers."""
         steps = max(2, int((y1 - y0) / 70))
         pts = [(x + random.uniform(-2.0, 2.0), y0 + (y1 - y0) * i / steps)
                for i in range(steps + 1)]
-        self._ops.append(("l", [(round(a, 2), round(b, 2)) for a, b in pts], width))
+        self._ops.append(("l", [(round(a, 2), round(b, 2)) for a, b in pts], width, self._pen()))
         self._line(pts, width)
 
     def put_word(self, token: str, scale: float = 1.0) -> bool:
@@ -1315,7 +1542,7 @@ class Sheet:
         size = WORD_SCALE * scale * (1 + FATIGUE_GROWTH * tired)
         boost = 1 + FATIGUE_JITTER * tired
         image, base = _jitter_word(image, base, size, boost,
-                                   (core, round(size / _SCALE_STEP),
+                                   (core, INK_COLOR, round(size / _SCALE_STEP),
                                     boost >= _TIRED_AT))
 
         y = self.baseline - base + self._word_shift + self._drift()
@@ -1535,7 +1762,7 @@ class Sheet:
         boost = 1 + FATIGUE_JITTER * tired
         scale = self.scale * (1 + FATIGUE_GROWTH * tired)
 
-        vi = random.randrange(len(vs))
+        vi = _deck.draw(("glyph", ch), len(vs))
         chosen = vs[vi]
         # spaced by the variant actually drawn: a narrow w spaced like a wide
         # one left a gap, a wide one spaced like a narrow one collided
@@ -1725,7 +1952,7 @@ def render_markdown(md_text: str, on_page=None, reuse=None) -> Sheet:
 
     def track(text: str) -> None:
         for ch in text:
-            if ch != " " and glyph_variants(ch) is None:
+            if not ch.isspace() and glyph_variants(ch) is None:
                 missing.add(ch)
 
     def flow(words: list[str], left: int, width: int, scale: float = 1.0) -> None:
@@ -1786,10 +2013,16 @@ def render_markdown(md_text: str, on_page=None, reuse=None) -> Sheet:
             scale = HEADING_SCALE.get(level, 1.0)
             track(block.text)
             sheet.gap(HEADING_GAP_BEFORE)
+            # A heading stranded at the foot of a page, its text over the
+            # page, is the one layout no one writes by hand: it starts the
+            # next page unless there is room below it for some of its text.
+            if sheet.baseline + LINE_HEIGHT * (1 + HEADING_KEEP) > sheet.height - MARGIN_B:
+                sheet.page_break()
             align = "center" if level == 1 else "left"
-            for line in lines_for(sheet, block.text.split(), column, scale):
-                sheet.put_line(line, MARGIN_L, column, align=align,
-                               underline=True, scale=scale)
+            with heading_pen():
+                for line in lines_for(sheet, block.text.split(), column, scale):
+                    sheet.put_line(line, MARGIN_L, column, align=align,
+                                   underline=HEADING_UNDERLINE, scale=scale)
             sheet.gap(HEADING_GAP_AFTER)
             continue
 
@@ -1818,16 +2051,19 @@ def render_markdown(md_text: str, on_page=None, reuse=None) -> Sheet:
             sheet.gap(PARA_GAP)
             continue
 
-        if block.kind == "code":
+        if block.kind in ("code", "diagram"):
             track(block.text)
+            if block.kind == "diagram" and sheet.diagram(block.text):
+                continue
             # leading spaces are the structure of code, so they become indent:
             # half a word gap each, the way two spaces read on a typed line
-            lead = len(block.text) - len(block.text.lstrip(" "))
-            left = MARGIN_L + INDENT_STEP + min(lead * SPACE_WIDTH // 2, column // 2)
-            if block.text.strip():
-                flow(block.text.split(), left, sheet.right - left)
-            else:
-                sheet.newline()
+            for code_line in block.text.split("\n"):
+                lead = len(code_line) - len(code_line.lstrip(" "))
+                left = MARGIN_L + INDENT_STEP + min(lead * SPACE_WIDTH // 2, column // 2)
+                if code_line.strip():
+                    flow(code_line.split(), left, sheet.right - left)
+                else:
+                    sheet.newline()
             continue
 
         if block.kind == "table":

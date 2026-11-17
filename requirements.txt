@@ -6,7 +6,9 @@ beautifulsoup4>=4.12
 
 # PDF input (optional). Without it the app still runs; the Convert button
 # simply reports that the converter is not installed.
-pymupdf4llm>=0.0.17
+# Below 2: pymupdf4llm 2.0 installs on Python 3.10 as an empty stub without
+# pymupdf itself, so PDF input (and the suite on 3.10) silently broke.
+pymupdf4llm>=0.0.17,<2
 
 # Local OCR for scanned PDFs (optional). Also needs the Tesseract binary:
 #   winget install UB-Mannheim.TesseractOCR      (Windows)

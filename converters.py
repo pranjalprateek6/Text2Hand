@@ -98,28 +98,41 @@ _TYPOGRAPHY = {
 }
 
 
+# Symbols the hand draws for itself (tools/make_pen_symbols.py). Folding them
+# to ASCII made "PTR ← ROOT" come out as "PTR <- ROOT" and "M−1" as "M-1",
+# so these are left as they are; everything else in the table still folds.
+DRAWN = set("←→↔≠≥≤−–×₂")
+
+
 def normalize(text: str) -> str:
-    """Fold text onto the ASCII the handwriting can actually draw.
+    """Fold text onto what the handwriting can actually draw.
 
     OCR of real documents throws off accented letters and currency symbols
     constantly, and none of them have a glyph. Accents are stripped to their
     base letter (é becomes e) rather than dropped, since the letter is what
-    matters. Anything still unmappable is deliberately left alone so the
-    renderer reports it instead of losing it silently.
+    matters. Symbols the hand has its own drawing of (DRAWN) are kept.
+    Anything still unmappable is deliberately left alone so the renderer
+    reports it instead of losing it silently.
     """
     # Superscripts and subscripts first, since decomposition would flatten
     # them into ordinary digits and x² would quietly become x2, a different
-    # number. Written out the way they are typed in plain text instead.
+    # number. Written out the way they are typed in plain text instead,
+    # unless every character of a subscript is one the hand draws.
     text = _SUPERSCRIPT_RUN.sub(lambda m: "^" + m.group().translate(_SUPERSCRIPTS), text)
-    text = _SUBSCRIPT_RUN.sub(lambda m: "_" + m.group().translate(_SUBSCRIPTS), text)
+    text = _SUBSCRIPT_RUN.sub(
+        lambda m: m.group() if set(m.group()) <= DRAWN else "_" + m.group().translate(_SUBSCRIPTS), text)
     text = re.sub(r"\s*°\s*([CF])\b", r" deg \1", text)     # 25°C, not 25 degC
     # A middle dot between two terms is multiplication, a·b; standing apart it
     # is a bullet or separator, and the table below turns that into a dash.
     text = re.sub(r"(?<=\S)·(?=\S)", "*", text)
     for bad, good in _TYPOGRAPHY.items():
-        text = text.replace(bad, good)
-    return "".join(c for c in unicodedata.normalize("NFKD", text)
-                   if not unicodedata.combining(c))
+        if bad not in DRAWN:
+            text = text.replace(bad, good)
+    # decomposition would turn a drawn ₂ back into a plain 2, so drawn
+    # symbols skip it
+    return "".join(c if c in DRAWN else "".join(d for d in unicodedata.normalize("NFKD", c)
+                                                if not unicodedata.combining(d))
+                   for c in text)
 
 
 _SUPERSCRIPTS = str.maketrans("⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ⁿⁱ", "0123456789+-=()ni")

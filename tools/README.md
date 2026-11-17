@@ -115,3 +115,25 @@ There used to be a `make_punctuation.py` here that composed `"` `'` `:` `;` out
 of the period and comma, for a font that lacked them. The current set has all
 four captured directly, so the script would have overwritten real glyphs with
 synthesised ones and has been removed.
+
+## Pen symbols and digit versions
+
+```
+python tools/make_pen_symbols.py
+python tools/make_digit_versions.py
+```
+
+`make_pen_symbols.py` draws `← → ↔ ≠ ≤ ≥ ⌈ ⌉ − – × ₂`, a crossed `Z` and four
+extra hyphens beside the captured one, five versions of each. Unlike
+`make_symbols.py` these are meant to look imperfect: control points move, every
+straight run bows, the ends over- or undershoot, pressure changes along the
+stroke and the whole mark tilts. The renderer deals the versions out in turn.
+`converters.DRAWN` lists the ones normalisation must keep rather than fold to
+ASCII; a symbol added here belongs there too.
+
+`make_digit_versions.py` keeps each captured digit as `<code>.png` and writes
+five versions beside it, bent through a mesh, slanted and given a heavier or
+lighter stroke. A photographed second sample should replace them.
+
+Both are seeded, so re-running them reproduces the committed glyphs.
+
