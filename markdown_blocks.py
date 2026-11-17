@@ -209,8 +209,15 @@ def _walk(node, out: list[Block], depth: int) -> None:
                     out.append(Block("quote", re.sub(r"\s+", " ", text)))
 
     elif name == "pre":
-        for line in node.get_text().rstrip("\n").split("\n"):
-            out.append(Block("code", line))
+        code = node.find("code")
+        classes = (code.get("class") or []) if code is not None else []
+        if "language-diagram" in classes:
+            # drawn as a sketch (diagrams.py); falls back to these lines as
+            # code if it cannot be read as a diagram
+            out.append(Block("diagram", node.get_text().rstrip("\n")))
+        else:
+            for line in node.get_text().rstrip("\n").split("\n"):
+                out.append(Block("code", line))
 
     elif name == "hr":
         out.append(Block("rule"))

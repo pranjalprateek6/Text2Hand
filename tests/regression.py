@@ -588,9 +588,12 @@ check("glyphs load from another working directory", _out.stdout.strip() == "True
       _out.stdout.strip() or _out.stderr.strip()[-120:])
 
 # --- typed text is normalised without changing what it says -----------------
-_n = converters.normalize("don’t café “quoted” x² H₂O 25°C a·b")
+_n = converters.normalize("don’t café “quoted” x² H₂O H₃O 25°C a·b")
 check("typed typography folds to drawable text",
-      _n == "don't cafe \"quoted\" x^2 H_2O 25 deg C a*b", _n)
+      _n == "don't cafe \"quoted\" x^2 H₂O H_3O 25 deg C a*b", ascii(_n))
+_kept = converters.normalize("PTR ← ROOT, a ≤ b ≠ c ≥ d, M−1 – x × y → z ↔ w")
+check("symbols the hand draws are kept, not folded to ASCII",
+      _kept == "PTR ← ROOT, a ≤ b ≠ c ≥ d, M−1 – x × y → z ↔ w", ascii(_kept))
 
 
 def _app_render(payload):
@@ -686,7 +689,7 @@ def _level(im):
 
 t2h.derive_metrics()
 _letters = _np.mean([_level(t2h.glyph_variants(c)[0]) for c in "aceimnorsuvwxz"])
-_faintest = min(_level(im) for im, _ in t2h._load_words().values())
+_faintest = min(_level(im) for vs in t2h._load_words().values() for im, _ in vs)
 check("no captured word is far fainter than the letters", _faintest > 0.9 * _letters,
       f"faintest word {_faintest:.0f} vs letters {_letters:.0f}")
 
@@ -1038,6 +1041,105 @@ if all(j and j["state"] == "done" for j in (_r1, _r2, _r3)):
           str(_other and _other.get("reused")))
 else:
     check("a re-render reuses the pages before an edit", False, "a render failed")
+
+
+# --- no two copies alike: fresh copies, decks of variants, word lists ---------
+from pathlib import Path
+
+import render_core as _rc
+from diagrams import DiagramError as _DErr, parse as _dparse
+
+_rc.apply_options()
+t2h.derive_metrics()
+_rnd.seed(3)
+t2h.reset_jitter_pools()
+# the letter with the most captured variants, since one with a single
+# variant has nothing to deal
+_ch = max("abcdefghijklmnopqrstuvwxyz", key=lambda c: len(t2h.glyph_variants(c) or []))
+_vs = t2h.glyph_variants(_ch)
+_seq = [t2h._deck.draw(("glyph", _ch), len(_vs)) for _ in range(len(_vs) * 4)]
+_rounds = [sorted(_seq[i:i + len(_vs)]) for i in range(0, len(_seq), len(_vs))]
+check("every variant of a letter is used before any repeats",
+      len(_vs) > 1 and all(r == list(range(len(_vs))) for r in _rounds), f"{_ch}: {len(_vs)} variants")
+check("the same variant is never drawn twice in a row",
+      all(x != y for x, y in zip(_seq, _seq[1:])), str(_seq[:12]))
+_g = _vs[0]
+_c1, _c2 = t2h.jittered(_g), t2h.jittered(_g)
+check("two copies of the same glyph are never the same picture",
+      _c1.size != _c2.size or _c1.tobytes() != _c2.tobytes())
+_peek = t2h._deck.peek(("word", "probe"), 3)
+check("measuring a word shows the variant it will draw, without using it",
+      t2h._deck.peek(("word", "probe"), 3) == _peek == t2h._deck.draw(("word", "probe"), 3))
+
+_wd = _tf.mkdtemp(prefix="t2h_words_")
+_sh.copy(os.path.join(t2h.WORD_DIR, json.load(open(os.path.join(t2h.WORD_DIR, "index.json")))["the"]),
+         os.path.join(_wd, "a.png"))
+_im = Image.open(os.path.join(_wd, "a.png"))
+_im.resize((_im.width + 9, _im.height)).save(os.path.join(_wd, "b.png"))
+json.dump({"the": ["a.png", "b.png"]}, open(os.path.join(_wd, "index.json"), "w"))
+_old_wd = t2h.WORD_DIR
+t2h.WORD_DIR = _wd
+t2h.reset_glyph_caches()
+_ws = {t2h.word_image("the")[0].width for _ in range(4)}
+check("a word captured several times uses every capture", len(_ws) == 2, str(sorted(_ws)))
+t2h.WORD_DIR = _old_wd
+t2h.reset_glyph_caches()
+_sh.rmtree(_wd, ignore_errors=True)
+
+# --- symbols drawn by hand, and more than one of every digit -----------------
+_nodraw = [c for c in sorted(converters.DRAWN) if not t2h.glyph_variants(c)]
+check("every symbol kept by normalize has a glyph", not _nodraw, str(_nodraw))
+_few = [d for d in "0123456789" if len(t2h.glyph_variants(d)) < 6]
+check("every digit has at least six versions", not _few, str(_few))
+check("the crossed Z is not a 2", len(t2h.glyph_variants("Z")) >= 5)
+
+# --- headings in a second pen, without underlines, gaps on plain paper -------
+_hd = _tf.mkdtemp(prefix="t2h_heads_")
+_md = "# A heading\n\nSome body text that follows it.\n\n## Another\n\nMore text."
+_rc.render_into(Path(_hd), _md, {"as_markdown": True, "seed": 2, "ink": "blue", "headings": "black",
+                                  "paper": "plain", "texture": False, "skew": False})
+_px = _np.asarray(Image.open(os.path.join(_hd, "page_1.jpg")).convert("RGB")).astype(int)
+_ink = _px[(_px.sum(2) < 400)]
+_blackish = int(((_ink[:, 2] - _ink[:, 0]) < 25).sum())
+_blueish = int(((_ink[:, 2] - _ink[:, 0]) > 60).sum())
+check("headings can be written in a second pen", _blackish > 500 and _blueish > 500,
+      f"black {_blackish}, blue {_blueish}")
+_sh.rmtree(_hd, ignore_errors=True)
+_rc.apply_options(paper="plain", underline=False, spacing="compact")
+_sheet = t2h.Sheet(None)
+_before = _sheet.baseline
+_sheet.gap(t2h.PARA_GAP)
+check("compact spacing leaves part of a line on plain paper",
+      0 < _sheet.baseline - _before < t2h.LINE_HEIGHT, f"{_sheet.baseline - _before} of {t2h.LINE_HEIGHT}")
+check("headings can be left without an underline", t2h.HEADING_UNDERLINE is False)
+_rc.apply_options(paper="ruled", spacing="compact")
+_before = _sheet.baseline
+_sheet.gap(t2h.HEADING_GAP_BEFORE)
+check("on ruled paper a gap is still whole lines", (_sheet.baseline - _before) % t2h.LINE_HEIGHT == 0,
+      str(_sheet.baseline - _before))
+_rc.apply_options()
+
+# --- diagrams sketched from an indented outline ------------------------------
+_t = _dparse("[20 | 40]\n  [5 | 10]\n  [25]\n  [50 | 60]\nleaves ->\n=>\nX\n  > Y !red\n    < T")
+check("a diagram outline is read into trees",
+      len(_t) == 2 and _t[0].root.keys == ["20", "40"] and len(_t[0].root.children) == 3
+      and _t[0].leaves == "->" and _t[1].root.children[0].side == ">"
+      and _t[1].root.children[0].colour == "red" and _t[1].root.children[0].children[0].side == "<")
+try:
+    _dparse("[20 | ]\n")
+    _bad = False
+except _DErr:
+    _bad = True
+check("a block that is not a diagram is refused", _bad)
+_blocks = markdown_blocks.to_blocks("```diagram\n[1|2]\n  [0]\n```\n\n```diagram\n[ | ]\n```")
+check("a diagram fence becomes a diagram block",
+      [b.kind for b in _blocks] == ["diagram", "diagram"], str([b.kind for b in _blocks]))
+_dd = _tf.mkdtemp(prefix="t2h_diag_")
+_res = _rc.render_into(Path(_dd), "## Tree\n\n```diagram\n30(B) !black\n  < 20(R) !red\n  > 40(R) !red\n```\n\n"
+                       "```diagram\n[ | ]\n```\n", {"as_markdown": True, "seed": 4})
+check("a document with diagrams renders with nothing missing", _res[0] >= 1 and not _res[1],
+      f"pages {_res[0]}, missing {_res[1]}")
+_sh.rmtree(_dd, ignore_errors=True)
 
 _h = _client.get("/healthz")
 check("health check answers", _h.status_code == 200 and _h.get_json()["ok"], str(_h.get_json()))

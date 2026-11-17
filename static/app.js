@@ -96,7 +96,9 @@ $("navLibrary").addEventListener("click", () => showView("library"));
 
 /* ------------------------------------------------------------------ options */
 
-const OPTIONS = { texture: true, skew: true };
+// the on/off options; each is a button with id "o" + Key
+const OPTION_DEFAULTS = { texture: true, skew: true, underline: true, darkHeads: false, compact: false };
+const OPTIONS = { ...OPTION_DEFAULTS };
 let INK = "blue-black";
 let SIZE = "normal";
 let PAPER = "ruled";      // ruled, grid or plain
@@ -257,7 +259,8 @@ function setOptions(opts, ink) {
   $("paper").value = PAPER;
   $("sheet").value = SHEET;
   Object.keys(OPTIONS).forEach((key) => {
-    OPTIONS[key] = !!opts[key];
+    // entries saved before an option existed fall back to its default
+    OPTIONS[key] = key in opts ? !!opts[key] : OPTION_DEFAULTS[key];
     const el = $("o" + key[0].toUpperCase() + key.slice(1));
     el.classList.toggle("is-on", OPTIONS[key]);
     el.setAttribute("aria-pressed", String(OPTIONS[key]));
@@ -671,6 +674,8 @@ function payload() {
     paper: PAPER, sheet: SHEET, ruled: PAPER === "ruled",
     texture: OPTIONS.texture, skew: OPTIONS.skew, seed: state.seed,
     markdown: asMarkdown(), ink: INK, size: SIZE,
+    underline: OPTIONS.underline, headings: OPTIONS.darkHeads ? "black" : "same",
+    spacing: OPTIONS.compact ? "compact" : "normal",
   };
 }
 
@@ -1244,7 +1249,8 @@ async function remember(done, body, owner) {
 
   const opts = { markdown: body.markdown, read: owner.read, paper: body.paper, sheet: body.sheet,
                  ruled: body.ruled, texture: body.texture,
-                 skew: body.skew, size: body.size };
+                 skew: body.skew, size: body.size, underline: body.underline,
+                 darkHeads: body.headings === "black", compact: body.spacing === "compact" };
   // One card per document, showing its latest render: rendering a document
   // again, after an edit or in a new hand, replaces its card rather than
   // adding another, so the library reads as a list of documents. Cards from
@@ -1278,7 +1284,7 @@ function stashCurrent() {
     id: current ? state.id : null, title: title(), pages: current ? state.pages : 0,
     chars: text.length, ts: Date.now(), text, ink: INK, seed: state.seed, doc: state.doc,
     opts: { markdown: asMarkdown(), read: READ, paper: PAPER, sheet: SHEET,
-            ruled: PAPER === "ruled", texture: OPTIONS.texture, skew: OPTIONS.skew, size: SIZE },
+            ruled: PAPER === "ruled", ...OPTIONS, size: SIZE },
     thumb: (old && old.thumb) || "", heads: current ? (state.heads || []) : [],
   };
   const rest = all.filter((e) => !(e.doc && e.doc === state.doc));

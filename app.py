@@ -235,13 +235,15 @@ def _on_white(page: Image.Image) -> Image.Image:
 def _render(text: str, ruled: bool, texture: bool, skew: bool, as_markdown: bool,
             ink: str = "blue-black", size: str = "normal", on_progress=None,
             on_ready=None, paper: str = "ruled", sheet: str = "a4",
-            seed: int | None = None, base: Path | None = None):
+            seed: int | None = None, base: Path | None = None,
+            headings: str = "same", underline: bool = True, spacing: str = "normal"):
     """Render text to a fresh folder and return (render_id, page_count, missing)."""
     rid = uuid.uuid4().hex[:12]
     folder = RENDER_ROOT / rid
     folder.mkdir(parents=True, exist_ok=True)
     opts = {"ruled": ruled, "texture": texture, "skew": skew, "as_markdown": as_markdown,
-            "ink": ink, "size": size, "paper": paper, "sheet": sheet, "seed": seed}
+            "ink": ink, "size": size, "paper": paper, "sheet": sheet, "seed": seed,
+            "headings": headings, "underline": underline, "spacing": spacing}
     ready = (lambda n: on_ready(rid, n)) if on_ready else None
     try:
         pool = _render_pool()
@@ -657,6 +659,8 @@ def api_render():
     sheet = str(data.get("sheet", "a4"))
     ruled = bool(data.get("ruled", True))
     paper = str(data.get("paper") or ("ruled" if ruled else "plain"))
+    headings = str(data.get("headings", "same"))
+    spacing = str(data.get("spacing", "normal"))
     # Pasted text is the commonest input there is, and text from a word
     # processor is full of curly quotes, dashes and accents. Those used to be
     # folded only for PDFs, so typed "don’t" came out as "dont" and "café" as
@@ -696,6 +700,11 @@ def api_render():
         "as_markdown": bool(data.get("markdown", False)),
         "ink": str(data.get("ink", "blue-black")),
         "size": size,
+        # a second pen for headings ("same" is the body's), whether they are
+        # underlined, and how much space sits between blocks
+        "headings": headings if headings in render_core.INKS else "same",
+        "underline": bool(data.get("underline", True)),
+        "spacing": spacing if spacing in render_core.SPACINGS else "normal",
     }
     # How many pages this is probably going to be, so a long render counts
     # itself against a visible total instead of just counting. The ~ is

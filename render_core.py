@@ -288,14 +288,29 @@ PAPERS = ("ruled", "grid", "plain", "none")
 SHEETS = ("a4", "letter")
 
 
+SPACINGS = ("normal", "compact")
+
+
 def apply_options(ruled: bool = True, texture: bool = True, skew: bool = True,
                   ink: str = "blue-black", size: str = "normal",
-                  paper: str | None = None, sheet: str = "a4") -> None:
+                  paper: str | None = None, sheet: str = "a4",
+                  headings: str = "same", underline: bool = True,
+                  spacing: str = "normal") -> None:
     """Set the renderer up for one render. The caller must own the renderer.
 
     `paper` is ruled, grid or plain; without it the older `ruled` flag
-    decides between ruled and plain.
+    decides between ruled and plain. `headings` is "same" for the body's pen
+    or the name of a pen in INKS, the way notes are often written with the
+    questions in black and the answers in blue. `underline` marks headings
+    with a stroke under them. `spacing` "compact" closes up the gaps between
+    paragraphs and before headings; on ruled or squared paper they still
+    land on whole lines.
     """
+    t2h.HEADING_INK = INKS.get(headings) if headings != "same" else None
+    t2h.HEADING_UNDERLINE = bool(underline)
+    compact = spacing == "compact"
+    t2h.PARA_GAP = t2h.COMPACT_GAPS["para"] if compact else 1
+    t2h.HEADING_GAP_BEFORE = t2h.COMPACT_GAPS["heading"] if compact else 1
     paper = paper if paper in PAPERS else ("ruled" if ruled else "plain")
     t2h.RULED = paper == "ruled"
     t2h.MARGIN_RULE = paper == "ruled"

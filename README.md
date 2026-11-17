@@ -17,6 +17,8 @@ Everything on that page, including the ruled paper, the table grid and the figur
 - **Reads PDFs** through a pluggable converter, local by default, with the extracted Markdown shown for review before rendering
 - **Web app** with a page-by-page viewer, per-page and whole-document downloads, and live progress on long jobs
 - **Full printable ASCII**, so punctuation and technical symbols do not silently vanish
+- **Notes symbols drawn by hand**: `← → ↔ ≠ ≤ ≥ ⌈ ⌉ − – × ₂`, so pseudocode and complexity notes keep their notation
+- **Hand-sketched tree diagrams** from a short outline in a ```` ```diagram ```` block
 
 ## How it works
 
@@ -40,7 +42,8 @@ That middle step is the point. Extraction is never perfect, and because the inte
 
 A font pastes an identical letter every time. A person never writes the same letter twice. Text2Hand breaks that uniformity:
 
-- **Variants.** If several images exist for one character, one is chosen at random for each occurrence.
+- **Variants, dealt like cards.** If several images exist for one character or captured word, each is used once before any repeats, and a new round never opens with the one that closed the last, so the same version is never written twice in a row. Every digit has six versions.
+- **No two copies alike.** Every occurrence gets its own copy, bent through its whole outline as well as rotated and scaled, so even the same version of a letter never comes out pixel for pixel the same. Ten lines opening with "- The" no longer start with the same stamp.
 - **Jitter.** Every glyph gets its own random rotation, scale, baseline wobble, letter spacing and ink darkness, so repeats never match.
 - **Baseline.** Glyphs sit on a writing line with a slow drift along each line, and every line starts that drift at its own point and runs very slightly uphill or down. A word rises or sinks as one piece, with a smaller wobble left to each letter inside it. The letters g, j, p, q and y drop their tails below the line, quotes and apostrophes hang high, and math symbols sit on the x-height axis.
 - **Clean compositing.** An alpha mask is built from ink darkness, so rotation and tight spacing never paint white boxes over neighbouring letters.
@@ -146,7 +149,35 @@ The web app reads Markdown on its own when the text is written in it (**Read as:
 | line break (two trailing spaces) | the next line starts below, without a paragraph gap, so addresses and verse keep their lines |
 | footnote `[^1]` | written as `[1]` in the text, with the notes listed under a Notes heading |
 | code block | indented, keeping its own indentation |
+| ```` ```diagram ```` block | a hand-sketched tree, see [Diagrams](#diagrams) |
 | raw HTML | its text, as a paragraph |
+
+Headings are underlined by default. **More → Headings** in the studio (or `underline`, `headings` and `spacing` in `/api/render`) can leave the underline off, write headings in black with the text in the chosen pen, the way notes often put questions in black and answers in blue, and close up the space between blocks. On plain paper the compact gaps are part of a line; on ruled or squared paper every gap still lands on a rule. A heading never sits alone at the foot of a page.
+
+### Diagrams
+
+A fenced block marked `diagram` is drawn as a pen sketch rather than written out: wobbly strokes, boxes whose corners do not quite meet, arrows on every edge and labels in the hand's own glyphs, all in the pen the text is written in. One node per line, indentation for children:
+
+````
+```diagram
+[20 | 40]
+  [5 | 10]
+  [20 | 30]
+  [40 | 50 | 60]
+leaves ->
+```
+````
+
+| Line | Draws |
+|---|---|
+| `[a \| b \| c]` | a node holding several keys, as a divided box; with one child per gap, each pointer leaves from its gap |
+| `20(B)`, `NIL`, `X` | any other text, as a single box |
+| `< child`, `> child` | a left or right child, for binary trees; a lone child is drawn off to its side |
+| `... !red`, `... !black` | that node's outline in red or black, for red-black trees |
+| `leaves ->`, `leaves <->` | arrows linking the bottom row, for B+ trees |
+| `=>` | a second tree to the right with an arrow between, for before and after a rotation |
+
+A block that cannot be read as a diagram is written out as text, so nothing is lost.
 
 Inline bold and italic are dropped on purpose. Converted PDFs barely use them (33 bold spans in 16,000 lines of a real converted report) and handwriting has no bold to map them onto.
 
@@ -205,11 +236,15 @@ Not every character came from the original handwriting sample. One generator in 
 
 ```
 python tools/make_symbols.py
+python tools/make_pen_symbols.py
+python tools/make_digit_versions.py
 ```
 
 The quotes, colons and semicolons were once composed by a separate `make_punctuation.py`; they have since been captured from the real hand, and that script is gone.
 
 `make_symbols.py` **draws** the 21 technical symbols with no natural building block, such as `# $ % & @ / \ { }`, plus 16 Greek letters and maths symbols (alpha through sigma, element-of, summation, partial, square root, infinity) so converted papers keep their equations. These are approximations in a hand style, so they read as neat rather than personal.
+
+`make_pen_symbols.py` draws the symbols notes on algorithms need, `← → ↔ ≠ ≤ ≥ ⌈ ⌉ − – × ₂`, plus a crossed `Z` (the captured one read as a 2 in `Z.KEY`) and extra hyphens, as imperfect pen strokes with five versions of each. The app keeps these characters as typed rather than folding them to ASCII. `make_digit_versions.py` writes five bent and slanted versions beside each captured digit until real second samples replace them.
 
 To replace any generated glyph with a real one, photograph the character and save it as `myfont/<ascii-code>.png`. See [tools/README.md](tools/README.md) for what each script owns.
 
@@ -268,6 +303,7 @@ python text_to_handwriting.py tests/table.md
 ```
 text_to_handwriting.py    the renderer, usable as a library or a CLI
 markdown_blocks.py        Markdown to drawable blocks
+diagrams.py               ```diagram blocks drawn as pen sketches
 converters.py             document to Markdown adapters, local and cloud
 app.py                    Flask web app wrapping the renderer
 templates/, static/       the web app front end

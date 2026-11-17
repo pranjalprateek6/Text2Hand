@@ -35,7 +35,7 @@ ignore = ["B905"]
 # real type errors, without asking for annotations the code does not have.
 python_version = "3.10"
 files = ["app.py", "render_core.py", "render_pool.py", "converters.py",
-         "markdown_blocks.py", "text_to_handwriting.py", "wsgi.py"]
+         "markdown_blocks.py", "text_to_handwriting.py", "diagrams.py", "wsgi.py"]
 check_untyped_defs = true
 warn_unused_ignores = true
 warn_redundant_casts = true
