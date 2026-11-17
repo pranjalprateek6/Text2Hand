@@ -1141,6 +1141,35 @@ check("a document with diagrams renders with nothing missing", _res[0] >= 1 and 
       f"pages {_res[0]}, missing {_res[1]}")
 _sh.rmtree(_dd, ignore_errors=True)
 
+
+# --- hands: a person's own letters, the original filling the gaps ------------
+_names = [h["name"] for h in _rc.list_hands()]
+check("the hands on offer start with the original and include Veer",
+      _names[0] == "Original" and "Veer" in _names, str(_names))
+_rc.apply_options(hand="veer")
+check("choosing a hand points the renderer at it", t2h.FONT_DIR.endswith(os.path.join("hands", "veer", "myfont")))
+_own = t2h.glyph_variants("a")
+_capital = t2h.glyph_variants("Q")
+check("a hand draws its own letters", bool(_own) and len(_own) >= 10, f"{len(_own or [])} variants of a")
+check("what a hand never wrote comes from the original", bool(_capital))
+check("a hand brings its own captured words", t2h.word_image("information", take=False) is not None)
+_vd = _tf.mkdtemp(prefix="t2h_veer_")
+_res = _rc.render_into(Path(_vd), "# Assignment\n\nAn M-Way Search Tree, PTR ← ROOT, 10 | 20 | 30.",
+                       {"as_markdown": True, "seed": 6, "hand": "veer"})
+check("a page in another hand renders with nothing missing", _res[0] == 1 and not _res[1], str(_res[1]))
+_sh.rmtree(_vd, ignore_errors=True)
+_rc.apply_options(hand="no-such-hand")
+check("an unknown hand is the original", t2h.FONT_DIR == t2h.BASE_FONT_DIR)
+_rc.apply_options()
+check("the original is back after another hand", t2h.FONT_DIR == t2h.BASE_FONT_DIR
+      and len(t2h.glyph_variants("a")) != len(_own))
+_ah = _client.get("/api/hands").get_json()
+check("the studio is offered the hands", [h["id"] for h in _ah][:1] == [""] and "veer" in [h["id"] for h in _ah],
+      str([h["id"] for h in _ah]))
+_vj, _ve = _app_render({"text": "Written in Veer's hand.", "hand": "veer"})
+check("a render through the app can ask for a hand", bool(_vj) and _vj["state"] == "done" and not _vj["missing"],
+      str(_ve or (_vj and _vj.get("missing"))))
+
 _h = _client.get("/healthz")
 check("health check answers", _h.status_code == 200 and _h.get_json()["ok"], str(_h.get_json()))
 

@@ -236,14 +236,16 @@ def _render(text: str, ruled: bool, texture: bool, skew: bool, as_markdown: bool
             ink: str = "blue-black", size: str = "normal", on_progress=None,
             on_ready=None, paper: str = "ruled", sheet: str = "a4",
             seed: int | None = None, base: Path | None = None,
-            headings: str = "same", underline: bool = True, spacing: str = "normal"):
+            headings: str = "same", underline: bool = True, spacing: str = "normal",
+            hand: str = ""):
     """Render text to a fresh folder and return (render_id, page_count, missing)."""
     rid = uuid.uuid4().hex[:12]
     folder = RENDER_ROOT / rid
     folder.mkdir(parents=True, exist_ok=True)
     opts = {"ruled": ruled, "texture": texture, "skew": skew, "as_markdown": as_markdown,
             "ink": ink, "size": size, "paper": paper, "sheet": sheet, "seed": seed,
-            "headings": headings, "underline": underline, "spacing": spacing}
+            "headings": headings, "underline": underline, "spacing": spacing,
+            "hand": hand}
     ready = (lambda n: on_ready(rid, n)) if on_ready else None
     try:
         pool = _render_pool()
@@ -660,6 +662,8 @@ def api_render():
     ruled = bool(data.get("ruled", True))
     paper = str(data.get("paper") or ("ruled" if ruled else "plain"))
     headings = str(data.get("headings", "same"))
+    hand = str(data.get("hand") or "")
+    hand = hand if render_core.hand_dir(hand) else ""      # an unknown hand is the original
     spacing = str(data.get("spacing", "normal"))
     # Pasted text is the commonest input there is, and text from a word
     # processor is full of curly quotes, dashes and accents. Those used to be
@@ -705,6 +709,7 @@ def api_render():
         "headings": headings if headings in render_core.INKS else "same",
         "underline": bool(data.get("underline", True)),
         "spacing": spacing if spacing in render_core.SPACINGS else "normal",
+        "hand": hand,
     }
     # How many pages this is probably going to be, so a long render counts
     # itself against a visible total instead of just counting. The ~ is
@@ -788,6 +793,12 @@ def thumb(rid: str, n: int):
     if not path.exists():
         abort(404)
     return send_file(path, mimetype="image/jpeg")
+
+
+@app.get("/api/hands")
+def api_hands():
+    """The hands the studio can offer, the original first."""
+    return jsonify(render_core.list_hands())
 
 
 @app.get("/download/<rid>/page_<int:n>.pdf")

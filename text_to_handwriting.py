@@ -55,6 +55,9 @@ from PIL import Image, ImageChops, ImageDraw
 _HERE = os.path.dirname(os.path.abspath(__file__))
 FONT_DIR = os.path.join(_HERE, "myfont")    # folder of glyph images
 WORD_DIR = os.path.join(_HERE, "wordfont")  # whole-word images, used in preference to letters
+# A hand (hands/<id>/) holds only what that person actually wrote; anything it
+# lacks, capitals or symbols, is taken from the original hand in BASE_FONT_DIR.
+BASE_FONT_DIR = FONT_DIR
 USE_WORDS = True                        # False renders everything letter by letter
 WORD_SCALE: float = None  # type: ignore[assignment]         # None derives it from the glyphs at runtime
 BG_PATH = os.path.join(FONT_DIR, "bg.png")
@@ -299,18 +302,22 @@ GLYPH_ALIASES = {
 
 def glyph_variants(ch: str) -> list[Image.Image] | None:
     """All prepared images for a character (real variants if present), or None."""
-    key = (ch, INK_COLOR)
+    key = (ch, INK_COLOR, FONT_DIR)
     if key in _cache:
         return _cache[key]
 
     scode = str(ord(GLYPH_ALIASES.get(ch, ch)))
     variants: list[Image.Image] = []
-    for path in sorted(glob.glob(os.path.join(glob.escape(FONT_DIR), scode + "*.png"))):
-        stem = os.path.splitext(os.path.basename(path))[0]
-        rest = stem[len(scode):]
-        # accept "65", "65_1", "65a"  -- reject "650" (a different code)
-        if rest == "" or not rest[0].isdigit():
-            variants.append(_prepare(path))
+    folders = [FONT_DIR] if FONT_DIR == BASE_FONT_DIR else [FONT_DIR, BASE_FONT_DIR]
+    for folder in folders:                    # the hand's own drawing first
+        for path in sorted(glob.glob(os.path.join(glob.escape(folder), scode + "*.png"))):
+            stem = os.path.splitext(os.path.basename(path))[0]
+            rest = stem[len(scode):]
+            # accept "65", "65_1", "65a"  -- reject "650" (a different code)
+            if rest == "" or not rest[0].isdigit():
+                variants.append(_prepare(path))
+        if variants:
+            break
 
     _cache[key] = variants or None
     return _cache[key]
@@ -323,7 +330,7 @@ def glyph_variants(ch: str) -> list[Image.Image] | None:
 # side cannot reproduce. Where an image exists it is used in preference to
 # assembling the word, and everything else still falls back to letters.
 # word -> its captured images, per ink, since each is tinted as it loads
-_words_by_ink: dict[tuple | None, dict[str, list[tuple[Image.Image, int]]]] = {}
+_words_by_ink: dict[tuple, dict[str, list[tuple[Image.Image, int]]]] = {}   # by (ink, word folder)
 
 
 def _load_words() -> dict[str, list[tuple[Image.Image, int]]]:
@@ -334,10 +341,10 @@ def _load_words() -> dict[str, list[tuple[Image.Image, int]]]:
     dealt out like a letter's variants so the same capture is not repeated
     close to itself.
     """
-    words = _words_by_ink.get(INK_COLOR)
+    words = _words_by_ink.get((INK_COLOR, WORD_DIR))
     if words is not None:
         return words
-    words = _words_by_ink[INK_COLOR] = {}
+    words = _words_by_ink[(INK_COLOR, WORD_DIR)] = {}
     index = os.path.join(WORD_DIR, "index.json")
     if not USE_WORDS or not os.path.exists(index):
         return words
@@ -741,7 +748,7 @@ def pool_key(ch: str, variant: int, flipped: bool,
     to a few steps cannot be seen. Bucketing turns a unique request per glyph
     into a handful per character, which is what makes a pool possible at all.
     """
-    return (ch, INK_COLOR, variant, flipped,
+    return (ch, INK_COLOR, FONT_DIR, variant, flipped,
             round(scale / _SCALE_STEP), boost >= _TIRED_AT)
 
 
@@ -1542,7 +1549,7 @@ class Sheet:
         size = WORD_SCALE * scale * (1 + FATIGUE_GROWTH * tired)
         boost = 1 + FATIGUE_JITTER * tired
         image, base = _jitter_word(image, base, size, boost,
-                                   (core, INK_COLOR, round(size / _SCALE_STEP),
+                                   (core, INK_COLOR, WORD_DIR, round(size / _SCALE_STEP),
                                     boost >= _TIRED_AT))
 
         y = self.baseline - base + self._word_shift + self._drift()

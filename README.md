@@ -206,6 +206,21 @@ Handwriting is far less dense than print, so a modest PDF becomes a lot of pages
 
 Text in scripts the handwriting has no glyphs for (Cyrillic, Arabic, CJK and so on) cannot be transliterated. Conversion names those scripts up front so it is clear why they will not appear.
 
+## Hands
+
+Besides the original, the studio offers every hand under `hands/`, from a **Hand** menu that appears once there is more than one (`hand` in `/api/render`, listed by `GET /api/hands`). Each hand is a folder:
+
+```
+hands/<id>/
+  hand.json      {"name": "Veer", "source": "..."}
+  myfont/        the glyphs that person wrote, named by codepoint like myfont/
+  wordfont/      optional captured words; index.json maps a word to one file or a list
+```
+
+A hand only holds what its writer actually wrote. Any character it lacks, capitals or symbols, is drawn from the original hand, so a hand cut from a page of notes is usable straight away. Its glyphs must be at the original's scale (an x-height of about 63 px), since the two are mixed on the page.
+
+**Veer** is cut from seven scanned pages of his notes: his lowercase letters, `S`, `)`, the digits 2 to 7 and 115 whole words, with the original's capitals and symbols filling the gaps.
+
 ## Make it your own handwriting
 
 The `myfont` folder holds one PNG per character, named by its ASCII code. For example `65.png` is `A`, `97.png` is `a`, and `46.png` is a full stop. `bg.png` is the blank page background.
@@ -308,6 +323,7 @@ converters.py             document to Markdown adapters, local and cloud
 app.py                    Flask web app wrapping the renderer
 templates/, static/       the web app front end
 myfont/                   glyph images (one per ASCII code) and bg.png
+hands/                    other hands, each with its own myfont/ and wordfont/
 tools/                    generators for the composed and drawn glyphs
 tests/                    regression.py, plus Markdown fixtures
 samples/                  the demo shown above

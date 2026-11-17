@@ -103,6 +103,9 @@ let INK = "blue-black";
 let SIZE = "normal";
 let PAPER = "ruled";      // ruled, grid or plain
 let SHEET = "a4";         // a4 or letter
+// whose handwriting writes the page ("" is the original)
+let HAND = "";
+try { HAND = localStorage.getItem("t2h.hand") || ""; } catch {}
 
 $("paper").addEventListener("change", () => { PAPER = $("paper").value; touched(); });
 
@@ -250,6 +253,12 @@ function syncLook() {
 }
 
 function setOptions(opts, ink) {
+  if (opts.hand !== undefined) {
+    HAND = opts.hand || "";
+    // a hand no longer offered falls back to the original
+    if ($("hand").options.length && ![...$("hand").options].some((o) => o.value === HAND)) HAND = "";
+    $("hand").value = HAND;
+  }
   // entries saved before "Read as" had three choices carry only markdown on/off
   READ = opts.read || (opts.markdown ? "markdown" : "auto");
   $("readAs").value = READ;
@@ -675,7 +684,7 @@ function payload() {
     texture: OPTIONS.texture, skew: OPTIONS.skew, seed: state.seed,
     markdown: asMarkdown(), ink: INK, size: SIZE,
     underline: OPTIONS.underline, headings: OPTIONS.darkHeads ? "black" : "same",
-    spacing: OPTIONS.compact ? "compact" : "normal",
+    spacing: OPTIONS.compact ? "compact" : "normal", hand: HAND,
   };
 }
 
@@ -1250,7 +1259,8 @@ async function remember(done, body, owner) {
   const opts = { markdown: body.markdown, read: owner.read, paper: body.paper, sheet: body.sheet,
                  ruled: body.ruled, texture: body.texture,
                  skew: body.skew, size: body.size, underline: body.underline,
-                 darkHeads: body.headings === "black", compact: body.spacing === "compact" };
+                 darkHeads: body.headings === "black", compact: body.spacing === "compact",
+                 hand: body.hand };
   // One card per document, showing its latest render: rendering a document
   // again, after an edit or in a new hand, replaces its card rather than
   // adding another, so the library reads as a list of documents. Cards from
@@ -1284,7 +1294,7 @@ function stashCurrent() {
     id: current ? state.id : null, title: title(), pages: current ? state.pages : 0,
     chars: text.length, ts: Date.now(), text, ink: INK, seed: state.seed, doc: state.doc,
     opts: { markdown: asMarkdown(), read: READ, paper: PAPER, sheet: SHEET,
-            ruled: PAPER === "ruled", ...OPTIONS, size: SIZE },
+            ruled: PAPER === "ruled", ...OPTIONS, size: SIZE, hand: HAND },
     thumb: (old && old.thumb) || "", heads: current ? (state.heads || []) : [],
   };
   const rest = all.filter((e) => !(e.doc && e.doc === state.doc));
@@ -1872,7 +1882,7 @@ const DRAFT_KEY = "t2h.draft";
 function saveDraft() {
   try {
     localStorage.setItem(DRAFT_KEY, JSON.stringify({
-      text: $("text").value, opts: { ...OPTIONS, read: READ, size: SIZE, paper: PAPER, sheet: SHEET },
+      text: $("text").value, opts: { ...OPTIONS, read: READ, size: SIZE, paper: PAPER, sheet: SHEET, hand: HAND },
       ink: INK, title: state.title, seed: state.seed, doc: state.doc, heads: state.heads,
       // enough to re-attach to the render after a reload, if it still exists
       id: state.id, pages: state.pages, page: state.page, rendered: state.rendered,
@@ -1969,3 +1979,27 @@ $("libNoneClear").addEventListener("click", () => {
 firstRun();
 count();
 syncLook();
+
+/* -------------------------------------------------------------------- hands */
+
+// The hands the server offers. The menu only shows when there is more than
+// the original to choose from.
+fetch("/api/hands").then((r) => r.json()).then((hands) => {
+  if (hands.length < 2) return;
+  const sel = $("hand");
+  for (const h of hands) {
+    const o = document.createElement("option");
+    o.value = h.id;
+    o.textContent = h.name;
+    o.title = h.source;
+    sel.append(o);
+  }
+  if (![...sel.options].some((o) => o.value === HAND)) HAND = "";
+  sel.value = HAND;
+  $("handGrp").hidden = false;
+  sel.addEventListener("change", () => {
+    HAND = sel.value;
+    try { localStorage.setItem("t2h.hand", HAND); } catch {}
+    touched();
+  });
+}).catch(() => {});

@@ -213,6 +213,11 @@
                       role="radio" aria-checked="false">Aa</button>
             </div>
           </div>
+          <!-- whose handwriting: shown only when there is more than one hand -->
+          <div class="grp" id="handGrp" hidden>
+            <label class="grp__cap" for="hand">Hand</label>
+            <select class="mini mini--look" id="hand" aria-label="Hand"></select>
+          </div>
           <!-- the rest, a click away: most people never need it -->
           <button class="opt more" id="moreBtn" aria-expanded="false" aria-controls="adv">More</button>
           <span class="count" id="count">0</span>
