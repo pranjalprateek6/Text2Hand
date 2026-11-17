@@ -290,12 +290,55 @@ SHEETS = ("a4", "letter")
 
 SPACINGS = ("normal", "compact")
 
+# Hands besides the original, one folder each under hands/: myfont/ with the
+# glyphs that person wrote, an optional wordfont/ of captured words, and
+# hand.json naming it. Whatever a hand lacks is drawn from the original.
+HANDS_DIR = Path(t2h.BASE_FONT_DIR).parent / "hands"
+_BASE_WORDS = t2h.WORD_DIR
+
+
+def hand_dir(hand: str) -> Path | None:
+    """The folder of a named hand, or None for the original (or no such hand)."""
+    if not hand or not hand.replace("-", "").replace("_", "").isalnum():
+        return None
+    path = HANDS_DIR / hand
+    return path if (path / "myfont").is_dir() else None
+
+
+def list_hands() -> list[dict]:
+    """The hands to choose from, the original first."""
+    hands = [{"id": "", "name": "Original", "source": "Text2Hand's own captured hand"}]
+    if HANDS_DIR.is_dir():
+        for path in sorted(HANDS_DIR.iterdir()):
+            if hand_dir(path.name) is None:
+                continue
+            try:
+                meta = json.loads((path / "hand.json").read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                meta = {}
+            hands.append({"id": path.name, "name": meta.get("name") or path.name,
+                          "source": meta.get("source", "")})
+    return hands
+
+
+def use_hand(hand: str) -> None:
+    """Point the renderer at a hand, re-measuring it if it is not the one in use."""
+    path = hand_dir(hand)
+    font = str(path / "myfont") if path else t2h.BASE_FONT_DIR
+    words = str(path / "wordfont") if path else _BASE_WORDS
+    if font == t2h.FONT_DIR and words == t2h.WORD_DIR:
+        return
+    t2h.FONT_DIR, t2h.WORD_DIR = font, words
+    t2h._INK_LEVEL = None  # type: ignore[assignment]  # measured from the hand's own letters
+    t2h.reset_glyph_caches()
+    t2h.derive_metrics()
+
 
 def apply_options(ruled: bool = True, texture: bool = True, skew: bool = True,
                   ink: str = "blue-black", size: str = "normal",
                   paper: str | None = None, sheet: str = "a4",
                   headings: str = "same", underline: bool = True,
-                  spacing: str = "normal") -> None:
+                  spacing: str = "normal", hand: str = "") -> None:
     """Set the renderer up for one render. The caller must own the renderer.
 
     `paper` is ruled, grid or plain; without it the older `ruled` flag
@@ -304,8 +347,10 @@ def apply_options(ruled: bool = True, texture: bool = True, skew: bool = True,
     questions in black and the answers in blue. `underline` marks headings
     with a stroke under them. `spacing` "compact" closes up the gaps between
     paragraphs and before headings; on ruled or squared paper they still
-    land on whole lines.
+    land on whole lines. `hand` names a folder under hands/; "" is the
+    original hand.
     """
+    use_hand(hand)
     t2h.HEADING_INK = INKS.get(headings) if headings != "same" else None
     t2h.HEADING_UNDERLINE = bool(underline)
     compact = spacing == "compact"

@@ -922,3 +922,11 @@ body[data-view="library"] .bar__doc { display: none !important; }
 
 /* the page in the preview takes you to its text */
 #page { cursor: pointer; }
+
+/* the hand picker; on a phone it takes a row of its own, finger-sized */
+#hand { max-width: 100%; }
+@media (min-width: 601px) { #hand { height: 32px; min-height: 32px; } }
+@media (max-width: 600px) {
+  #handGrp { flex: 1 1 100%; min-width: 0; }
+  #hand { width: 100%; height: 44px; }
+}
